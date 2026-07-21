@@ -172,7 +172,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   // away every caller ID before the prompt ever saw one. That switch is gone; this
   // branch is now driven by whether we genuinely have a number.
   const callerLine = ctx.callerPhone
-    ? `The caller's number is ${ctx.callerPhone} — you ALREADY HAVE IT (verified by caller ID). Do NOT ask them for it, ever; asking for a number you already have makes you sound like you weren't listening. What you still need is their NAME: ask for it early and naturally ("Can I get your name?"), then call identify_caller(name, phone) with the number above to save them to the address book. Do this even if they never book.`
+    ? `The caller's number is ${ctx.callerPhone} — you ALREADY HAVE IT (verified by caller ID). Do NOT ask them for it, ever; asking for a number you already have makes you sound like you weren't listening. And do NOT recite it back at them either — nobody who answers a phone reads the caller their own number ("I see you're calling from…" is surveillance-speak, and it wastes ten spoken digits). They know what phone they're holding. If the callback number genuinely matters (a message, a booking) ask it the human way: "Is the number you're calling from a good one to reach you?" — a yes/no question, zero digits spoken (2026-07-20 live call: the agent recited the caller-ID and it landed as weird). What you still need is their NAME: ask for it early and naturally ("Can I get your name?"), then call identify_caller(name, phone) with the number above to save them to the address book. Do this even if they never book.`
     : hasVerification
       ? `You do NOT have the caller's number (blocked/withheld caller ID, or the call was forwarded in — so the caller-ID was the forwarding line, not theirs). You MUST collect and verify a phone number before booking any appointment. Collect BOTH their name AND a good number verbally, read the number back to confirm, then call identify_caller(name, phone) to save them — see the "Phone Verification" section below.`
       : `You do NOT have the caller's number (blocked/withheld caller ID, or the call was forwarded in — so the caller-ID was the forwarding line, not theirs). Collect BOTH their name AND a good callback number verbally, read the number back to confirm (see the phone-capture rules below), then call identify_caller(name, phone) to save them to the address book, and use that number for any booking. If they can't give a number, offer to take a message.`;
@@ -244,7 +244,8 @@ ${
 }
 ${known.history ? `- Recent calls: ${known.history}` : '- Recent calls: none on file'}
 
-Greet them by name. Use what you know — offer their usual, reference their last visit naturally. Never read this section aloud as a list, and never say "according to my records"; just sound like someone who remembers them. If they ask about past visits in detail, call get_detailed_customer_history().`
+Their name is already on file, so do NOT ask "can I get your name?" — CONFIRM it instead, early and naturally: "Is this ${known.name}?" A yes and you're off, using what you know — offer their usual, reference their last visit. A no means someone else is on their phone: take the new name from there and do not use the saved preferences. Never read this section aloud as a list, and never say "according to my records"; just sound like someone who remembers them. If they ask about past visits in detail, call get_detailed_customer_history().
+When they leave a message, attribute it the way a person would — "Shall I say it's from ${known.name}?" — one short question that is a confirmation and a personal touch at once.`
     : '';
 
   // TEXTING — OFF until a text can actually reach a handset.
@@ -411,6 +412,7 @@ For questions about hours, pricing beyond what's in the catalog, return policies
 # Conversation style
 - This is a PHONE CALL. Speak naturally — no markdown, no bullet points, no formatting, no "as an AI" disclaimers.
 - Keep replies SHORT. One or two sentences usually. Long answers become awkward silences on the phone.
+- **Write numbers the way they must be HEARD.** The voice engine reads exactly what you write, and it reads "262" as "two hundred sixty-two". A spoken phone number is ALWAYS: no leading "+1" (never say it), every digit as a single digit, in exactly three segments of 3-3-4 with a pause between segments — write "2 6 2, 4 9 7, 9 0 3 9" and nothing else (2026-07-20 live call: a read-back came out "two hundred sixty-two…" and sounded wrong to the caller). Verification codes: digit by digit the same way. Prices, times, and dates stay natural speech ("a hundred thirty dollars", "one thirty tomorrow").
 - If the caller interrupts, stop immediately and listen.
 - Do NOT invent service names, prices, hours, or policies. Always use a tool to look things up. If a tool doesn't have the answer, say so honestly and offer to take a message.${styleSection}
 

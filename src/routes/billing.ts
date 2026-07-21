@@ -9,6 +9,7 @@ import type { FastifyReply } from 'fastify';
 import type { AppFastifyInstance } from '../types/fastify';
 import Stripe from 'stripe';
 import { withHandler, logEvent, logError, requireTenantId, type AppRequest } from '../middleware';
+import { computeUsageStatements } from '../services/billingUsage';
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -223,6 +224,33 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       }
       return reply.send(res.rows[0]);
     }, 'Failed to check billing status')
+  );
+
+  // GET /billing/usage — monthly usage + online billing statements ("no
+  // paper" — the statement IS this endpoint + the Billing page rendering it).
+  // Computed live from voice_sessions via the answered-call definition; see
+  // src/services/billingUsage.ts for the model and docs/TODO.md §2 for the
+  // decision record. Informational until Stripe pack-charging lands.
+  app.get(
+    '/billing/usage',
+    withHandler(async (req: AppRequest, reply) => {
+      const tenantId = requireTenantId(req, reply);
+      if (!tenantId) return;
+
+      const months = Math.min(
+        Math.max(parseInt((req.query as { months?: string })?.months ?? '6', 10) || 6, 1),
+        24
+      );
+      try {
+        const result = await computeUsageStatements(pool, tenantId, months);
+        return reply.send({ success: true, ...result });
+      } catch (err) {
+        if ((err as Error).message === 'Tenant not found') {
+          return reply.status(404).send({ success: false, error: 'Tenant not found' });
+        }
+        throw err;
+      }
+    }, 'Failed to compute usage')
   );
 
   // POST /billing/portal — create a Stripe Customer Portal session

@@ -47,7 +47,13 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
   - **Competitor benchmarks (verified July 2026):** Rosie AI $49/$149/$299 (250/1,000/2,000 min); Goodcall $79/$129/$249/agent (100/250/500 unique customers/mo); Signpost $199/$399/$749 (AI-only → hybrid human+AI)
   - **Key differentiator to keep:** include booking + call transfer at ALL tiers — competitors (Rosie, Goodcall) gate these to mid-tier. Lead with "full receptionist from day one."
   - **Suggested tier shape:** Solo ~$99–129/mo (1 location, ~300 calls/mo cap, full booking+transfer) · Growth ~$199–249/mo (multi-location or higher volume, Square CRM sync, analytics) · Pro ~$349+/mo (unlimited volume, priority support)
-  - **Volume metering is NOT built yet** — tiers are flat subscriptions today; cap enforcement + usage meter is a P1 build item (see P2 section below). Go flat-rate for first customer, retrofit volume once real usage data exists.
+  - **Volume metering is NOT built yet** — tiers are flat subscriptions today; the overage build is a P2 item (see P2 section below). Go flat-rate for first customer, retrofit volume once real usage data exists.
+  - **DECIDED 2026-07-20 (Dale) — the overage model.** Dollar amounts per tier still open above, but the mechanics are settled:
+    - **Billing unit: the ANSWERED call** — caller spoke at least once AND duration ≥ ~15s. Silent rooms, instant hang-ups, spam, and robocalls are FREE (both honest and a sales line — the definition is a query over `voice_sessions`, which already records duration + transcript).
+    - **Flat tiers + auto-applied call PACKS, never a running meter** (the surviving telecom model: postpaid auto-blocks, not per-MB bill-shock). Quota exhausted → a fixed-price pack (e.g. **+$25 / 30 calls**, ~$0.83/call internal) auto-applies and calls KEEP ANSWERING. Owner is alerted at 80%, 100%, and on each pack purchase.
+    - **NEVER cut service on quota** — "that's like a punch in the gut": a capped line punishes the tenant's CUSTOMERS for the tenant's success, and voicemail is the product breaking its one promise. Overage bills; the following month the owner adjusts the plan (repeat pack-buyers get the "Growth would have saved you $X" nudge on the Billing page).
+    - **Quota exhaustion ≠ non-payment.** Only ordinary SaaS dunning (card declines → retries → grace → suspension) ever stops the line — never usage.
+    - Overage price floor sanity (measured 2026-07-20, Jack Jung call, 163s): ~5–7¢ all-in per call (LLM 4.1-mini ~1.7¢ + Aura TTS ~1.8¢ + STT 0.2¢ + PSTN ~1¢) → pack pricing carries 80–90% margin.
 - [ ] **(Dale)** **Stripe setup** — do these in order:
   1. **Open an LLC bank account** for Thinking Hammer LLC — required before Stripe can pay out. (Also listed under Legal §5 below.)
   2. **Connect bank account to Stripe** — add it in Stripe dashboard → Settings → Bank accounts & scheduling.
@@ -161,6 +167,87 @@ all go live at the same time.
 
 ---
 
+## 🔎 Call-review defects — 2026-07-21 live test calls (Camille, 3 calls from +1 262-497-9039)
+
+Transcripts + DB verified. Context: these calls ran on the 6-rung ladder + gpt-4.1-mini
+(deployed 2026-07-20) but PRE-date the staged prompt fixes on `feat/usage-billing-statement`
+(never-recite caller-ID, digit-by-digit 3-3-4 numbers, "Is this Camille?" recognition) —
+items marked **[staged]** are already fixed in that branch and just need the deploy.
+What worked: call 2's message flow was clean end-to-end; call 3 booked correctly, captured
+the role with graceful handling of three declined questions (rate, length, address), and
+linked inquiry→appointment.
+
+- [x] **(code) P0 — RUNG-2 RE-ENTRY: double-booked and then DENIED the first booking (call 1).**
+      **FIXED (staged) 2026-07-21:** `formatBookingResponse` now pins a `standing_fact` in every
+      successful booking result — "THIS CALL NOW HAS A BOOKED APPOINTMENT: {time} (id …); never
+      re-offer, never re-book, never say nothing is booked" — the tool result being the one
+      context line the model re-reads all call. Unit-tested (both payload branches) + a full
+      replay eval case ("the booking survives a long intake", maxToolCalls + forbiddenSpeech
+      graders added) — 15/15 incl. the new case. Ships with the pending branch.
+      The hard evidence: appointment created 00:35:56 (Jul 21 3:00 PM), then after intake the
+      model re-entered the booking rung, told the caller **"I haven't booked any meeting for you
+      yet"** — false — re-offered slots (3:00 now missing from availability _because she held
+      it_), and created a SECOND appointment 00:37:46 (3:30 PM). Both sit 'scheduled' in prod.
+      The caller even protested ("I thought we already booked one for 3PM") and was overruled.
+      Root cause: nothing re-anchors the model on its own completed booking — the confirmation
+      is N turns back in context and the runtime keeps the appointment_id (outcomeTracker) but
+      never re-injects it. Fix direction (the "runtime, not the model" pattern): after
+      book_with_scheduling succeeds, the runtime should pin a standing context line — "ALREADY
+      BOOKED THIS CALL: Tue Jul 21 3:00 PM (id …). Do not offer or book another unless the
+      caller asks for an ADDITIONAL appointment." Also add an eval case: book → long intake →
+      ambiguous 'six months' answer → model must NOT re-open booking.
+      _(Ops cleanup: cancel one of the two Jul-21 appointments — 3:00 or 3:30 — before Dale's
+      calendar shows a phantom double.)_
+- [x] **(code) P0 — intake captured NOTHING on call 1: capture_job_inquiry never ran.**
+      **FIXED (staged) 2026-07-21** with the re-entry fix above — same disease, one anchor. The
+      replay eval case REQUIRES capture_job_inquiry after the booking and passes.
+      Company ("Thinking Pat"), client ("Cayenne"), contract, six months — all collected, none
+      saved: no job_inquiries row exists for call 1. A fragment leaked out as a take_message
+      note ("prefers to discuss rate in person") — wrong tool mid-intake. After the second
+      booking it restarted intake FROM SCRATCH ("which company are you calling from?" — already
+      answered) and the call ended with everything lost. Likely the same state-loss as the
+      re-entry bug; fix together, and eval-pin: intake answers must end in capture_job_inquiry
+      even when interrupted by rung re-entry.
+- [x] **(code) P1 — "Anything else I can help you with?" fired while its own question was
+      still pending (call 1: asked "What length of contract?" then immediately "Anything else?"
+      — the caller's "Six months" landed after; reads as cutting her off). Also appears
+      mid-call on every call despite the wrap-up-only rule — recurring drift, now 5/5 live
+      calls. Needs a stronger mechanism than the current rung text (candidate: fold the
+      anything-else into the RUNG 6 wrap-up line itself and forbid it elsewhere by name).
+      **FIXED (staged) 2026-07-21:\*\* the sentence is now legal exactly once, as RUNG 6's opener,
+      and banned by name everywhere else (ladder header + CLOSE block); ladder rebuilt.
+- [x] **(code) P1 — incoherent caller-ID dispute recovery (calls 1 & 3).** Caller says the
+      number is wrong → call 1: "I have the digits 262-497-9039, can you provide the rest to
+      complete it?" (it's already complete — nonsense); call 3: she dictated the full number
+      digit-by-digit and the model re-confirmed it AGAIN, with "+1". Add to the identity rung:
+      a disputed caller-ID switches cleanly to verbal collection — collect once, read back once
+      (3-3-4 digits), done.
+      **FIXED (staged) 2026-07-21:** identity rung rewritten — one read-back, one yes, never
+      twice; disputed caller-ID drops the old number and collects fresh; 3-3-4 digit format in
+      the rung itself; never ask to "complete" a complete number.
+- [ ] **[staged] Caller-ID recited aloud with "+1" / raw E164 on all 3 calls** ("I have your
+      phone number as +12624979039") — fixed in branch: never recite; if callback matters ask
+      "is the number you're calling from a good one to reach you?"; any spoken number is
+      digit-by-digit in 3-3-4 with no +1.
+- [ ] **[staged] No returning-caller recognition (calls 2 & 3).** Camille was identified on
+      call 1; calls 2 and 3 asked her name cold. Fixed in branch: known number → "Is this
+      Camille?"; message attribution → "Shall I say it's from Camille?". Verify on the first
+      post-deploy call.
+- [ ] **(code) P2 — company names accepted unverified, again.** "Thinking Pat", "Cayenne",
+      "Peachesandcream.com" — one call earlier today turned "Apex" into "Attack". Pattern is
+      now recurring (2+ real occurrences): revisit the declined-for-now company-name read-back
+      line in the intake rung ("Cayenne — did I get that right?").
+- [ ] **(code) P2 — robotic phrasing + a "Just a moment" before a tool (call 3):** "not
+      among the officially available bookable times I have listed" is not how a receptionist
+      talks, and "Just a moment." violates the tools-are-instant rule. Prompt-style polish;
+      batch with the next prompt revision.
+- [ ] **(code) P2 — requested time not addressed head-on (call 3):** caller asked for Jul 27
+      3 PM; the reply listed 1:00/1:30/2:00 without saying "3 isn't open that day." The 4 PM
+      follow-up WAS addressed properly. RUNG 2's named-time branch (staged) should cover the
+      named-time path; verify post-deploy and extend to "name the miss" if not.
+
+---
+
 ## 🟠 Legal-hold — built, DO NOT merge/enable without sign-off
 
 Both erase PII irreversibly (kill-switched off / inert until enabled). Branches deleted in the 2026-06-23 cleanup; restorable from the PR pages.
@@ -191,7 +278,8 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
 
 ## 🟢 P2 — Quality, scale & ops visibility
 
-- [ ] **(code)** **Volume metering + tier cap enforcement** — do after first customer, once real usage data sets the bands. Data already exists (`voice_sessions` per tenant per month). Build: (1) monthly call counter endpoint; (2) per-plan limit config (Solo ~300–400 calls, Growth ~1,000, Pro unlimited); (3) dashboard usage meter + 80% warning banner; (4) soft cap enforcement. No Stripe Metered Billing needed — flat bands with a DB query. See pricing notes in §2 Billing above.
+- [ ] **(code)** **Volume metering + overage packs** — do after first customer, once real usage data sets the bands. Model DECIDED 2026-07-20 (see §2 Billing): billable = ANSWERED calls only (spoke + ≥15s; spam free), flat tiers + auto-applied fixed-price packs, **NO cap enforcement ever** — calls always answer; only dunning stops service. Build: (1) monthly answered-call counter (query over `voice_sessions`); (2) per-plan quota + pack config; (3) dashboard usage meter + 80%/100%/pack-applied alerts + "bigger plan would have saved you $X" nudge; (4) pack billing via Stripe invoice items on the existing subscription (webhook already wired). ~~soft cap enforcement~~ — explicitly rejected: a capped line is the product breaking its promise.
+- [ ] **(code)** **`ai_cost_events` rate map is stale — every call under-reports ~3.5¢** (found 2026-07-20 on a real call): the estimator has no rates for `gpt-4.1-mini` (the voice LLM since 2026-07-20, recorded $0.00 on 39k tokens) or Deepgram Aura TTS (recorded $0.00 on 1,229 chars since the 2026-07-14 TTS switch). Add both rates so the Analytics AI-cost card and any future margin math tell the truth. Quick fix; matters before pricing decisions lean on the dashboard number.
 - [ ] **(Dale/code)** _(Optional)_ Repoint Railway `healthcheckPath` → `/ready` to gate deploy **promotion** on DB reachability (behavior change — could block promotion during a DB blip; your call).
 - [x] ~~**(Dale)** **Alert rules** — stand up a hosted monitoring destination~~ — **DROPPED 2026-07-09. No vendor meets the "really free forever" bar.** Researched rather than assumed:
   - **UptimeRobot free is not usable here at all** — since 2024-12-01 its ToS restricts the free plan to _personal, non-commercial_ use, explicitly prohibiting revenue-generating applications. SecretaryHQ is a paid SaaS.

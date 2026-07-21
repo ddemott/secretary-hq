@@ -28,7 +28,11 @@ import type { ToolsClient } from '../src/toolsClient.js';
 const API_KEY = process.env.OPENAI_API_KEY;
 const MODEL = process.env.SIM_TOOLSELECT_MODEL || 'gpt-4o-mini'; // agent/src/index.ts pipeline model
 const THRESHOLD = 0.8;
-const MAX_ROUNDS = 12;
+// 20 (was 12, 2026-07-21): the double-booking regression case replays a REAL
+// long call — book, then a six-question intake. 12 rounds truncated it before
+// the failure it exists to catch could even occur; the length IS the scenario
+// (state loss happens N turns after the booking, not 3).
+const MAX_ROUNDS = 20;
 
 const C = process.stdout.isTTY
   ? { g: '\x1b[32m', r: '\x1b[31m', y: '\x1b[33m', d: '\x1b[2m', b: '\x1b[1m', x: '\x1b[0m' }
@@ -218,15 +222,18 @@ const DEFAULT_TOOL_RESULTS: Record<string, unknown> = {
     // fiction (2026-07-16).
     result: { spoken: 'Tomorrow we have 3:00 PM and 3:30 PM open.' },
   },
+  // Mirrors formatBookingResponse's REAL payload shape incl. standing_fact
+  // (2026-07-21 anti-double-booking anchor) — a stub without it would grade a
+  // model that never saw the anchor production gives it.
   book_with_scheduling: {
     success: true,
-    result: {
-      success: true,
-      appointment_id: '22222222-2222-4222-8222-222222222222',
-      employee_name: 'Maria',
-      booked_start: 'tomorrow 3:30 PM',
-      booked_end: 'tomorrow 4:00 PM',
-    },
+    appointment_id: '22222222-2222-4222-8222-222222222222',
+    booked_time: '3:30 PM',
+    employee: 'Maria',
+    instruction:
+      'Booked with Maria for 3:30 PM. Confirm THIS exact time (3:30 PM) to the caller — it is the actual booked slot.',
+    standing_fact:
+      'THIS CALL NOW HAS A BOOKED APPOINTMENT: 3:30 PM with Maria (appointment_id 22222222-2222-4222-8222-222222222222). This holds for the rest of the call, however long it runs: do NOT re-offer times, do NOT book again, and NEVER say nothing is booked — if the caller asks, the answer is YES, 3:30 PM. Book a second appointment ONLY if the caller explicitly asks for an ADDITIONAL one on top of this.',
   },
   get_my_appointments: {
     success: true,
@@ -320,6 +327,21 @@ interface EvalCase {
    * exist. Only for cases that document the post-10DLC flow.
    */
   smsWorld?: boolean;
+  /**
+   * Per-tool call-count ceilings (2026-07-21, the double-booking call).
+   * `forbidden` is all-or-nothing; some tools are REQUIRED once and a bug at
+   * twice — book_with_scheduling being the canonical case: one call is the
+   * job, a second is a duplicate appointment on a real calendar. Checked at
+   * call end; exceeding fails the case.
+   */
+  maxToolCalls?: Record<string, number>;
+  /**
+   * Things the agent must never SAY in this scenario, tool trail regardless
+   * (2026-07-21: "I haven't booked any meeting for you yet" — spoken minutes
+   * AFTER its own successful booking, to a caller who knew better). Claims
+   * check said-vs-called; this checks said-vs-truth-of-the-scenario.
+   */
+  forbiddenSpeech?: { pattern: RegExp; reason: string }[];
   /**
    * Only meaningful when a tenant ladder is loaded (SIM_CUSTOM_PROMPT_FILE):
    * the behavior under test is ordered by the tenant's SCRIPT, not the platform
@@ -465,6 +487,53 @@ const CASES: EvalCase[] = [
           /\b(booked|scheduled|confirmed)\s+(you|your|it|that)\b|\byou'?re all set\b|\byou'?re booked\b/i,
         requiresTool: ['book_with_scheduling'],
         lie: 'told the caller the meeting was booked without ever booking it',
+      },
+    ],
+  },
+  {
+    // ── THE 2026-07-21 CALL — booked, then FORGOT ITS OWN BOOKING ───────────
+    //
+    // Live call, verbatim shape: caller booked 3:00 PM, answered a long intake
+    // (company, placing-vs-hiring, contract, a DECLINED rate question, and a
+    // late "Six months" answer) — and the model re-entered the booking rung,
+    // told her "I haven't booked any meeting for you yet" (FALSE — her 3:00
+    // sat in the DB, which is exactly why 3:00 was missing from the re-offered
+    // slots), and created a DUPLICATE at 3:30 over her explicit protest
+    // ("I thought we already booked one for 3PM"). Intake data was then lost:
+    // capture_job_inquiry never ran.
+    //
+    // The fix under test: formatBookingResponse now pins a standing_fact in
+    // the booking result — the one context line the model re-reads all call.
+    // This case replays the FULL length (the length IS the trigger) and holds
+    // three lines at once: book once and only once (maxToolCalls), never deny
+    // the booking (forbiddenSpeech), and still capture the role (required).
+    name: 'FULL CALL: the booking survives a long intake — no double-book, no denial (2026-07-21 regression)',
+    requiresCustomPrompt: true,
+    userTurns: [
+      "Hi, I'd like to talk with Dale about a position that's available.",
+      'Camille.',
+      'Tomorrow at 3:30 works great.',
+      "I'm calling from Apex Staffing.",
+      "We're placing someone with a client — the client is Initech.",
+      "It's a contract position.",
+      "I'd rather discuss the rate in person — it's negotiable.",
+      'Six months.',
+      'Hybrid — the office is at 100 Main Street in Chicago.',
+      "No, that's everything, thanks.",
+    ],
+    required: [
+      ['get_available_slots', 'get_scheduling_options'],
+      ['book_with_scheduling'],
+      ['capture_job_inquiry'],
+    ],
+    forbidden: ['book_appointment', 'check_availability'],
+    maxToolCalls: { book_with_scheduling: 1 },
+    forbiddenSpeech: [
+      {
+        pattern:
+          /\bhaven'?t booked\b|\bno meeting (is |has been )?booked\b|\bnothing (is |has been )?booked\b|\bnot booked (anything|yet)\b|\bdidn'?t book\b/i,
+        reason:
+          'denied its own completed booking — the exact 2026-07-21 lie ("I haven\'t booked any meeting for you yet", minutes after booking her 3:00 PM)',
       },
     ],
   },
@@ -846,6 +915,34 @@ async function runCase(c: EvalCase): Promise<CaseResult> {
         called,
         said,
         reason: `LIED TO THE CALLER — ${claim.lie}. Said "${m[0].trim().slice(0, 80)}" but never called [${claim.requiresTool.join(' | ')}] (called: ${called.join(' → ') || 'none'})`,
+      };
+    }
+  }
+
+  // Per-tool ceilings — a required tool called TWICE can be a worse bug than a
+  // forbidden tool called once (a duplicate booking lands on a real calendar).
+  for (const [tool, max] of Object.entries(c.maxToolCalls ?? {})) {
+    const n = called.filter((t) => t === tool).length;
+    if (n > max) {
+      return {
+        pass: false,
+        called,
+        said,
+        reason: `TOOL CALLED TOO MANY TIMES — ${tool} ran ${n}× (max ${max}). On 2026-07-21 this exact shape double-booked a live caller.`,
+      };
+    }
+  }
+
+  // Scenario-truth speech bans — things that are false in this scenario no
+  // matter what the tool trail looks like.
+  for (const f of c.forbiddenSpeech ?? []) {
+    const m = f.pattern.exec(transcript);
+    if (m) {
+      return {
+        pass: false,
+        called,
+        said,
+        reason: `FORBIDDEN SPEECH — ${f.reason}. Said: "${m[0].trim().slice(0, 80)}"`,
       };
     }
   }

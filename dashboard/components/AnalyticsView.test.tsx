@@ -22,7 +22,6 @@ const { mockApi } = vi.hoisted(() => ({
     analytics: {
       getCalls: vi.fn(),
       getStats: vi.fn(),
-      getAiCost: vi.fn(),
       getCohorts: vi.fn(),
       getUtilization: vi.fn(),
     },
@@ -37,7 +36,6 @@ beforeEach(() => {
   mockApi.appointments.list.mockReset().mockResolvedValue([]);
   mockApi.analytics.getCalls.mockReset().mockResolvedValue(null);
   mockApi.analytics.getStats.mockReset().mockResolvedValue(null);
-  mockApi.analytics.getAiCost.mockReset().mockResolvedValue(null);
   mockApi.analytics.getCohorts.mockReset().mockResolvedValue(null);
   mockApi.analytics.getUtilization.mockReset().mockResolvedValue({ cells: [] });
 });
@@ -266,40 +264,27 @@ describe('AnalyticsView — call analytics panels (gap #2)', () => {
 });
 
 describe('AnalyticsView — copy defects (UX review)', () => {
-  test('HAPPY: AI usage footer names OpenAI TTS, never the removed xAI vendor', async () => {
-    // WHO: an owner reading the AI Usage cost note.
-    // WHAT: the rate footer must reflect the current stack — OpenAI TTS. xAI/Grok
-    //        TTS was fully removed 2026-06-25; "xAI TTS cost TBD" is dead copy.
-    // WHEN: any Analytics visit with AI-cost rows present.
-    // WHERE: AnalyticsView AI Usage rate footer.
-    // WHY: a dead vendor name + a stale "cost TBD" misrepresent what the tenant
-    //       is billed for; regression guard so it can't creep back.
+  test('HAPPY: internal AI cost is NEVER shown to the tenant', async () => {
+    // WHO: an owner reading their Analytics page.
+    // WHAT: the per-tenant AI spend is the PLATFORM's cost-of-goods — showing
+    //        it hands the tenant the margin math behind call-pack pricing.
+    //        The AiUsageCard was removed 2026-07-20 (Dale); ai_cost_events
+    //        keeps recording server-side for the operator only.
+    // WHEN: any Analytics visit.
+    // WHERE: AnalyticsView (the card used to render below the metrics grid).
+    // WHY: regression guard so a cost readout can't creep back into tenant view.
     mockApi.analytics.getCalls.mockResolvedValue({
       totals: { total: 3, booked: 1, abandoned: 1 },
       by_outcome: [],
       by_day: [],
     });
-    mockApi.analytics.getAiCost.mockResolvedValue({
-      total_estimated_cost_usd: 0.12,
-      breakdown: [
-        {
-          provider: 'openai',
-          model: 'gpt-4o-mini',
-          source: 'voice_session',
-          input_tokens: 1000,
-          output_tokens: 500,
-          audio_duration_ms: 0,
-          characters_count: 0,
-          estimated_cost_usd: 0.12,
-        },
-      ],
-    });
 
     render(<AnalyticsView />);
 
-    expect(await screen.findByText(/OpenAI TTS/i)).toBeInTheDocument();
-    expect(screen.queryByText(/xAI TTS/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/cost\s*TBD/i)).not.toBeInTheDocument();
+    await screen.findByText(/Analytics/i);
+    expect(screen.queryByText(/AI Usage/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/estimated cost/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0\./)).not.toBeInTheDocument();
   });
 
   test('HAPPY: the reliability snapshot does not leak the internal endpoint path', async () => {

@@ -225,6 +225,19 @@ function formatBookingResponse(res: ToolResponse, requestedStart?: string): stri
     booked_time: spoken,
     employee: r.employee_name ?? null,
     instruction: `Booked${withWhom} for ${spoken}. Confirm THIS exact time (${spoken}) to the caller — it is the actual booked slot.`,
+    // THE STANDING FACT (2026-07-21 live-call regression): on a real call the
+    // model booked 3:00 PM, ran a long intake, and then told the caller
+    // "I haven't booked any meeting for you yet" — false — re-offered slots
+    // (3:00 was missing from the list BECAUSE she held it) and booked a
+    // duplicate at 3:30 over her protest. The confirmation was N turns back;
+    // nothing in context re-anchored the model on its own completed booking.
+    // This field is that anchor: it lives in the tool result, so it stays in
+    // context for the REST of the call, exactly where the model re-reads.
+    standing_fact:
+      `THIS CALL NOW HAS A BOOKED APPOINTMENT: ${spoken}${withWhom}` +
+      (r.appointment_id ? ` (appointment_id ${r.appointment_id})` : '') +
+      `. This holds for the rest of the call, however long it runs: do NOT re-offer times, do NOT book again, and NEVER say nothing is booked — if the caller asks, the answer is YES, ${spoken}. ` +
+      `Book a second appointment ONLY if the caller explicitly asks for an ADDITIONAL one on top of this.`,
   };
   if (requestedStart && bookedTimeDiffers(requestedStart, bookedStart)) {
     payload.time_changed = true;

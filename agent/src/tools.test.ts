@@ -770,6 +770,60 @@ describe('book_with_scheduling — confirm the ACTUAL booked time', () => {
     expect(String(parsed.instruction)).toContain('4:30 PM');
   });
 
+  it('SUCCESS carries the STANDING FACT — the anti-double-booking anchor (2026-07-21 live regression)', async () => {
+    // WHO: the model N turns after its own booking, deep in a long intake.
+    // WHAT: every successful booking result must carry a standing_fact that
+    //   (1) states an appointment now EXISTS, with its time and id,
+    //   (2) forbids re-offering times / booking again,
+    //   (3) forbids claiming nothing is booked,
+    //   (4) carves out the one legitimate exception — the caller explicitly
+    //       asking for an ADDITIONAL appointment.
+    // WHEN: 2026-07-21 live call — booked 3:00 PM, ran intake, then told the
+    //   caller "I haven't booked any meeting for you yet" (false), re-offered
+    //   slots, and created a duplicate at 3:30 over her protest. The spoken
+    //   confirmation had scrolled N turns back; nothing re-anchored the model.
+    // WHERE: formatBookingResponse success payload — the tool result is the
+    //   one line of context the model re-reads for the rest of the call.
+    // WHY: a fact pinned in the tool result cannot be forgotten or argued with.
+    const { client } = makeClient([
+      bookedResult({ booked_start: '2026-07-15T16:30:00', booked_end: '2026-07-15T17:00:00' }),
+    ]);
+    const tools = buildTools(makeCtx(), client);
+    const out = await exec(tools.book_with_scheduling, {
+      service_type: 'Oil Change',
+      window_from: '2026-07-15T16:30:00',
+      window_to: '2026-07-15T17:00:00',
+      requested_start: '2026-07-15T16:30:00',
+      phone: '+15559998888',
+    });
+    const parsed = JSON.parse(out) as Record<string, unknown>;
+    const fact = String(parsed.standing_fact);
+    expect(fact).toContain('BOOKED APPOINTMENT');
+    expect(fact).toContain('4:30 PM'); // the booked time, restated in the anchor
+    expect(fact).toContain('appt-confirm'); // the id — provable, not vibes
+    expect(fact).toMatch(/do NOT re-offer times/i);
+    expect(fact).toMatch(/NEVER say nothing is booked/i);
+    expect(fact).toMatch(/ADDITIONAL one/i); // the only sanctioned second booking
+  });
+
+  it('STANDING FACT survives the time-changed branch too', async () => {
+    // The mismatch path rewrites `instruction` — the anchor must not be lost
+    // with it (a changed-time booking is still a booking that must not double).
+    const { client } = makeClient([bookedResult()]); // booked 4:00, asked 4:30
+    const tools = buildTools(makeCtx(), client);
+    const out = await exec(tools.book_with_scheduling, {
+      service_type: 'Oil Change',
+      window_from: '2026-07-15T16:30:00',
+      window_to: '2026-07-15T17:00:00',
+      requested_start: '2026-07-15T16:30:00',
+      phone: '+15559998888',
+    });
+    const parsed = JSON.parse(out) as Record<string, unknown>;
+    expect(parsed.time_changed).toBe(true);
+    expect(String(parsed.standing_fact)).toContain('4:00 PM'); // anchored to the REAL slot
+    expect(String(parsed.standing_fact)).toMatch(/NEVER say nothing is booked/i);
+  });
+
   it('SPECIFIC time but booked EARLIER → flags the change + names the real time (prod bug)', async () => {
     // Caller asked 4:30; the only opening was 4:00. Must NOT parrot 4:30.
     const { client } = makeClient([bookedResult()]); // booked_start 4:00

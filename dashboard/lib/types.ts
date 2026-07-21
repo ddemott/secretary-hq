@@ -669,3 +669,26 @@ export interface ReminderDeliveryStats {
   scheduled: number;
   cancelled: number;
 }
+
+// ── Usage metering / online billing statement (2026-07-20) ──
+// Mirrors src/services/billingUsage.ts. Quota/overage fields are null when
+// the tenant has no recognized plan (informational usage only).
+export interface MonthlyStatement {
+  month: string; // 'YYYY-MM' (UTC months)
+  totalCalls: number;
+  answeredCalls: number;
+  freeCalls: number;
+  includedCalls: number | null;
+  overageCalls: number | null;
+  packsApplied: number | null;
+  packChargeUsd: number | null;
+  inProgress: boolean;
+}
+
+export interface UsageStatementResult {
+  plan: string | null;
+  quota: { includedCalls: number; packCalls: number; packPriceUsd: number } | null;
+  billableMinSeconds: number;
+  monthBoundaries: 'utc';
+  statements: MonthlyStatement[];
+}
