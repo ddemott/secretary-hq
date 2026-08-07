@@ -747,7 +747,7 @@ export function registerSchedulingRoutes({
           const bufferMinutes = await getTenantBufferMinutes(client, args.tenant_id);
           const searchParams = {
             tenantId: args.tenant_id,
-            durationMinutes: 30,
+            durationMinutes: args.requirements.durationMinutes || 30,
             requiredSkills: args.requirements.requiredEmployeeSkills || [],
             requiredCapabilities: args.requirements.requiredResourceCapabilities || [],
             bufferMinutes,

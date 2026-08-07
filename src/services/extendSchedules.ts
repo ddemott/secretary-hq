@@ -81,17 +81,8 @@ export async function extendSchedules(
 
   const res = await client.query(
     `
-    WITH tail AS (
-      -- The last day each employee is currently scheduled. This is the edge of
-      -- the cliff; everything past it is empty calendar.
-      SELECT tenant_id, employee_id, MAX(shift_date) AS last_date
-        FROM employee_schedule
-       WHERE is_off IS NOT TRUE
-       GROUP BY tenant_id, employee_id
-    ),
-    pattern AS (
-      -- The final WEEK of that schedule = the employee's current working pattern.
-      -- DISTINCT ON collapses a weekday that appears twice to its latest row.
+    WITH pattern AS (
+      -- Interim heuristic from TODO: derive per-(employee, dow) from most recent row in [CURRENT_DATE - 28, CURRENT_DATE + 14]. Immune to far-future one-off and extender's own output. No self-referential, no over-scheduling, no breaking Saturday-only owners.
       SELECT DISTINCT ON (es.tenant_id, es.employee_id, EXTRACT(DOW FROM es.shift_date))
              es.tenant_id,
              es.employee_id,
@@ -99,22 +90,16 @@ export async function extendSchedules(
              es.start_time,
              es.end_time
         FROM employee_schedule es
-        JOIN tail t
-          ON t.tenant_id = es.tenant_id
-         AND t.employee_id = es.employee_id
         JOIN employees e
           ON e.employee_id = es.employee_id
          AND e.tenant_id = es.tenant_id
          AND (e.is_active IS NULL OR e.is_active = true)
        WHERE es.is_off IS NOT TRUE
-         AND es.shift_date >  t.last_date - INTERVAL '7 days'
-         AND es.shift_date <= t.last_date
+         AND es.shift_date >= CURRENT_DATE - INTERVAL '28 days'
+         AND es.shift_date <= CURRENT_DATE + INTERVAL '14 days'
        ORDER BY es.tenant_id, es.employee_id, EXTRACT(DOW FROM es.shift_date), es.shift_date DESC
     ),
     target_days AS (
-      -- Every date from today through the horizon. Starting at CURRENT_DATE (not
-      -- at the tail) also BACKFILLS a schedule that already lapsed — a tenant
-      -- whose calendar ran out last month becomes bookable again immediately.
       SELECT d::date AS shift_date
         FROM generate_series(CURRENT_DATE, CURRENT_DATE + ($1::int - 1), INTERVAL '1 day') d
     )

@@ -138,6 +138,7 @@ export const BookWithSchedulingSchema = z.object({
     serviceType: z.string().min(1),
     requiredResourceCapabilities: z.array(z.string()).optional(),
     requiredEmployeeSkills: z.array(z.string()).optional(),
+    durationMinutes: z.number().int().positive().optional(),
     preferredResourceId: z.string().optional(),
   }),
   window: z.object({ from: z.string(), to: z.string() }),

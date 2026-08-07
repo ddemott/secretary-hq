@@ -663,7 +663,7 @@ export function registerIdentityRoutes({ app, withTenantClient }: AgentToolDeps)
       if (!trimmed) {
         return ok(reply, { matches: [] });
       }
-      if (trimmed.length < 2) {
+      if (trimmed.length < 4) {
         return ok(reply, { matches: [] });
       }
       // Escape LIKE metacharacters so a spoken/transcribed name containing

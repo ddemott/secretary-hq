@@ -13,24 +13,15 @@ import { collectFeatureReadinessFromEnv } from '../services/featureReadiness';
 const PROCESS_STARTED_AT = new Date().toISOString();
 
 // Static pages read once (lazily, on first request) then cached — the hot
-// path never re-reads the file, and {{DASHBOARD_URL}} is substituted
-// per-request (cheap). Lazy rather than at module load because the path is
-// dist-relative (dist/src/routes → repo root); unit tests import this module
-// from src/ where the path doesn't resolve, and they never hit '/' or '/demo'.
+// path never re-reads the file, and {{DASHBOARD_URL}} is substituted per-request.
+// Lazy rather than at module load because the path is dist-relative.
 const publicDir = path.resolve(__dirname, '..', '..', '..', 'public');
 let landingHtmlCache: string | null = null;
-let demoHtmlCache: string | null = null;
 function getLandingHtml(): string {
   if (landingHtmlCache === null) {
     landingHtmlCache = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf-8');
   }
   return landingHtmlCache;
-}
-function getDemoHtml(): string {
-  if (demoHtmlCache === null) {
-    demoHtmlCache = fs.readFileSync(path.join(publicDir, 'secretaryhq-demo.html'), 'utf-8');
-  }
-  return demoHtmlCache;
 }
 
 /**
@@ -54,9 +45,10 @@ export function registerHealthRoutes(app: AppFastifyInstance, pool: Pool): void 
     return reply.type('text/html').send(html);
   });
 
-  // Demo page (static, no substitution needed)
+  // Demo page — redirect to real React dashboard demo (matches live site exactly)
   app.get('/demo', async (_req, reply) => {
-    return reply.type('text/html').send(getDemoHtml());
+    const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:4000';
+    return reply.redirect(`${dashboardUrl}/demo`);
   });
 
   // Liveness: process is up. Intentionally shallow + synchronous — does NOT
