@@ -73,7 +73,7 @@ async function ensureLoggedIn(page: Page) {
   const emailInput = page.locator('input[type="email"]');
   if (await emailInput.isVisible({ timeout: 2000 }).catch(() => false)) {
     await emailInput.fill('admin@secretaryhq.com');
-    await page.locator('input[type="password"]').fill('password');
+    await page.locator('input[type="password"]').fill('p@ssw0rd');
     await page.locator('button[type="submit"]').click();
     await page.waitForTimeout(3000);
   }

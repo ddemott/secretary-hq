@@ -152,7 +152,7 @@ test('HAPPY: customer visible via GET /customers after identify-caller', async (
   try {
     // Login as Bella's owner to get a JWT
     const loginRes = await request.post(`${BACKEND_URL}/login`, {
-      data: { email: 'bella@bellashair.com', password: 'password' },
+      data: { email: 'bella@bellashair.com', password: 'p@ssw0rd' },
       headers: { 'Content-Type': 'application/json' },
     });
     expect(loginRes.status()).toBe(200);
