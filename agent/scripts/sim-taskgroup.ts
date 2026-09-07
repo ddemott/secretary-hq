@@ -566,7 +566,7 @@ async function seedKnowledgeBase(db: Client): Promise<SeedInfo | null> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       email: process.env.SIM_LOGIN_EMAIL || 'daledemott@gmail.com',
-      password: process.env.SIM_LOGIN_PASSWORD || 'password',
+      password: process.env.SIM_LOGIN_PASSWORD || 'p@ssw0rd',
     }),
   });
   const auth = (await login.json()) as { success: boolean; token?: string };

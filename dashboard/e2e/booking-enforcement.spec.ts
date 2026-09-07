@@ -52,7 +52,7 @@ import {
 } from './helpers/fixtures';
 
 const ADMIN_EMAIL = 'admin@secretaryhq.com';
-const ADMIN_PASSWORD = 'password';
+const ADMIN_PASSWORD = 'p@ssw0rd';
 
 let pool: Pool;
 

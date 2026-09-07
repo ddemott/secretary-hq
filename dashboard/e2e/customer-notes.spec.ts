@@ -205,7 +205,7 @@ test('customer-notes-ui-visibility: notes created via API are visible in the Cus
   // exercising the real rendered UI.
   const BELLA_TENANT_ID = 'b3e1aaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
   const ADMIN_EMAIL = 'bella@bellashair.com';
-  const ADMIN_PASSWORD = 'password';
+  const ADMIN_PASSWORD = 'p@ssw0rd';
 
   // Create a customer with a note directly in the DB for this UI smoke
   // (fast and avoids any auth complexity for the test customer).

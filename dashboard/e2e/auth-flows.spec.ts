@@ -171,7 +171,7 @@ test('role-gate: front_desk user hitting owner-only routes is rejected with 403'
     inviteeUserId = tt.rows[0].user_id;
 
     // Log in as the front_desk user.
-    const auth = await loginAs(request, `${tag}-fd@example.test`, 'password');
+    const auth = await loginAs(request, `${tag}-fd@example.test`, 'p@ssw0rd');
     expect(auth.token, `login should succeed: ${JSON.stringify(auth)}`).toBeTruthy();
     expect(auth.role).toBe('front_desk');
 
