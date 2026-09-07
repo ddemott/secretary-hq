@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-08-18 for filesystem/package facts (29 top-level route modules, 184 migrations, 26 defined agent tools in `tools.ts`, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5). Test-pass counts below remain the 2026-08-14 full-suite snapshot until re-run.
+**Last verified:** 2026-09-05 for filesystem/package facts (32 top-level route modules, 192 migrations, 26 defined agent tools in `tools.ts`, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5). Test-pass counts below remain the 2026-08-14 full-suite snapshot until re-run.
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -45,8 +45,8 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 26 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (12 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
-- **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 184 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)
+- **API**: Fastify (32 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
+- **DB**: Postgres + pgvector on Supabase, 192 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -56,9 +56,9 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 ```
 /
 ├── src/                          Fastify backend (Node)
-│   ├── index.ts                  Entry — registers 29 top-level route modules + `agentTools/` dir (~420 lines)
+│   ├── index.ts                  Entry — registers 32 top-level route modules + `agentTools/` dir (~420 lines)
 │   ├── middleware.ts             withHandler, tenantMiddleware, registerJwtAuthHook, generateToken, AppError, logEvent
-│   ├── routes/                   29 route modules + routeHelpers.ts
+│   ├── routes/                   32 route modules + routeHelpers.ts
 │   ├── services/                 flat files (calendar sync, OAuth, name/token/SMS utilities) + communications/ (Telnyx-only SMS + delivery webhooks), reminders/, tenants/, usage/ subdirs
 │   └── database/                 getPool() singleton + createWithTenantClient(pool) factory + DatabaseService adapter
 ├── dashboard/                    Next.js 16 App Router
@@ -122,7 +122,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
                                 ▼
                     ┌─────────────────────┐
                     │  Fastify Backend    │  secretary-hq-production.up.railway.app
-                    │  29 route modules   │  Railway (Nixpacks, Node 22)
+                    │  32 route modules   │  Railway (Nixpacks, Node 22)
                     └──────────┬──────────┘
                                │
           ┌────────────────────┼─────────────────────┐
@@ -417,9 +417,9 @@ Releases the Telnyx number via the API and clears `telnyx_phone_number_id`, `inb
 
 ## 9. Backend API (Fastify)
 
-### 9.1 Route modules (29 + `agentTools/` dir)
+### 9.1 Route modules (32 + `agentTools/` dir)
 
-29 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
+32 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
 
 ### 9.2 Middleware layer (`src/middleware.ts`)
 
