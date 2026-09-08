@@ -368,7 +368,7 @@ Google/Outlook OAuth creds and the Square webhook signature key are set in Railw
 ### 7.1 Dashboard Smoke Test
 
 1. Open the dashboard URL
-2. Log in with the seeded credentials (`admin@secretaryhq.com` / `password`)
+2. Log in with the seeded credentials (`admin@secretaryhq.com` / `p@ssw0rd`)
 3. Verify you can see appointments, customers, and resources
 4. Try creating a test appointment through the UI
 
