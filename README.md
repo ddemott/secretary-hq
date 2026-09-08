@@ -85,15 +85,15 @@ Below is a full list of its features:
 
 [![CI](https://github.com/ddemott/secretary-hq/actions/workflows/ci.yml/badge.svg)](https://github.com/ddemott/secretary-hq/actions/workflows/ci.yml)
 
-|               |                                                                                                                                                                                                                                                                                                                                                            |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Phase**     | 13 — Production Readiness                                                                                                                                                                                                                                                                                                                                  |
-| **Backend**   | Live on Railway (`secretary-hq-production.up.railway.app`)                                                                                                                                                                                                                                                                                                 |
-| **Dashboard** | Live at `https://www.secretaryhq.com` (Railway origin `dashboard-production-cee3.up.railway.app`); set `DASHBOARD_URL` on backend Railway service for Stripe/OAuth redirects                                                                                                                                                                               |
-| **Voice AI**  | Live — Telnyx → LiveKit Cloud → Deepgram Nova-3 (STT) + OpenAI GPT-4.1-mini (LLM) + Deepgram Aura (TTS). Call flow = question trees (`agent/src/checklist/`). PSTN inbound reaches the agent (confirmed 2026-06-30); the booking + transfer legs still need a live different-carrier call — see `docs/planning/TODO.md` (P0 Voice) + `docs/RUNBOOK.md` §7. |
-| **Phone**     | `+1 630-822-9086` (current). Previous `+1 630-866-1960` (purchased 2026-06-02) dead. Test verification number `+1 630-822-9086`. Old `+1-630-937-9478` dead.                                                                                                                                                                                               |
-| **Tests**     | Latest audit rerun (2026-08-18): dashboard 1,046 passing, agent 943 passing, root `npm test` blocked locally by missing `app_user` role setup in `test_db`; see `docs/TEST_COVERAGE.md` for exact output and the last full-green snapshot                                                                                                                  |
-| **E2E**       | 40 committed Playwright spec files                                                                                                                                                                                                                                                                                                                         |
+|               |                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase**     | 13 — Production Readiness                                                                                                                                                                                                                                                                                                                                             |
+| **Backend**   | Live on Railway (`secretary-hq-production.up.railway.app`)                                                                                                                                                                                                                                                                                                            |
+| **Dashboard** | Live at `https://www.secretaryhq.com` (Railway origin `dashboard-production-cee3.up.railway.app`); set `DASHBOARD_URL` on backend Railway service for Stripe/OAuth redirects                                                                                                                                                                                          |
+| **Voice AI**  | Live — Telnyx → LiveKit Cloud → Deepgram Nova-3 (STT) + OpenAI GPT-4.1-mini (LLM) + Deepgram Aura (TTS). Call flow = question trees (`agent/src/checklist/`). PSTN inbound reaches the agent (confirmed 2026-06-30); the booking + transfer legs still need a live different-carrier call — see `docs/planning/TODO.md` (P0 Voice) + `docs/operations/RUNBOOK.md` §7. |
+| **Phone**     | `+1 630-822-9086` (current). Previous `+1 630-866-1960` (purchased 2026-06-02) dead. Test verification number `+1 630-822-9086`. Old `+1-630-937-9478` dead.                                                                                                                                                                                                          |
+| **Tests**     | Root `npm test` green: 3029 passing. Dashboard + agent suites green. See `docs/planning/TEST_COVERAGE.md` for exact output.                                                                                                                                                                                                                                           |
+| **E2E**       | 40 committed Playwright spec files                                                                                                                                                                                                                                                                                                                                    |
 
 **Quick status commands** (see `scripts/simulate.sh`):
 
@@ -135,7 +135,7 @@ Telnyx (carrier + SIP trunk) --> LiveKit Cloud (SIP ingress)
                                 — OpenAI GPT-4.1-mini (LLM)
                                 — Deepgram Aura (TTS, streaming)
                                           |
-                                Fastify backend (29 route modules + agentTools dir; agent calls /agent-tools/*)
+                                Fastify backend (32 route modules + agentTools dir; agent calls /agent-tools/*)
                                           |
                                 PostgreSQL + pgvector (RLS multi-tenancy)
                                           |
@@ -145,9 +145,9 @@ Telnyx (carrier + SIP trunk) --> LiveKit Cloud (SIP ingress)
 | Layer             | Tech                                                                                                                                                                                                                                                                                                     |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Voice**         | Telnyx (carrier + SIP trunk), LiveKit Cloud (orchestrator), Deepgram Nova-3 (STT), OpenAI GPT-4.1-mini (voice LLM; 4o-mini for summaries/classify), Deepgram Aura (TTS, streaming, per-tenant voice via dashboard AI Persona page; `tts_speed` is inert under Aura)                                      |
-| **Backend**       | Fastify 5.x, 29 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                                  |
+| **Backend**       | Fastify 5.x, 32 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                                  |
 | **Frontend**      | Next.js 16 (App Router), React 19, Tailwind CSS 3.4, TypeScript, Lucide icons                                                                                                                                                                                                                            |
-| **Database**      | PostgreSQL + pgvector, 184 migrations, Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)                                                       |
+| **Database**      | PostgreSQL + pgvector, 192 migrations, Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)                                                       |
 | **Agent runtime** | LiveKit Agents (Node) on Railway as `secretary-hq-agent`. Call flow = **question trees** (`agent/src/checklist/`): host-owned checklist, purpose-selected trees, goodbye gate. 26 tools are defined in `agent/src/tools.ts`; the live question-tree path offers a subset — see `docs/ARCHITECTURE.md` §7 |
 | **Async**         | Inline in Fastify routes (post-call summaries, calendar sync, SMS)                                                                                                                                                                                                                                       |
 | **Billing**       | Stripe Checkout route + subscription gate exist in code; pricing is provisional and the webhook endpoint is not yet registered                                                                                                                                                                           |
@@ -215,9 +215,9 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 ```
 /
 ├── src/                    Fastify backend
-│   ├── index.ts            Entry point (29 top-level route registrations + agentTools dir)
+│   ├── index.ts            Entry point (32 top-level route registrations + agentTools dir)
 │   ├── middleware.ts        withHandler, tenant middleware, structured logging
-│   ├── routes/             29 route modules + shared helpers (routeHelpers.ts, versionHistoryHelpers.ts, crmRouteScaffold.ts)
+│   ├── routes/             32 route modules + shared helpers (routeHelpers.ts, versionHistoryHelpers.ts, crmRouteScaffold.ts)
 │   ├── services/           Square CRM sync, calendar sync, communications (Telnyx-only for SMS + delivery receipts), reminders, token management, telnyxNumbers + telnyxSms (Telnyx is now the sole provider)
 │   └── database/           DatabaseService interface + Postgres implementation
 ├── agent/                  LiveKit Agents worker (Node) — Deepgram STT + OpenAI LLM + Deepgram Aura TTS; call flow in agent/src/checklist/
@@ -227,7 +227,7 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 │   ├── lib/                API client, hooks, types, SessionContext
 │   └── e2e/                Playwright tests
 ├── supabase/
-│   ├── migrations/         184 SQL migrations
+│   ├── migrations/         192 SQL migrations
 │   └── seed.sql            Platform admin + Bella's Hair Studio demo tenant
 ├── shared/                 Cross-runtime code (embeddings, scheduling, voice CRM types + prompt formatter)
 ├── scripts/                Automation (bootstrap, setup-db, seed-db, deploy, QA)
@@ -249,7 +249,7 @@ cd dashboard && npx playwright test   # E2E (40 committed spec files)
 
 | Area                              | Tests |
 | --------------------------------- | ----- |
-| Backend routes (29 modules)       | ~700  |
+| Backend routes (32 modules)       | ~700  |
 | Backend services                  | ~570  |
 | Middleware, scheduling, constants | ~500  |
 | Dashboard components + views      | ~747  |
@@ -335,24 +335,24 @@ See `docs/DEPLOYMENT.md` for the step-by-step guide.
 
 **Core reference**
 
-| Doc                    | Purpose                                                         |
-| ---------------------- | --------------------------------------------------------------- |
-| `docs/README.md`       | Documentation index + docs-hygiene principles                   |
-| `docs/ARCHITECTURE.md` | Full technical architecture deep-dive                           |
-| `docs/DIAGRAMS.md`     | Mermaid diagrams (deployment, voice flow, booking, OAuth, etc.) |
-| `docs/DEPLOYMENT.md`   | Step-by-step deployment guide (Railway env, deploy commands)    |
-| `docs/SECURITY.md`     | Security model — RLS, auth, hardening, posture                  |
-| `docs/RUNBOOK.md`      | Production incident + telephony recovery playbook               |
-| `docs/ALERTS.md`       | Alerting rules (optional; paid observability decided against)   |
+| Doc                                 | Purpose                                                         |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `docs/README.md`                    | Documentation index + docs-hygiene principles                   |
+| `docs/architecture/ARCHITECTURE.md` | Full technical architecture deep-dive                           |
+| `docs/design/DIAGRAMS.md`           | Mermaid diagrams (deployment, voice flow, booking, OAuth, etc.) |
+| `docs/operations/DEPLOYMENT.md`     | Step-by-step deployment guide (Railway env, deploy commands)    |
+| `docs/operations/SECURITY.md`       | Security model — RLS, auth, hardening, posture                  |
+| `docs/operations/RUNBOOK.md`        | Production incident + telephony recovery playbook               |
+| `docs/operations/ALERTS.md`         | Alerting rules (optional; paid observability decided against)   |
 
 **Planning, tasks & status**
 
-| Doc                         | Purpose                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `docs/planning/TODO.md`     | The one backlog — all open work, prioritized (GAPS + IMPROVEMENT_IDEAS + go-live folded in 2026-07-05) |
-| `docs/planning/RESOLVED.md` | Completed phases + historical bug tracker + session-notes archive (incl. the folded-doc snapshots)     |
-| `docs/TEST_COVERAGE.md`     | Test coverage status and gaps                                                                          |
-| `docs/TEST_DB_AUDIT.md`     | Mocked-DB vs real-SQL coverage map                                                                     |
+| Doc                              | Purpose                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `docs/planning/TODO.md`          | The one backlog — all open work, prioritized (GAPS + IMPROVEMENT_IDEAS + go-live folded in 2026-07-05) |
+| `docs/planning/RESOLVED.md`      | Completed phases + historical bug tracker + session-notes archive (incl. the folded-doc snapshots)     |
+| `docs/planning/TEST_COVERAGE.md` | Test coverage status and gaps                                                                          |
+| `docs/TEST_DB_AUDIT.md`          | Mocked-DB vs real-SQL coverage map                                                                     |
 
 **Voice AI**
 

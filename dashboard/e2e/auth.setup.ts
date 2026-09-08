@@ -25,7 +25,7 @@ setup('login as admin', async ({ page }) => {
     }
 
     await page.locator('input[type="email"]').fill('admin@secretaryhq.com');
-    await page.locator('input[type="password"]').fill('password');
+    await page.locator('input[type="password"]').fill('p@ssw0rd');
     await page.locator('button[type="submit"]').click();
 
     // Wait for the JWT to land in localStorage. Polling the token

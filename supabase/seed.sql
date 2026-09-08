@@ -15,7 +15,7 @@ VALUES (
 
 -- 0b. Create a SecretaryHQ Admin User (Platform Admin)
 INSERT INTO users (tenant_id, email, password_hash, full_name)
-VALUES ('00000000-0000-0000-0000-000000000000', 'admin@secretaryhq.com', '$2b$10$hUTzgdpUJwodudEw.p2SXu5.k60elGfP0NoTZ8ly2oj4xXaWfpKfK', 'SecretaryHQ Admin')
+VALUES ('00000000-0000-0000-0000-000000000000', 'admin@secretaryhq.com', '$2b$12$saB6q9myHS/lHi6.R0oNh.cPivd3E7gCJSk6Q0vxsPDcCZM2v7lEC', 'SecretaryHQ Admin')
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- 1. Thinking Hammer LLC tenant + Dale's personal owner account.
@@ -33,7 +33,7 @@ INSERT INTO users (tenant_id, email, password_hash, full_name, role)
 VALUES (
     'd5e3c6a1-7b9f-4e2a-bf30-8c11a5d8e9f0',
     'daledemott@gmail.com',
-    '$2b$10$hUTzgdpUJwodudEw.p2SXu5.k60elGfP0NoTZ8ly2oj4xXaWfpKfK',
+    '$2b$12$saB6q9myHS/lHi6.R0oNh.cPivd3E7gCJSk6Q0vxsPDcCZM2v7lEC',
     'Dale DeMott',
     'owner'
 ) ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name;
@@ -96,7 +96,7 @@ INSERT INTO users (tenant_id, email, password_hash, full_name, role)
 VALUES (
     'b3e1aaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     'bella@bellashair.com',
-    '$2b$10$hUTzgdpUJwodudEw.p2SXu5.k60elGfP0NoTZ8ly2oj4xXaWfpKfK',
+    '$2b$12$saB6q9myHS/lHi6.R0oNh.cPivd3E7gCJSk6Q0vxsPDcCZM2v7lEC',
     'Bella Rossi',
     'owner'
 ) ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, full_name = EXCLUDED.full_name;

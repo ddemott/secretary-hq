@@ -374,8 +374,7 @@ async function runCall(p: Persona, style: string, deps: CallDeps): Promise<RunRe
         }
         for (const tc of toolCalls) {
           const tool = task.toolCtx[tc.function.name] as
-            | { execute: (a: unknown, o: unknown) => Promise<unknown> }
-            | undefined;
+            { execute: (a: unknown, o: unknown) => Promise<unknown> } | undefined;
           let res: unknown = `unknown tool ${tc.function.name}`;
           if (tool) {
             let args: unknown = {};
@@ -566,7 +565,7 @@ async function seedKnowledgeBase(db: Client): Promise<SeedInfo | null> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       email: process.env.SIM_LOGIN_EMAIL || 'daledemott@gmail.com',
-      password: process.env.SIM_LOGIN_PASSWORD || 'password',
+      password: process.env.SIM_LOGIN_PASSWORD || 'p@ssw0rd',
     }),
   });
   const auth = (await login.json()) as { success: boolean; token?: string };
@@ -736,7 +735,8 @@ const SCENARIOS: Scenario[] = [
     styles: ['plain', 'chatty'],
   },
   {
-    title: 'MID-INTAKE BAIL: real job caller refuses the interview — "just take a message" is a real write',
+    title:
+      'MID-INTAKE BAIL: real job caller refuses the interview — "just take a message" is a real write',
     persona: {
       name: 'Priya Nair',
       phone: '555-901-0032',
@@ -892,7 +892,8 @@ const SCENARIOS: Scenario[] = [
     styles: ['plain'],
   },
   {
-    title: 'HARD-DOWN: booking fails every attempt — honest fallback to a message, no false "you\'re booked"',
+    title:
+      'HARD-DOWN: booking fails every attempt — honest fallback to a message, no false "you\'re booked"',
     persona: {
       name: 'June Adler',
       phone: '555-901-0040',
@@ -915,7 +916,8 @@ const SCENARIOS: Scenario[] = [
       appointment: false,
       jobInquiry: false,
       message: true,
-      transcriptForbid: /you'?re (all set|booked)|booked you in|your appointment is (set|confirmed)/i,
+      transcriptForbid:
+        /you'?re (all set|booked)|booked you in|your appointment is (set|confirmed)/i,
     },
     styles: ['plain'],
   },
@@ -1150,7 +1152,10 @@ async function verify(db: Client, p: Persona, e: Expect, seed?: SeedInfo): Promi
       [TENANT, e164]
     );
     // On a multi-goal call the latest row must be a NEW booking, not the seeded one.
-    const newest = appt.rows[0] && appt.rows[0].appointment_id !== seed?.appointmentId ? appt.rows[0] : undefined;
+    const newest =
+      appt.rows[0] && appt.rows[0].appointment_id !== seed?.appointmentId
+        ? appt.rows[0]
+        : undefined;
     if (e.appointment && !newest) fails.push('expected a NEW APPOINTMENT, none found');
     if (!e.appointment && newest) fails.push('APPOINTMENT booked but none expected');
     if (e.appointment && newest && !newest.service) fails.push('appointment service is NULL');

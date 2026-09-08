@@ -369,31 +369,58 @@ export function OutlookLayout({
                 isActive={activeTab === tab.id}
                 onClick={() => setActiveTab(tab.id)}
               />
-              {tab.id === 'ai-insights' && unansweredCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-xs font-bold leading-none"
-                  style={{ backgroundColor: 'var(--accent)', color: 'var(--primary-text)' }}
-                  title={`${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''} from callers`}
-                >
-                  {unansweredCount > 99 ? '99+' : unansweredCount}
-                </span>
-              )}
-              {tab.id === 'calls' && activeCallCount > 0 && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-xs font-bold leading-none animate-pulse"
-                  style={{
-                    backgroundColor: 'var(--danger, #dc2626)',
-                    color: 'var(--primary-text)',
-                  }}
-                  title={`${activeCallCount} call${activeCallCount > 1 ? 's' : ''} in progress`}
-                  aria-label={`${activeCallCount} active call${activeCallCount > 1 ? 's' : ''}`}
-                >
-                  {activeCallCount > 99 ? '99+' : activeCallCount}
-                </span>
-              )}
             </span>
           ))}
         </FolderTabBar>
+
+        {/* NOTIFICATION STRIP — live counters parked in the upper-right gutter
+          so they never collide with the tab labels. Two of them (KB
+          unanswered on Phone Assistant, active voice calls on Calls) used
+          to ride as floating "-top-1 -right-1" badges glued to their tab;
+          because the FolderTab row uses pointer-events: none on the
+          border trick that gives the active tab its lift, those absolutely-
+          positioned children ended up rendering against the wrong layer
+          and got visually sliced. Moved here as a fixed top-right cluster
+          that's a sibling of the tab row instead of a child. */}
+        {(unansweredCount > 0 || activeCallCount > 0) && (
+          <div
+            className="fixed top-3 right-4 z-50 flex items-center gap-2 pointer-events-auto"
+            data-testid="nav-notification-strip"
+          >
+            {activeCallCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('calls')}
+                aria-label={`${activeCallCount} active call${activeCallCount > 1 ? 's' : ''} — open Calls tab`}
+                className="inline-flex items-center gap-1.5 min-h-[28px] px-2.5 rounded-full text-xs font-bold animate-pulse cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--danger, #dc2626)',
+                  color: 'var(--primary-text)',
+                }}
+                title={`${activeCallCount} call${activeCallCount > 1 ? 's' : ''} in progress`}
+              >
+                <Phone className="w-3.5 h-3.5" aria-hidden="true" />
+                {activeCallCount > 99 ? '99+' : activeCallCount} live
+              </button>
+            )}
+            {unansweredCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('ai-insights')}
+                aria-label={`${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''} — open Phone Assistant tab`}
+                className="inline-flex items-center gap-1.5 min-h-[28px] px-2.5 rounded-full text-xs font-bold cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  color: 'var(--primary-text)',
+                }}
+                title={`${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''} from callers`}
+              >
+                <Bot className="w-3.5 h-3.5" aria-hidden="true" />
+                {unansweredCount > 99 ? '99+' : unansweredCount} KB
+              </button>
+            )}
+          </div>
+        )}
 
         {/* DEMO BANNER — renders only when demoTenantId is in localStorage */}
         <DemoBanner />
