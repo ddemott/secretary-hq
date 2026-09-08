@@ -69,7 +69,7 @@ turned `main` red on `2aa61d4`.
       asserting the machine's speed, not the code's behaviour.**
 - [x] **THE FOURTH ONE ARRIVED (2026-09-03), and it is the same shape.**
       `tests/services/deadlock-prevention.test.ts > clearDB truncates all tables
-in a single statement` timed out on PR #394's Backend job at **5,004 ms
+    in a single statement` timed out on PR #394's Backend job at **5,004 ms
       against vitest's default 5,000 ms budget** — a four-millisecond miss on a
       test that does a real `TRUNCATE ... CASCADE` over every seeded table. It
       passes locally in ~3 s and had never failed before. The prediction in the

@@ -6,13 +6,13 @@ set -euo pipefail
 #
 # Examples:
 #   ./scripts/smoke-test.sh https://your-backend.railway.app
-#   ./scripts/smoke-test.sh https://localhost:4001 admin@secretaryhq.com password
+#   ./scripts/smoke-test.sh https://localhost:4001 admin@secretaryhq.com p@ssw0rd
 #
 # Uses env vars ADMIN_EMAIL and ADMIN_PASSWORD as fallbacks.
 
 BACKEND_URL="${1:-}"
 ADMIN_EMAIL="${2:-${ADMIN_EMAIL:-admin@secretaryhq.com}}"
-ADMIN_PASSWORD="${3:-${ADMIN_PASSWORD:-password}}"
+ADMIN_PASSWORD="${3:-${ADMIN_PASSWORD:-p@ssw0rd}}"
 
 if [ -z "$BACKEND_URL" ]; then
   echo "Usage: ./scripts/smoke-test.sh <backend-url> [admin-email] [admin-password]"

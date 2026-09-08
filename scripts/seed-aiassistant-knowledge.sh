@@ -17,7 +17,7 @@ set -euo pipefail
 
 BACKEND_URL="${BACKEND_URL:-https://secretary-hq-production.up.railway.app}"
 OWNER_EMAIL="${OWNER_EMAIL:-daledemott@gmail.com}"
-OWNER_PASS="${OWNER_PASS:-password}"
+OWNER_PASS="${OWNER_PASS:-p@ssw0rd}"
 
 echo "[chris-kb] Logging in as $OWNER_EMAIL ..."
 TOKEN=$(curl -s -X POST "$BACKEND_URL/login" \
