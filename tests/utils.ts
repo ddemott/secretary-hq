@@ -108,7 +108,7 @@ export async function setupBasicTenant(client: Client) {
 //    with CASCADE, avoiding partial-lock states that cause circular waits.
 // 2. SHORT TRANSACTIONS — savepoint/rollback pattern keeps test transactions brief.
 // 3. TIMEOUT PROTECTION — lock_timeout set on connections to fail fast on contested locks.
-// 4. SEQUENTIAL EXECUTION — vitest.config.ts sets fileParallelism:false so test files
+// 4. SEQUENTIAL EXECUTION — vitest.config.mts sets fileParallelism:false so test files
 //    never compete for table locks across parallel threads.
 
 export async function beginTestTransaction(client: Client) {

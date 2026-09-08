@@ -14,7 +14,7 @@ secretary-hq/
 ├── README.md
 ├── package.json                   ✓ root workspace scripts (bootstrap, start, test, checks)
 ├── tsconfig.json                  ✓ backend + shared TypeScript config
-├── vitest.config.ts               ✓ backend test runner config
+├── vitest.config.mts               ✓ backend test runner config
 ├── docker-compose.yml             ✓ local Postgres (port 5433)
 ├── docs/                          ✓ all project documentation
 ├── scripts/                       ✓ CLI helpers (simulate.sh, migrate-tests.mjs, …)

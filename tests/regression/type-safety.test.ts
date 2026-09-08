@@ -122,7 +122,10 @@ describe('FastifyInstance typing on route modules', () => {
       // WHEN: server starts up and registers all 21 route modules
       // WHERE: src/routes/${mod}.ts
       // WHY: if the export is missing or misnamed, the server silently skips routes
-      const module = await import(`../../src/routes/${mod}`);
+      // The `.ts` suffix is REQUIRED, not decoration: Vite's dynamic-import-vars
+      // plugin needs a static file extension in the pattern, and without it every run
+      // printed `invalid import "../../src/routes/${mod}"` on this line.
+      const module = await import(`../../src/routes/${mod}.ts`);
       expect(module[fnName]).toBeDefined();
       expect(typeof module[fnName]).toBe('function');
     });
