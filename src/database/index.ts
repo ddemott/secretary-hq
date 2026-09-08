@@ -213,8 +213,9 @@ export function createWithTenantClient(pool: Pool): WithTenantClient {
  *     executing a query is deprecated and will be removed in pg@9.
  *
  * Passing THUNKS instead of promises is the whole point: `() => client.query(...)`
- * is not started until its turn, so nothing overlaps. They are REST parameters, not
- * an array, because that is what makes TypeScript infer a tuple and give each
+ * is not started until its turn, so nothing overlaps. They arrive as rest parameters
+ * (`...thunks` — the JS spread form, nothing to do with REST APIs) rather than as one
+ * array argument, because that is what makes TypeScript infer a TUPLE and give each
  * destructured result its own row type instead of a union of all of them. Wall-clock is unchanged
  * because there was never any real parallelism to lose. Giving each query its own
  * pooled client WOULD be concurrent, but every one of them would need the tenant

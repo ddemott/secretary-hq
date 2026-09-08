@@ -45,16 +45,24 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-/** Text of every `Promise.all([ … ])` literal in a file, brackets included. */
+/**
+ * Text of every `Promise.all( … [ … ] )` array literal in a file, brackets included.
+ *
+ * The opener is matched as a REGEX, not the substring `Promise.all([`, because
+ * Prettier is free to break the call across lines (`Promise.all(\n  [ … ])`) and a
+ * substring scan would sail straight past it — the guard would stay green while the
+ * pattern it exists to stop walked back in. A `Promise.all(someArrayBuiltEarlier)`
+ * is still out of reach of a scanner like this; that shape has never appeared here,
+ * and catching it needs a type-aware pass rather than a smarter regex.
+ */
 function promiseAllBlocks(source: string): string[] {
   const blocks: string[] = [];
-  const opener = 'Promise.all([';
-  let from = 0;
-  for (;;) {
-    const start = source.indexOf(opener, from);
-    if (start === -1) return blocks;
+  const opener = /Promise\s*\.\s*all\s*\(\s*\[/g;
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(source)) !== null) {
+    // exec's index points at "Promise"; the bracket we balance is the last char.
     let depth = 0;
-    let i = start + opener.length - 1;
+    let i = match.index + match[0].length - 1;
     for (; i < source.length; i++) {
       if (source[i] === '[') depth++;
       else if (source[i] === ']') {
@@ -62,9 +70,10 @@ function promiseAllBlocks(source: string): string[] {
         if (depth === 0) break;
       }
     }
-    blocks.push(source.slice(start, i + 1));
-    from = i + 1;
+    blocks.push(source.slice(match.index, i + 1));
+    opener.lastIndex = i + 1;
   }
+  return blocks;
 }
 
 describe('Regression: no overlapping queries on a single pg client', () => {
