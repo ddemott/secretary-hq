@@ -106,8 +106,8 @@ export default function PrivacyPage(): React.ReactElement {
         <h2 className="text-xl font-semibold text-white">4. Who we share data with</h2>
         <p className="mt-3">
           We use vendors under contract, only to provide the service: Railway (hosting), LiveKit
-          (voice transport), Telnyx (phone network), Deepgram (speech), OpenAI (language model),
-          and Stripe (payments). We do not sell personal information.
+          (voice transport), Telnyx (phone network), Deepgram (speech), OpenAI (language model), and
+          Stripe (payments). We do not sell personal information.
         </p>
       </section>
 
@@ -143,8 +143,8 @@ export default function PrivacyPage(): React.ReactElement {
       <section>
         <h2 className="text-xl font-semibold text-white">8. International transfers</h2>
         <p className="mt-3">
-          We and our subprocessors operate primarily in the United States. Cross-border transfers
-          of Customer Personal Data, if any, are addressed in the{' '}
+          We and our subprocessors operate primarily in the United States. Cross-border transfers of
+          Customer Personal Data, if any, are addressed in the{' '}
           <Link className="text-sky-300 underline" href="/dpa">
             DPA
           </Link>{' '}

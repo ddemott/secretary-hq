@@ -3,14 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
 export type ThemeId =
-  | 'navy'
-  | 'rose'
-  | 'forest'
-  | 'midnight'
-  | 'nord'
-  | 'sunset'
-  | 'high-contrast'
-  | 'solarized';
+  'navy' | 'rose' | 'forest' | 'midnight' | 'nord' | 'sunset' | 'high-contrast' | 'solarized';
 
 export interface ThemeInfo {
   id: ThemeId;

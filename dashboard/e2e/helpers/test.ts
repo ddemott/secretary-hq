@@ -92,7 +92,11 @@ async function waitForDbQuiescence(timeoutMs = 5000): Promise<void> {
   );
 }
 
-export const test = base.extend({
+interface TestFixtures {
+  pgPool: Pool;
+}
+
+export const test = base.extend<TestFixtures>({
   page: async ({ page }, use, testInfo) => {
     const errors: string[] = [];
 
@@ -138,6 +142,12 @@ export const test = base.extend({
     // Drain backend before letting Playwright start the next test.
     // See waitForDbQuiescence() above for the why.
     await waitForDbQuiescence();
+  },
+
+  pgPool: async ({}, use) => {
+    const pool = new Pool({ connectionString: PG_URL });
+    await use(pool);
+    await pool.end();
   },
 });
 

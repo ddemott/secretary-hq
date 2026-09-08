@@ -10,9 +10,7 @@ export {
   isFifteenMinuteIncrement,
 } from '../../shared/appointmentValidation';
 
-import {
-  validateAppointmentTimeRange as validateShared,
-} from '../../shared/appointmentValidation';
+import { validateAppointmentTimeRange as validateShared } from '../../shared/appointmentValidation';
 
 export function validateAppointmentTimeRange(startTime: string, endTime: string): string | null {
   const err = validateShared(startTime, endTime);

@@ -8,7 +8,10 @@ import { useVocabulary } from '@/lib/VocabularyContext';
 import { type View as CalendarViewType } from 'react-big-calendar';
 import { AppointmentListSidebar } from './AppointmentListSidebar';
 import { AppointmentDetailPanel } from './AppointmentDetailPanel';
-import { AppointmentDetailProvider, useAppointmentDetail } from '../../lib/AppointmentDetailContext';
+import {
+  AppointmentDetailProvider,
+  useAppointmentDetail,
+} from '../../lib/AppointmentDetailContext';
 import { ConflictModal } from '../scheduler/ConflictModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { AppointmentCalendar, type DnDEventArgs } from './AppointmentCalendar';
@@ -158,7 +161,9 @@ function AppointmentViewInner({
     const endIso = end.toISOString();
     setAppointments((prev) =>
       prev.map((a) =>
-        a.appointment_id === apt.appointment_id ? { ...a, start_time: startIso, end_time: endIso } : a
+        a.appointment_id === apt.appointment_id
+          ? { ...a, start_time: startIso, end_time: endIso }
+          : a
       )
     );
     setSelectedAppointment({ ...apt, start_time: startIso, end_time: endIso });
@@ -177,7 +182,9 @@ function AppointmentViewInner({
     const endIso = end.toISOString();
     setAppointments((prev) =>
       prev.map((a) =>
-        a.appointment_id === apt.appointment_id ? { ...a, start_time: startIso, end_time: endIso } : a
+        a.appointment_id === apt.appointment_id
+          ? { ...a, start_time: startIso, end_time: endIso }
+          : a
       )
     );
     setSelectedAppointment({ ...apt, start_time: startIso, end_time: endIso });
@@ -187,7 +194,6 @@ function AppointmentViewInner({
     setForm((prev) => ({ ...prev, start_time: toLocalISO(start), end_time: toLocalISO(end) }));
     setShowConfirmModal(true);
   }
-
 
   return (
     <div
@@ -206,9 +212,7 @@ function AppointmentViewInner({
         onViewChange={setCalendarView}
         onNavigate={setCalendarDate}
         onSelectEvent={(event) => {
-          setSelectedAppointment(
-            appointments.find((a) => a.appointment_id === event.id) || null
-          );
+          setSelectedAppointment(appointments.find((a) => a.appointment_id === event.id) || null);
           setShowDetailOnMobile(true);
           setIsCreating(false);
           setCalendarDate(new Date(event.start));

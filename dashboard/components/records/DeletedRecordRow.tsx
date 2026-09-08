@@ -55,15 +55,13 @@ export function DeletedRecordRow({
           aria-label={`${isExpanded ? 'Hide' : 'Show'} last known data for ${record.name || 'this record'}`}
           className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
         >
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
+          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
         <div className="flex-1">
-          <div className="font-medium text-gray-900 dark:text-white">{record.name || 'Unnamed'}</div>
+          <div className="font-medium text-gray-900 dark:text-white">
+            {record.name || 'Unnamed'}
+          </div>
           <div className="text-sm text-gray-500">
             {record.phone && <span className="mr-4">{record.phone}</span>}
             {record.email && <span>{record.email}</span>}

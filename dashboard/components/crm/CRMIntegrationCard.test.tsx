@@ -21,14 +21,18 @@ import { CRMIntegrationCard } from './CRMIntegrationCard';
 const origLocation = window.location;
 
 // Provider is passed as a prop — mock the provider methods directly.
-function makeProvider(overrides: Partial<Parameters<typeof CRMIntegrationCard>[0]['provider']> = {}) {
+function makeProvider(
+  overrides: Partial<Parameters<typeof CRMIntegrationCard>[0]['provider']> = {}
+) {
   return {
     name: 'Square',
     color: 'green',
     icon: 'S',
     description: 'Sync customers and appointments with Square.',
     getSettings: vi.fn().mockResolvedValue(null),
-    getAuthUrl: vi.fn().mockResolvedValue({ success: true, authUrl: 'https://square.example.com/oauth' }),
+    getAuthUrl: vi
+      .fn()
+      .mockResolvedValue({ success: true, authUrl: 'https://square.example.com/oauth' }),
     disconnect: vi.fn().mockResolvedValue({ success: true }),
     triggerSync: vi.fn().mockResolvedValue(undefined),
     connectedParam: 'squareConnected',
@@ -86,12 +90,8 @@ describe('CRMIntegrationCard — disconnected state', () => {
       expect(screen.getByRole('button', { name: /connect square/i })).toBeInTheDocument()
     );
     fireEvent.click(screen.getByRole('button', { name: /connect square/i }));
-    await waitFor(() =>
-      expect(provider.getAuthUrl).toHaveBeenCalledWith('tenant-test')
-    );
-    await waitFor(() =>
-      expect(window.location.href).toBe('https://square.example.com/oauth')
-    );
+    await waitFor(() => expect(provider.getAuthUrl).toHaveBeenCalledWith('tenant-test'));
+    await waitFor(() => expect(window.location.href).toBe('https://square.example.com/oauth'));
   });
 });
 
@@ -123,7 +123,9 @@ describe('CRMIntegrationCard — connected state', () => {
   test('HAPPY: Sync Now button triggers triggerSync then refetches', async () => {
     const provider = makeConnectedProvider();
     render(<CRMIntegrationCard provider={provider} tenantId="tenant-test" />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /sync now/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /sync now/i })).toBeInTheDocument()
+    );
     fireEvent.click(screen.getByRole('button', { name: /sync now/i }));
     await waitFor(() => expect(provider.triggerSync).toHaveBeenCalledWith('tenant-test'));
     // After sync, getSettings is called again to refresh the last_sync_at
@@ -133,7 +135,9 @@ describe('CRMIntegrationCard — connected state', () => {
   test('HAPPY: Disconnect button calls provider.disconnect and reverts to disconnected', async () => {
     const provider = makeConnectedProvider();
     render(<CRMIntegrationCard provider={provider} tenantId="tenant-test" />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /disconnect/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /disconnect/i })).toBeInTheDocument()
+    );
     fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
     await waitFor(() => expect(provider.disconnect).toHaveBeenCalledWith('tenant-test'));
     // Reverts to disconnected → Connect button appears

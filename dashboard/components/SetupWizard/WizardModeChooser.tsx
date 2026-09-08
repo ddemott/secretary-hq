@@ -46,7 +46,9 @@ export function WizardModeChooser({ onChoose, onClose, onBack }: WizardModeChoos
         >
           <div className="flex items-center gap-2">
             <Wand2 className="w-5 h-5" style={{ color: 'var(--accent-soft)' }} aria-hidden="true" />
-            <h2 id="mode-chooser-title" className="text-lg font-bold">How is your business set up?</h2>
+            <h2 id="mode-chooser-title" className="text-lg font-bold">
+              How is your business set up?
+            </h2>
           </div>
           <button
             onClick={onClose}

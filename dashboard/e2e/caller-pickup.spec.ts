@@ -49,9 +49,10 @@ test.describe('inbound pickup — agent must make noise', () => {
       timeout: 35_000,
     });
     const ms = Number(await firstAudio.textContent());
-    expect(Number.isFinite(ms) && ms > 0, `first-audio ms should be a positive number, got ${ms}`).toBe(
-      true
-    );
+    expect(
+      Number.isFinite(ms) && ms > 0,
+      `first-audio ms should be a positive number, got ${ms}`
+    ).toBe(true);
 
     // HANG UP. The assertion above is satisfied in ~3s, but before this the page
     // just sat in the room until the agent's silence watchdog gave up — so every

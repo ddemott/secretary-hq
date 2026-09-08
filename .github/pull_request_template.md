@@ -38,7 +38,7 @@
 ## Documentation
 
 - [ ] `CLAUDE.md` updated (if new directories, commands, patterns, or principles were introduced)
-- [ ] `docs/TODO.md` / `RESOLVED.md` updated as appropriate
+- [ ] `docs/planning/TODO.md` / `RESOLVED.md` updated as appropriate
 - [ ] Other relevant `*.md` files updated
 - [ ] `npm run verify:claude-md` passes
 

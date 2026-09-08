@@ -88,14 +88,16 @@ test('HAPPY: new phone creates a customer row in the address book', async ({ req
     expect(row.rowCount).toBe(1);
     expect(row.rows[0].name).toBe('Test Caller One');
   } finally {
-    await pool.query(
-      `DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`,
-      [TENANT_ID, phone]
-    );
+    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [
+      TENANT_ID,
+      phone,
+    ]);
   }
 });
 
-test('HAPPY: second call with more complete name updates record, no duplicate', async ({ request }) => {
+test('HAPPY: second call with more complete name updates record, no duplicate', async ({
+  request,
+}) => {
   // WHO: Caller who gave first name on first call, full name on second
   // WHAT: Stored name updated; rowCount stays 1 (no duplicate)
   // WHY: The ON CONFLICT DO UPDATE must not insert a second row
@@ -117,7 +119,10 @@ test('HAPPY: second call with more complete name updates record, no duplicate', 
     // first write (blank→name), not a free-form overwrite.
     expect(row.rows[0].name).toBe('Dale');
   } finally {
-    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [TENANT_ID, phone]);
+    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [
+      TENANT_ID,
+      phone,
+    ]);
   }
 });
 
@@ -139,7 +144,10 @@ test('HAPPY: placeholder name does not overwrite a real stored name', async ({ r
     expect(row.rowCount).toBe(1);
     expect(row.rows[0].name).toBe('Maria Garcia');
   } finally {
-    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [TENANT_ID, phone]);
+    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [
+      TENANT_ID,
+      phone,
+    ]);
   }
 });
 
@@ -160,17 +168,19 @@ test('HAPPY: customer visible via GET /customers after identify-caller', async (
 
     await callIdentifyCaller(request, phone, 'Visible Customer');
 
-    const listRes = await request.get(
-      `${BACKEND_URL}/customers`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    const listRes = await request.get(`${BACKEND_URL}/customers`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(listRes.status()).toBe(200);
-    const list = await listRes.json() as Array<{ name: string; phone: string }>;
+    const list = (await listRes.json()) as Array<{ name: string; phone: string }>;
     const found = list.find((c) => c.phone === phone);
     expect(found).toBeDefined();
     expect(found?.name).toBe('Visible Customer');
   } finally {
-    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [TENANT_ID, phone]);
+    await pool.query(`DELETE FROM customers WHERE tenant_id = $1 AND phone = $2`, [
+      TENANT_ID,
+      phone,
+    ]);
   }
 });
 

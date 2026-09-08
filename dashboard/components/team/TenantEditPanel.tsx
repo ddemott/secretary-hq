@@ -1,16 +1,7 @@
 'use client';
 
 import React from 'react';
-import {
-  Building2,
-  Save,
-  X,
-  Phone,
-  LayoutTemplate,
-  Edit,
-  Clock,
-  Trash2,
-} from 'lucide-react';
+import { Building2, Save, X, Phone, LayoutTemplate, Edit, Clock, Trash2 } from 'lucide-react';
 import { formatPhone } from '../../lib/phone';
 import { US_TIMEZONES } from '../../lib/constants';
 import { Button } from '../ui/Button';

@@ -61,7 +61,10 @@ describe('AppShell', () => {
     // WHY: an empty portal response must not render a brandstrip with no tabs
     vi.resetModules();
     vi.stubEnv('NEXT_PUBLIC_APPS_API_URL', 'http://apps.test');
-    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => [] })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ json: async () => [] }))
+    );
     const { AppShell } = await import('./AppShell');
     const { container } = render(<AppShell currentAppId="secretary-hq" />);
     // microtask flush for the fetch().then to settle

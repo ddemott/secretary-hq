@@ -26,7 +26,9 @@ vi.mock('./api', () => ({ Api: mockApi }));
 
 // useSessionContext provides the tenant + managedTenant IDs
 const { sessionRef } = vi.hoisted(() => ({
-  sessionRef: { current: { tenantId: null as string | null, managedTenantId: null as string | null } },
+  sessionRef: {
+    current: { tenantId: null as string | null, managedTenantId: null as string | null },
+  },
 }));
 vi.mock('./SessionContext', () => ({
   useSessionContext: () => sessionRef.current,
@@ -67,7 +69,10 @@ function RefreshConsumer() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  sessionRef.current = { tenantId: 'tenant-a' as string | null, managedTenantId: null as string | null };
+  sessionRef.current = {
+    tenantId: 'tenant-a' as string | null,
+    managedTenantId: null as string | null,
+  };
 });
 
 describe('VocabularyProvider — fetch on mount', () => {
@@ -96,9 +101,7 @@ describe('VocabularyProvider — fetch on mount', () => {
         <Consumer />
       </VocabularyProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('resource-label').textContent).toBe('Bay')
-    );
+    await waitFor(() => expect(screen.getByTestId('resource-label').textContent).toBe('Bay'));
     expect(screen.getByTestId('employee-label').textContent).toBe('Technician');
     expect(screen.getByTestId('booking-label').textContent).toBe('Job');
     expect(screen.getByTestId('example-count').textContent).toBe('2');
@@ -177,9 +180,7 @@ describe('VocabularyProvider — error handling', () => {
         <Consumer />
       </VocabularyProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('employee-label').textContent).toBe('Stylist')
-    );
+    await waitFor(() => expect(screen.getByTestId('employee-label').textContent).toBe('Stylist'));
     // null/falsy fields fall back to defaults
     expect(screen.getByTestId('resource-label').textContent).toBe('Resource');
     expect(screen.getByTestId('booking-label').textContent).toBe('Appointment');
@@ -200,13 +201,11 @@ describe('useVocabularyRefresh()', () => {
         <RefreshConsumer />
       </VocabularyProvider>
     );
-    await waitFor(() =>
-      expect(screen.getByTestId('resource-label').textContent).toBe('Bay')
-    );
-    act(() => { getByText('Refresh').click(); });
-    await waitFor(() =>
-      expect(screen.getByTestId('resource-label').textContent).toBe('Room')
-    );
+    await waitFor(() => expect(screen.getByTestId('resource-label').textContent).toBe('Bay'));
+    act(() => {
+      getByText('Refresh').click();
+    });
+    await waitFor(() => expect(screen.getByTestId('resource-label').textContent).toBe('Room'));
     expect(mockApi.vocabulary.get).toHaveBeenCalledTimes(2);
   });
 });

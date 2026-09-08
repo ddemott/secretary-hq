@@ -19,12 +19,9 @@ import { showToast } from '../ui/Toast';
 
 /** One row of the inbox: a message the caller dictated, or a job lead the
  *  agent captured. Both are "someone left this for you". */
-type InboxItem =
-  | ({ kind: 'message' } & CustomerMessage)
-  | ({ kind: 'job' } & JobInquiry);
+type InboxItem = ({ kind: 'message' } & CustomerMessage) | ({ kind: 'job' } & JobInquiry);
 
-const itemId = (i: InboxItem): string =>
-  i.kind === 'message' ? i.message_id : i.job_inquiry_id;
+const itemId = (i: InboxItem): string => (i.kind === 'message' ? i.message_id : i.job_inquiry_id);
 
 /** The one-line preview a job lead shows in the list — role first, because that
  *  is what tells the owner whether to call back. */
@@ -170,73 +167,76 @@ export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
             const msg = item.kind === 'message' ? item : null;
             const job = item.kind === 'job' ? item : null;
             return (
-            <div
-              key={itemId(item)}
-              role="button"
-              tabIndex={0}
-              aria-pressed={selected != null && itemId(selected) === itemId(item)}
-              className="p-3 cursor-pointer hover:brightness-110 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
-              style={
-                selected != null && itemId(selected) === itemId(item)
-                  ? {
-                      backgroundColor: 'var(--accent-muted)',
-                      borderLeft: '2px solid var(--accent)',
-                    }
-                  : undefined
-              }
-              onClick={() => void handleSelect(item)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  void handleSelect(item);
+              <div
+                key={itemId(item)}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selected != null && itemId(selected) === itemId(item)}
+                className="p-3 cursor-pointer hover:brightness-110 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+                style={
+                  selected != null && itemId(selected) === itemId(item)
+                    ? {
+                        backgroundColor: 'var(--accent-muted)',
+                        borderLeft: '2px solid var(--accent)',
+                      }
+                    : undefined
                 }
-              }}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span
-                  className="font-medium text-sm flex items-center gap-1.5"
-                  style={{ color: 'var(--text-primary)' }}
-                >
-                  {job ? (
-                    <Briefcase className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  ) : msg!.status === 'new' ? (
-                    <Mail className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
-                  ) : (
-                    <MailOpen className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
-                  )}
-                  {item.caller_name ?? 'Unknown'}
-                  {/* The caller's own escalation, not our guess at one. */}
-                  {msg?.is_urgent && (
-                    <span
-                      className="text-[10px] font-bold px-1 py-0.5 rounded inline-flex items-center gap-0.5"
-                      style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
-                    >
-                      <AlertTriangle className="w-3 h-3" />
-                      URGENT
-                    </span>
-                  )}
-                </span>
-                <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {new Date(item.created_at).toLocaleDateString()}
-                </span>
-              </div>
-              {job && (
-                <div
-                  className="text-[10px] uppercase tracking-wide mb-0.5"
-                  style={{ color: 'var(--accent)' }}
-                >
-                  Job lead
+                onClick={() => void handleSelect(item)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    void handleSelect(item);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span
+                    className="font-medium text-sm flex items-center gap-1.5"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    {job ? (
+                      <Briefcase className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                    ) : msg!.status === 'new' ? (
+                      <Mail className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+                    ) : (
+                      <MailOpen
+                        className="w-3.5 h-3.5"
+                        style={{ color: 'var(--text-secondary)' }}
+                      />
+                    )}
+                    {item.caller_name ?? 'Unknown'}
+                    {/* The caller's own escalation, not our guess at one. */}
+                    {msg?.is_urgent && (
+                      <span
+                        className="text-[10px] font-bold px-1 py-0.5 rounded inline-flex items-center gap-0.5"
+                        style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        URGENT
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </span>
                 </div>
-              )}
-              <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
-                {job ? jobPreview(job) : msg!.message}
-              </p>
-              {item.callback_phone && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                  {formatPhone(item.callback_phone)}
+                {job && (
+                  <div
+                    className="text-[10px] uppercase tracking-wide mb-0.5"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    Job lead
+                  </div>
+                )}
+                <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
+                  {job ? jobPreview(job) : msg!.message}
                 </p>
-              )}
-            </div>
+                {item.callback_phone && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                    {formatPhone(item.callback_phone)}
+                  </p>
+                )}
+              </div>
             );
           })}
         </div>

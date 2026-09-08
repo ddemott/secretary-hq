@@ -261,7 +261,10 @@ export default function ShiftManagementView() {
     [weekStart]
   );
 
-  const activeEmployees = useMemo(() => employees.filter((e) => e.type === 'employee'), [employees]);
+  const activeEmployees = useMemo(
+    () => employees.filter((e) => e.type === 'employee'),
+    [employees]
+  );
 
   if (empsLoading && activeEmployees.length === 0) {
     return <LoadingState message={`Loading ${vocab.employee_label.toLowerCase()} schedule…`} />;

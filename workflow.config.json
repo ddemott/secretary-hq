@@ -67,7 +67,12 @@
   },
 
   "documentation": {
-    "filesThatMustBeUpdated": ["CLAUDE.md", "README.md", "docs/TODO.md", "RESOLVED.md"],
+    "filesThatMustBeUpdated": [
+      "CLAUDE.md",
+      "README.md",
+      "docs/planning/TODO.md",
+      "docs/planning/RESOLVED.md"
+    ],
     "driftDetectorScript": "npm run verify:claude-md"
   },
 

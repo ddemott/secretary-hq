@@ -15,7 +15,9 @@ function formatTime(t: string) {
 }
 
 function navigateToShifts() {
-  window.dispatchEvent(new CustomEvent('secretary-hq:setup-subtab', { detail: { subtab: 'shifts' } }));
+  window.dispatchEvent(
+    new CustomEvent('secretary-hq:setup-subtab', { detail: { subtab: 'shifts' } })
+  );
 }
 
 interface MyAvailabilityCardProps {

@@ -20,10 +20,7 @@ interface CustomerCallHistoryProps {
 export function CustomerCallHistory({ summaries }: CustomerCallHistoryProps) {
   return (
     <div id="customer-calls" className="space-y-4">
-      <h3
-        className="font-bold flex items-center text-lg"
-        style={{ color: 'var(--text-primary)' }}
-      >
+      <h3 className="font-bold flex items-center text-lg" style={{ color: 'var(--text-primary)' }}>
         <Phone className="w-5 h-5 mr-2" style={{ color: 'var(--text-muted)' }} />
         AI Call History
       </h3>
@@ -45,9 +42,7 @@ export function CustomerCallHistory({ summaries }: CustomerCallHistoryProps) {
                 <span className="font-bold uppercase" style={{ color: 'var(--accent-soft)' }}>
                   AI Summary
                 </span>
-                <span>
-                  {new Date(s.call_timestamp || s.created_at || '').toLocaleDateString()}
-                </span>
+                <span>{new Date(s.call_timestamp || s.created_at || '').toLocaleDateString()}</span>
               </div>
               <p
                 className="text-sm leading-relaxed italic"

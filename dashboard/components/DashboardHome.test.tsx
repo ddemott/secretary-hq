@@ -80,7 +80,9 @@ beforeEach(() => {
   mockApi.analytics.getStats.mockReset().mockResolvedValue(null);
   // Reset getConfig to baseline: has timezone but no inbound_phone.
   // Individual tests override inbound_phone to test status card states.
-  mockApi.tenants.getConfig.mockReset().mockResolvedValue({ timezone: 'America/Chicago', inbound_phone: null });
+  mockApi.tenants.getConfig
+    .mockReset()
+    .mockResolvedValue({ timezone: 'America/Chicago', inbound_phone: null });
 });
 
 describe('DashboardHome — load error visibility', () => {
@@ -351,7 +353,10 @@ describe('DashboardHome — AI Receptionist status card', () => {
     // WHEN: loadData resolves with inbound_phone: null
     // WHERE: DashboardHome status card
     // WHY: owner needs a clear call-to-action to activate the AI
-    mockApi.tenants.getConfig.mockResolvedValue({ timezone: 'America/Chicago', inbound_phone: null });
+    mockApi.tenants.getConfig.mockResolvedValue({
+      timezone: 'America/Chicago',
+      inbound_phone: null,
+    });
     const onNavigate = vi.fn();
     render(<DashboardHome onNavigate={onNavigate} />);
     await waitFor(() => {

@@ -11,7 +11,8 @@ import {
 
 export const metadata: Metadata = {
   title: 'Terms of Service — Secretary HQ',
-  description: 'Secretary HQ terms of service, incorporating the Bonterms Standard Online Cloud Terms.',
+  description:
+    'Secretary HQ terms of service, incorporating the Bonterms Standard Online Cloud Terms.',
 };
 
 const BONTERMS_TERMS = 'https://bonterms.com/standard/online-cloud-terms';
@@ -92,8 +93,8 @@ export default function TermsPage(): React.ReactElement {
           <dt className="text-slate-400">Support / SLA</dt>
           <dd>
             Email support at {LEGAL_EMAIL}. No separate paid SLA unless an Order says otherwise.
-            Standard Terms default availability (commercially reasonable / 99.9% if no SLA is
-            named) applies.
+            Standard Terms default availability (commercially reasonable / 99.9% if no SLA is named)
+            applies.
           </dd>
         </dl>
       </section>
@@ -108,10 +109,10 @@ export default function TermsPage(): React.ReactElement {
             appointments, take messages, and operate the dashboard. See the DPA.
           </li>
           <li>
-            <strong>AI disclosure.</strong> The Cloud Service answers the phone with an AI assistant.
-            You are responsible for informing your callers as required where you and they are
-            located. We supply a spoken disclosure. You must not disable a disclosure required by
-            law.
+            <strong>AI disclosure.</strong> The Cloud Service answers the phone with an AI
+            assistant. You are responsible for informing your callers as required where you and they
+            are located. We supply a spoken disclosure. You must not disable a disclosure required
+            by law.
           </li>
           <li>
             <strong>Transcripts, not training.</strong> We transcribe calls to provide the service.
@@ -137,8 +138,8 @@ export default function TermsPage(): React.ReactElement {
           </li>
           <li>
             <strong>Trials.</strong> A self-serve trial or demo tenant is a Trial under Section 18
-            of the Standard Terms (no warranty, indemnity, SLA, or Support; liability cap US
-            $1,000) unless an Order says otherwise.
+            of the Standard Terms (no warranty, indemnity, SLA, or Support; liability cap US $1,000)
+            unless an Order says otherwise.
           </li>
         </ol>
       </section>
@@ -150,8 +151,8 @@ export default function TermsPage(): React.ReactElement {
           <a className="text-sky-300 underline" href={BONTERMS_TERMS}>
             {BONTERMS_TERMS}
           </a>
-          . They cover permitted use, users, affiliates, customer data, security, DPA pointer,
-          usage data, warranties and disclaimers, usage rules (including Sensitive Data), fees,
+          . They cover permitted use, users, affiliates, customer data, security, DPA pointer, usage
+          data, warranties and disclaimers, usage rules (including Sensitive Data), fees,
           suspension, term, IP, liability caps, indemnities, confidentiality, trials, and
           definitions.
         </p>

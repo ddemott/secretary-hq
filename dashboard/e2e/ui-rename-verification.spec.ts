@@ -4,7 +4,7 @@
  *   B2 — Sub-tab "Shifts" renamed to "Working Days" under My Team
  *   B3 — Knowledge Base sub-tab moved from My Business → Phone Assistant
  *   D2 — Wizard chip "Shifts" renamed to "When they work" (chip labels are
- *        pinned by 86 unit-test assertions in SetupWizard.test.tsx — this
+ *        pinned by 86 unit-test assertions in SetupWizard/SetupWizard.test.tsx — this
  *        spec verifies the launcher path only, since stepping into the
  *        wizard would write tenant config via BusinessTypePicker)
  *   Business Type move — Business Settings now hosts the section, AI Persona
@@ -78,7 +78,9 @@ async function landOnTestTenantDashboard(page: Page) {
 
   // Dismiss any wizard dialog (the new tenant may auto-open the welcome modal).
   const dismiss = page
-    .locator('button:has-text("Maybe later"), button:has-text("Dismiss"), button:has-text("Skip"), button:has-text("set up later"), button:has-text("Close wizard"), button:has-text("I\'ll set up later")')
+    .locator(
+      'button:has-text("Maybe later"), button:has-text("Dismiss"), button:has-text("Skip"), button:has-text("set up later"), button:has-text("Close wizard"), button:has-text("I\'ll set up later")'
+    )
     .first();
   if (await dismiss.isVisible({ timeout: 2000 }).catch(() => false)) {
     await dismiss.click().catch(() => {});
@@ -109,7 +111,9 @@ test.describe('UI rename — A1 + B2', () => {
       .click();
 
     // Wait properly for the sub-tabs to render (short fixed waits are flaky after tenant switch / rebuild)
-    await expect(page.getByRole('tab', { name: /Working Days/ }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('tab', { name: /Working Days/ }).first()).toBeVisible({
+      timeout: 10000,
+    });
 
     // Old sub-tab label should not appear anywhere under Setup.
     await expect(page.getByRole('tab', { name: /^Shifts$/ })).toHaveCount(0);
@@ -154,7 +158,9 @@ test.describe('UI rename — A1 + B2', () => {
 });
 
 test.describe('Wizard launcher (D2 chip labels verified by unit tests)', () => {
-  test('Setup Assistant from Setup goes directly to mode chooser (no welcome)', async ({ page }) => {
+  test('Setup Assistant from Setup goes directly to mode chooser (no welcome)', async ({
+    page,
+  }) => {
     await landOnTestTenantDashboard(page);
 
     await page

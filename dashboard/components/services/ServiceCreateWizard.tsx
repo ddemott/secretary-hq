@@ -74,10 +74,7 @@ export function ServiceCreateWizard({
       disableBackdropClose
       footer={
         <div className="flex items-center justify-between w-full">
-          <Button
-            variant="ghost"
-            onClick={() => (wizardStep === 1 ? onClose() : onPrevStep())}
-          >
+          <Button variant="ghost" onClick={() => (wizardStep === 1 ? onClose() : onPrevStep())}>
             {wizardStep === 1 ? 'Cancel' : 'Back'}
           </Button>
           {wizardStep < 3 ? (
@@ -155,9 +152,7 @@ export function ServiceCreateWizard({
         {wizardStep === 2 && (
           <div className="space-y-6">
             <header>
-              <h2 className="text-2xl font-display mb-2">
-                {vocab.resource_plural} & Equipment
-              </h2>
+              <h2 className="text-2xl font-display mb-2">{vocab.resource_plural} & Equipment</h2>
               <p style={{ color: 'var(--text-secondary)' }}>
                 Which {vocab.resource_plural.toLowerCase()} can this service be performed at?
               </p>
@@ -192,8 +187,8 @@ export function ServiceCreateWizard({
                 style={{ color: 'var(--accent-soft)' }}
               />
               <p className="text-xs leading-relaxed" style={{ color: 'var(--accent-soft)' }}>
-                Selecting specific {vocab.resource_plural.toLowerCase()} ensures the AI only
-                books this service where the necessary tools or space are available.
+                Selecting specific {vocab.resource_plural.toLowerCase()} ensures the AI only books
+                this service where the necessary tools or space are available.
               </p>
             </div>
           </div>
@@ -203,12 +198,9 @@ export function ServiceCreateWizard({
         {wizardStep === 3 && (
           <div className="space-y-6">
             <header>
-              <h2 className="text-2xl font-display mb-2">
-                Qualified {vocab.employee_plural}
-              </h2>
+              <h2 className="text-2xl font-display mb-2">Qualified {vocab.employee_plural}</h2>
               <p style={{ color: 'var(--text-secondary)' }}>
-                Which {vocab.employee_plural.toLowerCase()} are qualified to perform this
-                service?
+                Which {vocab.employee_plural.toLowerCase()} are qualified to perform this service?
               </p>
             </header>
             <div className="grid grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-2">

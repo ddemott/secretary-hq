@@ -89,9 +89,13 @@ describe('ToastContainer — auto-dismiss', () => {
     // WHAT: success toast auto-disappears after 3000ms
     // WHY: success confirmations are transient — they must not pile up
     render(<ToastContainer />);
-    act(() => { showToast('Saved!', 'success'); });
+    act(() => {
+      showToast('Saved!', 'success');
+    });
     expect(screen.getByText('Saved!')).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(3000); });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
     expect(screen.queryByText('Saved!')).not.toBeInTheDocument();
   });
 
@@ -100,17 +104,27 @@ describe('ToastContainer — auto-dismiss', () => {
     // WHAT: error toast stays until explicitly dismissed
     // WHY: errors carry diagnostic info the user must be able to read
     render(<ToastContainer />);
-    act(() => { showToast('Something broke', 'error'); });
-    act(() => { vi.advanceTimersByTime(30_000); }); // 30s — well past any auto-dismiss
+    act(() => {
+      showToast('Something broke', 'error');
+    });
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    }); // 30s — well past any auto-dismiss
     expect(screen.getByText('Something broke')).toBeInTheDocument();
   });
 
   test('HAPPY: warning toast dismisses after 5s', () => {
     render(<ToastContainer />);
-    act(() => { showToast('Low storage', 'warning'); });
-    act(() => { vi.advanceTimersByTime(4999); });
+    act(() => {
+      showToast('Low storage', 'warning');
+    });
+    act(() => {
+      vi.advanceTimersByTime(4999);
+    });
     expect(screen.getByText('Low storage')).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(1); }); // cross the 5000ms boundary
+    act(() => {
+      vi.advanceTimersByTime(1);
+    }); // cross the 5000ms boundary
     expect(screen.queryByText('Low storage')).not.toBeInTheDocument();
   });
 });
@@ -138,7 +152,9 @@ describe('ToastContainer — action button', () => {
     // WHAT: an Undo action is shown; clicking it fires the callback and removes the toast
     const onUndo = vi.fn();
     render(<ToastContainer />);
-    act(() => { showToast('Appointment cancelled', 'success', { label: 'Undo', onClick: onUndo }); });
+    act(() => {
+      showToast('Appointment cancelled', 'success', { label: 'Undo', onClick: onUndo });
+    });
     const undoBtn = screen.getByRole('button', { name: /undo/i });
     expect(undoBtn).toBeInTheDocument();
     fireEvent.click(undoBtn);
@@ -151,10 +167,16 @@ describe('ToastContainer — action button', () => {
     // WHO: user who needs time to notice and click Undo
     // WHY: standard success lasts 3s; action toasts need 5s for usability
     render(<ToastContainer />);
-    act(() => { showToast('Done', 'success', { label: 'Undo', onClick: vi.fn() }); });
-    act(() => { vi.advanceTimersByTime(3000); }); // standard success would be gone
+    act(() => {
+      showToast('Done', 'success', { label: 'Undo', onClick: vi.fn() });
+    });
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    }); // standard success would be gone
     expect(screen.getByText('Done')).toBeInTheDocument(); // still there at 3s
-    act(() => { vi.advanceTimersByTime(2000); }); // now at 5s
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    }); // now at 5s
     expect(screen.queryByText('Done')).not.toBeInTheDocument();
   });
 });
@@ -176,13 +198,17 @@ describe('ToastContainer — MAX_TOASTS cap', () => {
 describe('ToastContainer — ARIA', () => {
   test('HAPPY: error toast renders with role=alert', () => {
     render(<ToastContainer />);
-    act(() => { showToast('Critical failure', 'error'); });
+    act(() => {
+      showToast('Critical failure', 'error');
+    });
     expect(screen.getByRole('alert')).toHaveTextContent('Critical failure');
   });
 
   test('HAPPY: success toast renders with role=status', () => {
     render(<ToastContainer />);
-    act(() => { showToast('Saved successfully', 'success'); });
+    act(() => {
+      showToast('Saved successfully', 'success');
+    });
     // role=status for non-errors; queryAllByRole because there may be multiple
     const statuses = screen.getAllByRole('status');
     expect(statuses.some((el) => el.textContent?.includes('Saved successfully'))).toBe(true);

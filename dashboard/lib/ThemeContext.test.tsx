@@ -149,8 +149,12 @@ describe('setTheme()', () => {
       </ThemeProvider>
     );
     await screen.findByTestId('theme-id');
-    act(() => { getByText('Set Rose').click(); });
-    act(() => { getByText('Set Forest').click(); });
+    act(() => {
+      getByText('Set Rose').click();
+    });
+    act(() => {
+      getByText('Set Forest').click();
+    });
     expect(screen.getByTestId('theme-id').textContent).toBe('forest');
     expect(localStorage.getItem('theme')).toBe('forest');
   });

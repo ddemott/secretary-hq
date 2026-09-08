@@ -17,9 +17,7 @@ function SelfRescheduleInner() {
     if (!token) return;
     setState('loading');
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/self/reschedule?token=${encodeURIComponent(token)}`
-      );
+      const res = await fetch(`${API_BASE_URL}/self/reschedule?token=${encodeURIComponent(token)}`);
       const data = (await res.json()) as { success: boolean; message?: string; error?: string };
       if (data.success) {
         setState('success');

@@ -49,7 +49,10 @@ describe('AiCostPanel', () => {
     // Two decimals would render a $0.0612 call as "$0.06" — which is the whole
     // number, rounded away. Cost-of-goods at this scale needs the digits.
     mockApi.analytics.getAiCost.mockResolvedValue({
-      breakdown: [row(), row({ model: 'nova-3', provider: 'deepgram', estimated_cost_usd: 0.0086 })],
+      breakdown: [
+        row(),
+        row({ model: 'nova-3', provider: 'deepgram', estimated_cost_usd: 0.0086 }),
+      ],
       total_estimated_cost_usd: 0.1,
       call_count: 2,
       voice_call_cost_usd: 0.1224,

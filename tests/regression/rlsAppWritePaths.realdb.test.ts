@@ -35,7 +35,7 @@ import { seedDemoTenant } from '../../src/services/demoSeed';
 import { withTenantContext } from '../../src/database/index';
 
 const ADMIN_URL =
-  process.env.TEST_ADMIN_DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/postgres';
+  process.env.TEST_ADMIN_DATABASE_URL ?? process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/test_db';
 
 const APP_USER_URL =
   process.env.TEST_APP_USER_DATABASE_URL ??

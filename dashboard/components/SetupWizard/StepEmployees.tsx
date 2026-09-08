@@ -33,7 +33,10 @@ export function Step3Employees({
       title: `Remove ${vocab.employee_label}?`,
       message: `Remove "${emp.first_name || emp.name}"? This won't affect existing appointments.`,
       confirmLabel: 'Remove',
-      onConfirm: () => { closeConfirm(); onDelete(emp.employee_id); },
+      onConfirm: () => {
+        closeConfirm();
+        onDelete(emp.employee_id);
+      },
     });
   }
 

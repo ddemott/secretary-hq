@@ -83,7 +83,10 @@ export function KnowledgeQuestionnaireTab({
               {Math.round((totalAnswered / totalQuestions) * 100)}%
             </span>
           </div>
-          <div className="w-full rounded-full h-1.5" style={{ backgroundColor: 'var(--bg-raised)' }}>
+          <div
+            className="w-full rounded-full h-1.5"
+            style={{ backgroundColor: 'var(--bg-raised)' }}
+          >
             <div
               className="h-1.5 rounded-full transition-all duration-500"
               style={{

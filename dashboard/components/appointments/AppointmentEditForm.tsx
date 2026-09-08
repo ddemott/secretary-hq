@@ -43,9 +43,7 @@ interface AppointmentEditFormProps {
     state?: string;
     postal_code?: string;
   }[];
-  findCustomerById: (
-    id: string
-  ) =>
+  findCustomerById: (id: string) =>
     | {
         customer_id: string;
         name: string;
@@ -136,16 +134,12 @@ export function AppointmentEditForm({
                 <Input
                   label="First Name"
                   value={form.customer_first_name}
-                  onChange={(e) =>
-                    onFormChange({ ...form, customer_first_name: e.target.value })
-                  }
+                  onChange={(e) => onFormChange({ ...form, customer_first_name: e.target.value })}
                 />
                 <Input
                   label="Last Name"
                   value={form.customer_last_name}
-                  onChange={(e) =>
-                    onFormChange({ ...form, customer_last_name: e.target.value })
-                  }
+                  onChange={(e) => onFormChange({ ...form, customer_last_name: e.target.value })}
                 />
               </div>
             )}

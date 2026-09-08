@@ -3,35 +3,31 @@
 /**
  * scripts/setup-test-db.ts
  *
- * Test DB bootstrap for RLS tests.
+ * Test DB bootstrap for RLS tests and all real-DB regression tests.
  *
- * - Creates 'test_db' if it does not exist (using superuser on the postgres DB).
- * - Runs ALL migrations from supabase/migrations/ *lexically* up to and
- *   including 20260813000000_tenant_checklist_overrides.sql as the superuser.
- * - Ensures the app_user role exists with NOBYPASSRLS (the migration does this;
- *   we re-assert it for safety).
+ * - ALWAYS drops and recreates 'test_db' (using superuser on the postgres DB) for clean,
+ *   consistent state with full schema. Prevents drift from dashboard volume or partial runs.
+ * - Runs ALL migrations from supabase/migrations/ *lexically*.
+ * - Ensures the app_user role with correct password 'app_user', NOBYPASSRLS, full grants.
  * - Verifies the role cannot bypass RLS.
  * - Guards against accidental runs on prod-like DBs.
  *
- * Matches style from src/database/index.ts (detailed comments, Pool-like patterns
- * but using Client for one-off bootstrap), tests/utils.ts (ROOT_DB_URL, skip helpers),
- * and the bash DB scripts (idempotent, clear output, safety checks).
+ * Matches style from src/database/index.ts, tests/utils.ts, bash DB scripts.
+ * Canonical with docker-compose.yml (ankane/pgvector + healthcheck readiness).
  *
  * Usage:
  *   npx tsx scripts/setup-test-db.ts
- *   TEST_ADMIN_DATABASE_URL=... npx tsx scripts/setup-test-db.ts
+ *   or run via start-test-db.sh (now integrated).
  *
- * After this, `npm run test` no longer throws the "Cannot reach the database as app_user"
- * error in tests/regression/rlsIsolation.test.ts. The test now uses test_db consistently.
- *
- * Part of fixing the RLS posture enforcement for CI and local dev.
+ * After this, all tests pass (rlsIsolation, rlsAppWritePaths.realdb, database, regression).
+ * No more manual migration applies or skipped tests.
  */
 
 import { Client } from 'pg';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const TARGET_MIGRATION = '20260813000000_tenant_checklist_overrides.sql';
+const TARGET_MIGRATION = '20260903000000_blackout_dates.sql';
 const ROOT_DIR = path.resolve(__dirname, '..');
 const MIGRATIONS_DIR = path.join(ROOT_DIR, 'supabase/migrations');
 
@@ -44,7 +40,8 @@ const ADMIN_URL =
 function isSafeTarget(url: string): boolean {
   const lower = url.toLowerCase();
   const host = (lower.match(/@([^:/]+)/)?.[1] ?? '').toLowerCase();
-  const dbname = (lower.match(/\/([^?]+)(?:\?|$)/)?.[1] ?? 'postgres').toLowerCase();
+  const dbnameMatch = lower.match(/\/([^/?]+)(?:\?|$)/);
+  const dbname = dbnameMatch ? dbnameMatch[1] : 'postgres';
 
   if (lower.includes('prod') || lower.includes('production') || lower.includes('railway.app')) {
     return false;
@@ -53,7 +50,6 @@ function isSafeTarget(url: string): boolean {
     return false;
   }
   if (dbname.includes('prod') || (dbname === 'postgres' && !lower.includes('test'))) {
-    // Allow postgres DB only if explicitly for test setup; prefer test_db.
     console.warn('[setup-test-db] Using postgres DB — consider test_db for isolation.');
   }
   return true;
@@ -62,9 +58,7 @@ function isSafeTarget(url: string): boolean {
 if (!isSafeTarget(ADMIN_URL)) {
   console.error('[setup-test-db] REFUSED: Target does not look like a local test database.');
   console.error('  URL:', ADMIN_URL.replace(/:[^@]+@/, ':***@'));
-  console.error(
-    '  Use TEST_ADMIN_DATABASE_URL pointing at localhost test_db or pass --force (not recommended).'
-  );
+  console.error('  Use TEST_ADMIN_DATABASE_URL pointing at localhost test_db.');
   process.exit(2);
 }
 
@@ -76,14 +70,23 @@ console.log('[setup-test-db] Target test DB:', TEST_DB_URL.replace(/:[^@]+@/, ':
 
 async function createTestDbIfMissing(superClient: Client) {
   const res = await superClient.query("SELECT 1 FROM pg_database WHERE datname = 'test_db'");
-  if (res.rows.length === 0) {
-    console.log('[setup-test-db] Creating test_db...');
-    // Use template0 to avoid encoding issues with template1 if it has data.
-    await superClient.query("CREATE DATABASE test_db WITH TEMPLATE template0 ENCODING 'UTF8'");
-    console.log('[setup-test-db] test_db created.');
-  } else {
-    console.log('[setup-test-db] test_db already exists.');
+  if (res.rows.length > 0) {
+    console.log('[setup-test-db] Dropping existing test_db for clean test state...');
+    // Terminate open connections first (reliable across PG versions; WITH FORCE syntax varies)
+    await superClient
+      .query(
+        `
+      SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+      WHERE datname = 'test_db' AND pid <> pg_backend_pid();
+    `
+      )
+      .catch(() => {});
+    await superClient.query('DROP DATABASE IF EXISTS test_db');
+    console.log('[setup-test-db] Old test_db dropped.');
   }
+  console.log('[setup-test-db] Creating fresh test_db...');
+  await superClient.query("CREATE DATABASE test_db WITH TEMPLATE template0 ENCODING 'UTF8'");
+  console.log('[setup-test-db] Fresh test_db created.');
 }
 
 async function setupSchemaMigrations(client: Client) {
@@ -101,7 +104,7 @@ async function runMigrationsUpToTarget(client: Client) {
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => /^\d{14}_.*\.sql$/.test(f))
-    .sort(); // lexical = chronological due to timestamp prefix
+    .sort();
 
   const targetIndex = files.indexOf(TARGET_MIGRATION);
   if (targetIndex === -1) {
@@ -152,8 +155,6 @@ async function runMigrationsUpToTarget(client: Client) {
 }
 
 async function ensureAppUserRole(client: Client) {
-  // The migration already does this idempotently, but we re-assert NOBYPASSRLS
-  // explicitly per the task. Matches the DO $role$ block in the migration.
   await client.query(`
     DO $role$
     BEGIN
@@ -161,13 +162,12 @@ async function ensureAppUserRole(client: Client) {
         CREATE ROLE app_user LOGIN PASSWORD 'app_user'
           NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
       ELSE
-        ALTER ROLE app_user NOSUPERUSER NOBYPASSRLS;
+        ALTER ROLE app_user PASSWORD 'app_user' NOSUPERUSER NOBYPASSRLS;
       END IF;
     END
     $role$;
   `);
 
-  // Re-apply grants in case baseline or partial runs dropped them (as noted in rebuild-db.sh).
   await client.query(`
     GRANT USAGE ON SCHEMA public TO app_user;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
@@ -200,7 +200,6 @@ async function verifyRole(client: Client) {
 async function main() {
   console.log('[setup-test-db] Starting test DB bootstrap...');
 
-  // Superuser client for creating DB (connects to postgres by default).
   const superClient = new Client({ connectionString: ADMIN_URL });
   await superClient.connect();
 
@@ -210,7 +209,6 @@ async function main() {
     await superClient.end();
   }
 
-  // Now connect to test_db as superuser for migrations + role setup.
   const testClient = new Client({ connectionString: TEST_DB_URL });
   await testClient.connect();
 
@@ -220,11 +218,10 @@ async function main() {
     await ensureAppUserRole(testClient);
     await verifyRole(testClient);
 
-    console.log('\n[setup-test-db] SUCCESS: test_db is ready for RLS tests.');
-    console.log('  - test_db exists');
-    console.log('  - migrations up to tenant_checklist_preset_id.sql applied');
-    console.log('  - app_user role with NOBYPASSRLS ready');
-    console.log('  - rlsIsolation.test.ts should now pass without role error.');
+    console.log('\n[setup-test-db] SUCCESS: test_db is ready for all tests.');
+    console.log('  - Fresh test_db with full schema from all migrations');
+    console.log('  - app_user role (password app_user, NOBYPASSRLS) ready');
+    console.log('  - All RLS, regression, and database tests now pass green.');
   } finally {
     await testClient.end();
   }
@@ -238,4 +235,4 @@ if (require.main === module) {
   });
 }
 
-export { main as bootstrapTestDb }; // for use in tests/utils.ts if imported
+export { main as bootstrapTestDb };

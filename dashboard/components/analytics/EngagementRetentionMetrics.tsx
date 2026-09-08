@@ -37,16 +37,10 @@ export function EngagementRetentionMetrics({
               return (
                 <div key={o.outcome}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span
-                      style={{ color: 'var(--text-secondary)' }}
-                      className="truncate mr-2"
-                    >
+                    <span style={{ color: 'var(--text-secondary)' }} className="truncate mr-2">
                       {labelForOutcome(o.outcome)}
                     </span>
-                    <span
-                      style={{ color: 'var(--text-primary)' }}
-                      className="font-medium shrink-0"
-                    >
+                    <span style={{ color: 'var(--text-primary)' }} className="font-medium shrink-0">
                       {o.count} ({pct}%)
                     </span>
                   </div>
@@ -86,15 +80,11 @@ export function EngagementRetentionMetrics({
               .sort(([, a], [, b]) => b.first - a.first)
               .slice(0, 5)
               .map(([svc, data]) => {
-                const rate =
-                  data.first > 0 ? Math.round((data.returned / data.first) * 100) : 0;
+                const rate = data.first > 0 ? Math.round((data.returned / data.first) * 100) : 0;
                 return (
                   <div key={svc}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span
-                        style={{ color: 'var(--text-secondary)' }}
-                        className="truncate mr-2"
-                      >
+                      <span style={{ color: 'var(--text-secondary)' }} className="truncate mr-2">
                         {svc}
                       </span>
                       <span

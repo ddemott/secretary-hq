@@ -151,7 +151,7 @@ describe('SoloWizard — finalize fans weekly availability', () => {
     //       coverage refresh.
     // WHEN: every solo onboarding completion. The team-wizard
     //       counterpart fires at goNext step-7→8 and is covered in
-    //       SetupWizard.test.tsx.
+    //       SetupWizard/SetupWizard.test.tsx.
     // WHY: pre-fix bug — owners completed onboarding with a green
     //       checkmark, then every booking attempt failed with
     //       EMPLOYEE_NOT_SCHEDULED. This test pins the fix in place

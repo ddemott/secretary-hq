@@ -61,8 +61,7 @@ export function TenantPhoneProvisioning({
                       // (releasing a DID the tenant still forwards real calls into).
                       res.warnings?.forEach((w) => showToast(w, 'warning'));
                     } catch (err: unknown) {
-                      const msg =
-                        err instanceof Error ? err.message : 'Failed to deactivate phone';
+                      const msg = err instanceof Error ? err.message : 'Failed to deactivate phone';
                       showToast(msg, 'error');
                     }
                   },

@@ -35,8 +35,20 @@ export function getWeekStart(date: Date): Date {
 }
 
 export function formatWeekLabel(weekStart: Date): string {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   return `Week of ${months[weekStart.getMonth()]} ${weekStart.getDate()}, ${weekStart.getFullYear()}`;
 }
 

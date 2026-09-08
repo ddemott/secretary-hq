@@ -76,7 +76,9 @@ describe('KnowledgeBaseView prefill + provenance', () => {
     //      stop scanned answers from pre-filling the questions step (onboarding).
     render(<KnowledgeBaseView />);
     // Manual answer pre-fills (baseline behavior).
-    await waitFor(() => expect(screen.getByDisplayValue('Open Mon–Fri 9 to 5.')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('Open Mon–Fri 9 to 5.')).toBeInTheDocument()
+    );
     // Website-scanned answer ALSO pre-fills (the guard).
     expect(screen.getByDisplayValue('123 Main Street.')).toBeInTheDocument();
   });

@@ -66,11 +66,7 @@ export function DataExportCard({ tenantId }: DataExportCardProps) {
         lists as spreadsheet-ready CSV files (the customer list exports from the Customers tab).
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          isLoading={exporting}
-          onClick={() => void handleExportData()}
-        >
+        <Button variant="secondary" isLoading={exporting} onClick={() => void handleExportData()}>
           Download my data
         </Button>
         <Button

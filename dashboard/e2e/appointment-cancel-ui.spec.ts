@@ -64,7 +64,10 @@ async function cancelAppointmentViaApi(
   return res.status;
 }
 
-async function getAppointmentStatus(tenantId: string, appointmentId: string): Promise<string | null> {
+async function getAppointmentStatus(
+  tenantId: string,
+  appointmentId: string
+): Promise<string | null> {
   const r = await pool.query(
     `SELECT status FROM appointments WHERE appointment_id = $1 AND tenant_id = $2`,
     [appointmentId, tenantId]
@@ -138,7 +141,9 @@ async function openAppointmentPopoverFromList(page: Page, apptId: string) {
   // Wait for the list view container to be present (data is loading).
   // Uses the Refresh button (always present in the list header) instead of
   // appointment-list-view, which is absent when the list is empty.
-  await expect(page.getByRole('button', { name: /Refresh/i }).first()).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole('button', { name: /Refresh/i }).first()).toBeVisible({
+    timeout: 8000,
+  });
 
   const row = page.getByTestId(`list-item-${apptId}`);
   await expect(row).toBeVisible({ timeout: 10000 });
@@ -206,7 +211,10 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
     await loginAsFreshTenant(page, tenant.email);
     await switchToTenant(page, tenant.tenantId, `E2E Test`);
 
-    await page.getByRole('tab', { name: /^Schedule$/ }).first().click();
+    await page
+      .getByRole('tab', { name: /^Schedule$/ })
+      .first()
+      .click();
     // openAppointmentPopoverFromList waits for day-mode-list to appear and clicks it.
 
     // Actually exercise the UI popover cancel button (the real surface)

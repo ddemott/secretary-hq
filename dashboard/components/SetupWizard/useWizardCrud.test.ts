@@ -233,7 +233,10 @@ describe('useWizardCrud — buildDraftGraph serialization', () => {
 
     act(() =>
       result.current.seedServices([
-        { name: 'Service call', description: 'Come out, find the leak, and say what the fix takes.' },
+        {
+          name: 'Service call',
+          description: 'Come out, find the leak, and say what the fix takes.',
+        },
         { name: 'Drain cleaning' },
       ])
     );

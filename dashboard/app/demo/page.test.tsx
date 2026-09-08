@@ -24,7 +24,9 @@ function stubLocation(): void {
   hrefAssignments = [];
   const loc = { ...window.location } as unknown as Location;
   Object.defineProperty(loc, 'href', {
-    set: (v: string) => { hrefAssignments.push(v); },
+    set: (v: string) => {
+      hrefAssignments.push(v);
+    },
     get: () => 'https://test.local/demo',
   });
   Object.defineProperty(window, 'location', { value: loc, writable: true, configurable: true });

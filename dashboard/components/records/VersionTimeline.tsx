@@ -157,24 +157,23 @@ export function VersionTimeline({
                         ))}
                     </div>
 
-                    {version.previous_values &&
-                      Object.keys(version.previous_values).length > 0 && (
-                        <div className="mt-4">
-                          <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                            Previous Values
-                          </h4>
-                          <div className="space-y-1 text-sm">
-                            {Object.entries(version.previous_values).map(([key, value]) => (
-                              <div key={key} className="flex">
-                                <span className="w-32 text-gray-500 flex-shrink-0">{key}:</span>
-                                <span className="line-through" style={{ color: 'var(--danger)' }}>
-                                  {formatValue(value)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+                    {version.previous_values && Object.keys(version.previous_values).length > 0 && (
+                      <div className="mt-4">
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                          Previous Values
+                        </h4>
+                        <div className="space-y-1 text-sm">
+                          {Object.entries(version.previous_values).map(([key, value]) => (
+                            <div key={key} className="flex">
+                              <span className="w-32 text-gray-500 flex-shrink-0">{key}:</span>
+                              <span className="line-through" style={{ color: 'var(--danger)' }}>
+                                {formatValue(value)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

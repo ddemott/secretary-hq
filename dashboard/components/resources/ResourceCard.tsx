@@ -22,14 +22,8 @@ export function ResourceCard({ resource, services, mappings, onClick }: Resource
   return (
     <Card onClick={onClick} className="cursor-pointer hover:shadow-xl transition-all group">
       <div className="flex justify-between items-start mb-4">
-        <div
-          className="p-3 rounded-2xl shadow-sm"
-          style={{ backgroundColor: 'var(--bg-raised)' }}
-        >
-          <Wrench
-            className="w-6 h-6 transition-colors"
-            style={{ color: 'var(--text-muted)' }}
-          />
+        <div className="p-3 rounded-2xl shadow-sm" style={{ backgroundColor: 'var(--bg-raised)' }}>
+          <Wrench className="w-6 h-6 transition-colors" style={{ color: 'var(--text-muted)' }} />
         </div>
         <Badge variant={resource.is_active !== false ? 'success' : 'secondary'}>
           {resource.is_active !== false ? 'Active' : 'Inactive'}

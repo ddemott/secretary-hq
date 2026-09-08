@@ -22,9 +22,13 @@ const KEYS = [
 ];
 
 beforeEach(() => {
-  KEYS.forEach((k) => { ORIG_ENV[k] = process.env[k]; });
+  KEYS.forEach((k) => {
+    ORIG_ENV[k] = process.env[k];
+  });
   // Reset to default hidden state before each test
-  KEYS.forEach((k) => { delete process.env[k]; });
+  KEYS.forEach((k) => {
+    delete process.env[k];
+  });
 });
 
 afterEach(() => {

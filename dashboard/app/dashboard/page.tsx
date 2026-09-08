@@ -18,7 +18,9 @@ const CRMView = dynamic(() => import('@/components/crm/CRMView'), { ssr: false }
 // IA merge (2026-06-03): My Business + My Team + Business Settings collapsed into
 // one "Setup" tab hosting them as sub-tabs. SetupView imports those leaf views.
 const SetupView = dynamic(() => import('@/components/SetupView'), { ssr: false });
-const AIInsightsView = dynamic(() => import('@/components/analytics/AIInsightsView'), { ssr: false });
+const AIInsightsView = dynamic(() => import('@/components/analytics/AIInsightsView'), {
+  ssr: false,
+});
 const SettingsView = dynamic(() => import('@/components/SettingsView'), { ssr: false });
 const ProfileView = dynamic(() => import('@/components/auth/ProfileView'), { ssr: false });
 const SuperAdminDashboard = dynamic(() => import('@/components/team/SuperAdminDashboard'), {

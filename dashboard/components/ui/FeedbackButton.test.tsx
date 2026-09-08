@@ -64,10 +64,13 @@ describe('FeedbackButton — expanded form', () => {
   test('HAPPY: Submit button is disabled when comment is empty', () => {
     openFeedback();
     // "Send Feedback" as button text — distinct from the floating "Feedback" span
-    const submitBtn = screen.getByRole('button', { name: /send feedback/i,  });
+    const submitBtn = screen.getByRole('button', { name: /send feedback/i });
     // The submit button inside the form is disabled when comment is empty
     const allButtons = screen.getAllByRole('button');
-    const submitButton = allButtons.find((b) => b.textContent?.includes('Send Feedback') && b.getAttribute('aria-label') !== 'Send feedback');
+    const submitButton = allButtons.find(
+      (b) =>
+        b.textContent?.includes('Send Feedback') && b.getAttribute('aria-label') !== 'Send feedback'
+    );
     expect(submitButton).toBeDisabled();
   });
 
@@ -76,7 +79,9 @@ describe('FeedbackButton — expanded form', () => {
     const textarea = screen.getByRole('textbox', { name: /feedback comment/i });
     fireEvent.change(textarea, { target: { value: 'Great UX!' } });
     const allButtons = screen.getAllByRole('button');
-    const submitButton = allButtons.find((b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label'));
+    const submitButton = allButtons.find(
+      (b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label')
+    );
     expect(submitButton).not.toBeDisabled();
   });
 
@@ -117,7 +122,9 @@ describe('FeedbackButton — submit', () => {
     // Click 4 stars
     fireEvent.click(screen.getByRole('radio', { name: '4 stars' }));
     const allButtons = screen.getAllByRole('button');
-    const submitBtn = allButtons.find((b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label'))!;
+    const submitBtn = allButtons.find(
+      (b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label')
+    )!;
     fireEvent.click(submitBtn);
     await waitFor(() => expect(mockApi.feedback.submit).toHaveBeenCalledTimes(1));
     expect(mockApi.feedback.submit).toHaveBeenCalledWith('tenant-test', {
@@ -132,7 +139,9 @@ describe('FeedbackButton — submit', () => {
     mockApi.feedback.submit.mockResolvedValue({ success: true });
     setup();
     const allButtons = screen.getAllByRole('button');
-    const submitBtn = allButtons.find((b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label'))!;
+    const submitBtn = allButtons.find(
+      (b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label')
+    )!;
     fireEvent.click(submitBtn);
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Thanks for your feedback!'));
     // Form collapses after success
@@ -145,11 +154,11 @@ describe('FeedbackButton — submit', () => {
     mockApi.feedback.submit.mockRejectedValue(new Error('Network error'));
     setup();
     const allButtons = screen.getAllByRole('button');
-    const submitBtn = allButtons.find((b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label'))!;
+    const submitBtn = allButtons.find(
+      (b) => b.textContent?.includes('Send Feedback') && !b.hasAttribute('aria-label')
+    )!;
     fireEvent.click(submitBtn);
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith('Failed to send feedback', 'error')
-    );
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Failed to send feedback', 'error'));
     expect(screen.getByPlaceholderText(/What's working/i)).toBeInTheDocument();
   });
 });

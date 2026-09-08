@@ -49,11 +49,7 @@ export function ShiftEditorModal({
       footer={
         <div className="flex gap-2">
           {editingDate && currentShift && !currentShift.is_off && (
-            <Button
-              variant="ghost"
-              onClick={onDelete}
-              style={{ color: '#ef4444' }}
-            >
+            <Button variant="ghost" onClick={onDelete} style={{ color: '#ef4444' }}>
               Delete
             </Button>
           )}

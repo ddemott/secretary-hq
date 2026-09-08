@@ -13,7 +13,11 @@ export function ServiceCohortMetrics({ cohorts }: ServiceCohortMetricsProps) {
   return (
     <>
       {/* 9. Bookings by service — which services the booked calls actually booked */}
-      <MetricCard icon={ListChecks} title="Bookings by Service" subtitle="What booked calls scheduled">
+      <MetricCard
+        icon={ListChecks}
+        title="Bookings by Service"
+        subtitle="What booked calls scheduled"
+      >
         {cohorts && cohorts.by_service.length > 0 ? (
           (() => {
             const maxBooked = Math.max(...cohorts.by_service.map((s) => s.booked_count), 1);
@@ -25,11 +29,17 @@ export function ServiceCohortMetrics({ cohorts }: ServiceCohortMetricsProps) {
                       <span style={{ color: 'var(--text-secondary)' }} className="truncate mr-2">
                         {s.service}
                       </span>
-                      <span style={{ color: 'var(--text-primary)' }} className="font-medium shrink-0">
+                      <span
+                        style={{ color: 'var(--text-primary)' }}
+                        className="font-medium shrink-0"
+                      >
                         {s.booked_count}
                       </span>
                     </div>
-                    <div className="h-1 rounded-full" style={{ backgroundColor: 'var(--border-soft)' }}>
+                    <div
+                      className="h-1 rounded-full"
+                      style={{ backgroundColor: 'var(--border-soft)' }}
+                    >
                       <div
                         className="h-full rounded-full"
                         style={{
@@ -93,10 +103,7 @@ export function ServiceCohortMetrics({ cohorts }: ServiceCohortMetricsProps) {
                 {cohorts.abandonment_by_service.slice(0, 6).map((s) => (
                   <div key={s.service}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span
-                        style={{ color: 'var(--text-secondary)' }}
-                        className="truncate mr-2"
-                      >
+                      <span style={{ color: 'var(--text-secondary)' }} className="truncate mr-2">
                         {s.service}
                       </span>
                       <span
@@ -172,7 +179,6 @@ export function ServiceCohortMetrics({ cohorts }: ServiceCohortMetricsProps) {
           </p>
         )}
       </MetricCard>
-
     </>
   );
 }

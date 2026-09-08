@@ -16,7 +16,11 @@ function formatFieldValue(value: unknown): string {
 }
 
 interface CopyFieldsModalProps {
-  copyModal: { sourceId: string; sourceData: Record<string, unknown>; table: VersionedTable } | null;
+  copyModal: {
+    sourceId: string;
+    sourceData: Record<string, unknown>;
+    table: VersionedTable;
+  } | null;
   customers: Customer[];
   selectedTarget: string;
   selectedFields: Set<string>;

@@ -47,9 +47,9 @@ export default function ExplainAnswerView() {
     <Card title="Answer Debugger">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">
-          Type a question a caller might ask. This shows exactly which knowledge-base entries the
-          AI would consider and how strongly each matches — so you can tell whether the AI has
-          enough to answer.
+          Type a question a caller might ask. This shows exactly which knowledge-base entries the AI
+          would consider and how strongly each matches — so you can tell whether the AI has enough
+          to answer.
         </p>
 
         <div className="flex items-end gap-3">
@@ -78,9 +78,7 @@ export default function ExplainAnswerView() {
           <div className="space-y-3">
             <div
               className={`rounded-md p-3 text-sm ${
-                result.would_answer
-                  ? 'bg-green-50 text-green-800'
-                  : 'bg-amber-50 text-amber-800'
+                result.would_answer ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'
               }`}
             >
               {result.would_answer
@@ -126,8 +124,8 @@ export default function ExplainAnswerView() {
                   </div>
                 ))}
                 <p className="text-xs text-gray-400">
-                  Production uses the top {result.production_match_count} entries that score at least{' '}
-                  {(result.production_threshold * 100).toFixed(0)}%.
+                  Production uses the top {result.production_match_count} entries that score at
+                  least {(result.production_threshold * 100).toFixed(0)}%.
                 </p>
               </div>
             )}

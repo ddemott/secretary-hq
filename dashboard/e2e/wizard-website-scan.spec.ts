@@ -25,7 +25,12 @@
 import { test, expect } from './helpers/test';
 import type { Page } from '@playwright/test';
 import { Pool } from 'pg';
-import { PG_URL, registerFreshTenant, cleanTenantData, type RegisteredTenant } from './helpers/fixtures';
+import {
+  PG_URL,
+  registerFreshTenant,
+  cleanTenantData,
+  type RegisteredTenant,
+} from './helpers/fixtures';
 
 let pool: Pool;
 test.beforeAll(() => {

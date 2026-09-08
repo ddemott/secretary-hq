@@ -79,10 +79,7 @@ export function KnowledgeEntriesTab({
                   </button>
                 </div>
                 {doc.title && (
-                  <p
-                    className="text-sm font-medium mb-1"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
+                  <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
                     {doc.title}
                   </p>
                 )}

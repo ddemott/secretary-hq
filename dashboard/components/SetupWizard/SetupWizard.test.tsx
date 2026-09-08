@@ -33,7 +33,7 @@ vi.mock('@/lib/VocabularyContext', () => ({
   }),
 }));
 
-import SetupWizard from './SetupWizard';
+import SetupWizard from './index';
 
 // Phase B (2026-07-05): services/resources/employees are draft-local state —
 // nothing is fetched from the API to populate the wizard, and canAdvanceTo

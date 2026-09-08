@@ -4,7 +4,7 @@
  * WHO: an owner on Business Settings after picking a business type.
  * WHAT: they see the derived preset + enabled blocks, and can override it.
  * WHEN: after setup, or when the live agent is using the wrong tree set.
- * WHERE: dashboard/components/ChecklistPresetSection.tsx
+ * WHERE: dashboard/components/ui/ChecklistPresetSection.tsx
  * WHY: tenant-config already derives the preset; this is the product surface
  *      so an owner can see and change it without a SQL update.
  */
@@ -18,7 +18,7 @@ const mockGetConfig = vi.fn();
 const mockUpdateConfig = vi.fn();
 const mockToast = vi.fn();
 
-vi.mock('../lib/api', () => ({
+vi.mock('../../lib/api', () => ({
   Api: {
     tenants: {
       getConfig: (...args: unknown[]) => mockGetConfig(...args),
@@ -27,7 +27,7 @@ vi.mock('../lib/api', () => ({
   },
 }));
 
-vi.mock('./ui/Toast', () => ({ showToast: (...args: unknown[]) => mockToast(...args) }));
+vi.mock('./Toast', () => ({ showToast: (...args: unknown[]) => mockToast(...args) }));
 
 const SALON_RUNTIME = {
   preset_id: 'salon_front_desk',

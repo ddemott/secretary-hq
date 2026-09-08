@@ -5,7 +5,10 @@ import { Users } from 'lucide-react';
 import { type Customer } from '@/lib/types';
 import { CustomerDetailHeader, type EditForm } from './crm/CustomerDetailHeader';
 import { ContactDetailsCard } from './crm/ContactDetailsCard';
-import { CustomerAppointmentsSection, type CustomerAppointment } from './crm/CustomerAppointmentsSection';
+import {
+  CustomerAppointmentsSection,
+  type CustomerAppointment,
+} from './crm/CustomerAppointmentsSection';
 import { CustomerCallHistory, type CallSummary } from './crm/CustomerCallHistory';
 
 interface CustomerDetailPanelProps {

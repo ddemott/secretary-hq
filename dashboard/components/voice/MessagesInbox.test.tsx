@@ -214,9 +214,7 @@ describe('MessagesInbox — select and mark read', () => {
   test('HAPPY: clicking a new message calls updateMessageStatus with "read"', async () => {
     render(<MessagesInbox tenantId="tenant-test" />);
     // Wait for messages to load; Alice's row has role="button" with accessible name containing her name
-    await waitFor(() =>
-      expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
     // Click Alice's message row by its accessible name (computed from row text content)
     fireEvent.click(screen.getByRole('button', { name: /alice smith/i }));
     await waitFor(() =>
@@ -226,23 +224,17 @@ describe('MessagesInbox — select and mark read', () => {
 
   test('HAPPY: clicking already-read message does not call updateMessageStatus', async () => {
     render(<MessagesInbox tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getAllByText('Bob Jones').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Bob Jones').length).toBeGreaterThan(0));
     // Bob is already 'read' — click should not trigger updateMessageStatus
     fireEvent.click(screen.getByRole('button', { name: /bob jones/i }));
     // Give async handlers a chance to fire
-    await waitFor(() =>
-      expect(screen.getAllByText('Bob Jones').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Bob Jones').length).toBeGreaterThan(0));
     expect(mockApi.voice.updateMessageStatus).not.toHaveBeenCalled();
   });
 
   test('HAPPY: selected message body appears in the detail panel', async () => {
     render(<MessagesInbox tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
     // Before click: the "select a message or job lead" placeholder is visible
     expect(screen.getByText(/select a message or job lead to read it/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /alice smith/i }));
@@ -255,9 +247,7 @@ describe('MessagesInbox — select and mark read', () => {
   test('SAD: updateMessageStatus failure shows error toast', async () => {
     mockApi.voice.updateMessageStatus.mockResolvedValue({ success: false });
     render(<MessagesInbox tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole('button', { name: /alice smith/i }));
     await waitFor(() =>
       expect(mockToast).toHaveBeenCalledWith(
@@ -271,9 +261,7 @@ describe('MessagesInbox — select and mark read', () => {
 describe('MessagesInbox — mark actioned', () => {
   test('HAPPY: Mark actioned button calls updateMessageStatus with "actioned"', async () => {
     render(<MessagesInbox tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
     // Select Alice's message — detail panel opens (placeholder disappears)
     fireEvent.click(screen.getByRole('button', { name: /alice smith/i }));
     await waitFor(() =>

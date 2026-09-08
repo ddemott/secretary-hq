@@ -63,9 +63,7 @@ describe('KnowledgeSuggestions — loading / error / empty states', () => {
   test('HAPPY: shows empty state when no suggestions pending', async () => {
     mockApi.knowledge.suggestions.mockResolvedValue({ success: true, suggestions: [] });
     render(<KnowledgeSuggestions tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getByText(/no pending suggestions/i)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/no pending suggestions/i)).toBeInTheDocument());
   });
 
   test('SAD: API error shows error message', async () => {
@@ -87,9 +85,7 @@ describe('KnowledgeSuggestions — loading / error / empty states', () => {
   test('HAPPY: null tenantId shows empty state and reports count=0', async () => {
     const onCountChange = vi.fn();
     render(<KnowledgeSuggestions tenantId={null} onCountChange={onCountChange} />);
-    await waitFor(() =>
-      expect(screen.getByText(/no pending suggestions/i)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/no pending suggestions/i)).toBeInTheDocument());
     expect(onCountChange).toHaveBeenCalledWith(0);
     expect(mockApi.knowledge.suggestions).not.toHaveBeenCalled();
   });
@@ -104,9 +100,7 @@ describe('KnowledgeSuggestions — suggestion cards', () => {
 
   test('HAPPY: shows source URL when present', async () => {
     render(<KnowledgeSuggestions tenantId="tenant-test" />);
-    await waitFor(() =>
-      expect(screen.getByText('https://example.com/about')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText('https://example.com/about')).toBeInTheDocument());
   });
 
   test('HAPPY: shows confidence percentage when present', async () => {
@@ -135,9 +129,7 @@ describe('KnowledgeSuggestions — approve flow', () => {
       expect(mockApi.knowledge.approveSuggestion).toHaveBeenCalledWith('sug-1', 'tenant-test')
     );
     // Card removed from list
-    await waitFor(() =>
-      expect(screen.queryByText('What are your hours?')).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByText('What are your hours?')).not.toBeInTheDocument());
   });
 });
 
@@ -153,9 +145,7 @@ describe('KnowledgeSuggestions — reject flow', () => {
     await waitFor(() =>
       expect(mockApi.knowledge.rejectSuggestion).toHaveBeenCalledWith('sug-1', 'tenant-test')
     );
-    await waitFor(() =>
-      expect(screen.queryByText('What are your hours?')).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByText('What are your hours?')).not.toBeInTheDocument());
   });
 
   test('SAD: failed reject leaves card in list so user can retry', async () => {
@@ -166,9 +156,7 @@ describe('KnowledgeSuggestions — reject flow', () => {
     const discardButtons = screen.getAllByRole('button', { name: /discard/i });
     fireEvent.click(discardButtons[0]);
 
-    await waitFor(() =>
-      expect(mockApi.knowledge.rejectSuggestion).toHaveBeenCalledTimes(1)
-    );
+    await waitFor(() => expect(mockApi.knowledge.rejectSuggestion).toHaveBeenCalledTimes(1));
     // Card stays in the list
     expect(screen.getByText('What are your hours?')).toBeInTheDocument();
   });

@@ -516,7 +516,7 @@ Verdict: `main` is merged, production has moved, and the old agent `ToolContext<
 
 - The 2026-08-18 handoff is stale on the key point: agent build is no longer red.
 - Production no longer lags local `main`; deploy freshness moved at `2026-08-19T08:22:19.112Z`.
-- Working tree was clean before the doc sweep except for `docs/TODO.md`; any current dirt after this point is markdown sync, not runtime drift.
+- Working tree was clean before the doc sweep except for `docs/planning/TODO.md`; any current dirt after this point is markdown sync, not runtime drift.
 
 ### Highest-value next move
 
@@ -598,7 +598,7 @@ observation sweep — read that section first; it is the most recent work)._
 Goal: run the E2E lanes and **read the output**, not just the pass/fail — long pauses,
 data repeated back that was already given, wrong paths, anything the asserts do not
 cover. Then fix what turns up. Full write-up with per-finding evidence:
-`docs/TODO.md` § "🔬 E2E observation sweep". **Nothing committed.**
+`docs/planning/TODO.md` § "🔬 E2E observation sweep". **Nothing committed.**
 
 **Headline: `sim-questiontree` went 22/22.** The first run of the day deadlocked on
 scenario 1 and never reached scenario 9.
@@ -700,7 +700,7 @@ the door until a message actually lands.
 agent package's format/lint/typecheck. New `checks:agent` step, wired in; agent
 formatted (that is most of the file count in the diff).
 
-**Left open ON PURPOSE, both written up in `docs/TODO.md`:**
+**Left open ON PURPOSE, both written up in `docs/planning/TODO.md`:**
 
 1. `sim-toolselect` grades the **LADDER**, which prod does not run — its standing
    failures are statements about dead code. Rewriting its cases onto the checklist path

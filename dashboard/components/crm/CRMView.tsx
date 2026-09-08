@@ -116,9 +116,7 @@ export default function CRMView() {
           : data
       );
     } catch {
-      setSummaries(
-        tenantId ? [] : MOCK_SUMMARIES.filter((s) => s.customer_id === customerId)
-      );
+      setSummaries(tenantId ? [] : MOCK_SUMMARIES.filter((s) => s.customer_id === customerId));
     }
   }
 

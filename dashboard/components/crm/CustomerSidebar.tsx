@@ -252,9 +252,7 @@ export function CustomerSidebar({
             } else if (e.key === 'Escape') {
               e.preventDefault();
               setFocusedIdx(-1);
-              document
-                .querySelector<HTMLInputElement>('[data-shortcut-target="search"]')
-                ?.focus();
+              document.querySelector<HTMLInputElement>('[data-shortcut-target="search"]')?.focus();
             }
           }}
         >
@@ -288,7 +286,7 @@ export function CustomerSidebar({
               customer={c}
               isSelected={selectedCustomer?.customer_id === c.customer_id}
               isFocused={focusedIdx === idx}
-onClick={() => onSelectCustomer(c)}
+              onClick={() => onSelectCustomer(c)}
               onMouseEnter={() => setFocusedIdx(-1)}
             />
           ))}

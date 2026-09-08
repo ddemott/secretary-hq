@@ -7,7 +7,13 @@ import { Card } from '../ui/Card';
 
 type VoiceFields = Pick<
   Tenant,
-  'tts_voice' | 'tts_speed' | 'tts_formal' | 'tts_warm' | 'tts_concise' | 'tts_soft' | 'tts_cheerful'
+  | 'tts_voice'
+  | 'tts_speed'
+  | 'tts_formal'
+  | 'tts_warm'
+  | 'tts_concise'
+  | 'tts_soft'
+  | 'tts_cheerful'
 >;
 
 interface VoiceIdentitySectionProps {
@@ -35,10 +41,7 @@ const STYLE_OPTIONS: { key: keyof VoiceFields; label: string; description: strin
 export function VoiceIdentitySection({ config, onUpdate }: VoiceIdentitySectionProps) {
   return (
     <section className="space-y-4">
-      <h2
-        className="text-lg font-bold flex items-center"
-        style={{ color: 'var(--text-primary)' }}
-      >
+      <h2 className="text-lg font-bold flex items-center" style={{ color: 'var(--text-primary)' }}>
         <Mic className="w-5 h-5 mr-2" style={{ color: 'var(--accent-soft)' }} />
         Voice Identity
       </h2>

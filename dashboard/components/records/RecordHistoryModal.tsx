@@ -4,11 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, History, RefreshCw, Check } from 'lucide-react';
 import { Api } from '../../lib/api';
 import { useFocusTrap } from '../../lib/useFocusTrap';
-import type {
-  RecordHistoryResponse,
-  VersionedTable,
-  RecordRestorePreview,
-} from '../../lib/types';
+import type { RecordHistoryResponse, VersionedTable, RecordRestorePreview } from '../../lib/types';
 import { excludedSystemFields } from '../../../shared/versionHistoryFields';
 import { VersionTimeline } from './VersionTimeline';
 import { FieldRestorePanel } from './FieldRestorePanel';

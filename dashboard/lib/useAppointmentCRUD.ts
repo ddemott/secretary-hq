@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { Api, SUPER_ADMIN_TENANT_ID } from './api';
-import { type Appointment, type Customer, type Service, type Resource, type Employee } from './types';
+import {
+  type Appointment,
+  type Customer,
+  type Service,
+  type Resource,
+  type Employee,
+} from './types';
 import { MOCK_APPOINTMENTS } from './mockData';
 import { toLocalISO, toISOStringWithOffset, formatCustomerAddress } from './utils';
 import { validateAppointmentTimeRange } from './appointmentValidation';
@@ -102,7 +108,9 @@ export function useAppointmentCRUD({
       return;
     }
     if (usingMockData) {
-      setError('Sample appointments cannot be updated. Create a real appointment after logging in.');
+      setError(
+        'Sample appointments cannot be updated. Create a real appointment after logging in.'
+      );
       return;
     }
 
@@ -213,7 +221,9 @@ export function useAppointmentCRUD({
   function handleDelete() {
     if (!selectedAppointment) return;
     if (usingMockData) {
-      setError('Sample appointments cannot be canceled. Create a real appointment after logging in.');
+      setError(
+        'Sample appointments cannot be canceled. Create a real appointment after logging in.'
+      );
       return;
     }
     if (!tenantId) {

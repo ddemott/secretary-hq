@@ -21,7 +21,7 @@ instead of `eslint` + `vitest`. Always consult your project's `workflow.config.j
   - [ ] doc-drift detector (usually `commands.docDriftCheck`)
   - [ ] build (if your project has one)
   - [ ] unit tests (`commands.unitTests`)
-- [ ] Local tracking started (this checklist, issue, or `docs/TODO.md` entry)
+- [ ] Local tracking started (this checklist, issue, or `docs/planning/TODO.md` entry)
 
 ## While Developing
 

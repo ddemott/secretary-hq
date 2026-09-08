@@ -47,7 +47,7 @@ vi.mock('@/lib/VocabularyContext', () => ({
 /**
  * Answer the two calls runSeed makes — the tenant's config (for business_type)
  * and the full template list — and tolerate everything else, matching the
- * catch-all style of SetupWizard.test.tsx.
+ * catch-all style of SetupWizard/SetupWizard.test.tsx.
  */
 function mockBackendFor(businessType: string) {
   (global.fetch as unknown as ReturnType<typeof vi.fn>) = vi

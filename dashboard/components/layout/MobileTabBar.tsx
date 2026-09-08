@@ -41,7 +41,9 @@ export function MobileTabBar({
               onClick={() => onSelectTab(tab.id)}
               className="relative flex-1 min-w-[64px] flex flex-col items-center justify-center shrink-0"
               style={
-                activeTab === tab.id ? { color: 'var(--accent-soft)' } : { color: 'var(--text-muted)' }
+                activeTab === tab.id
+                  ? { color: 'var(--accent-soft)' }
+                  : { color: 'var(--text-muted)' }
               }
             >
               <Icon className="w-5 h-5" />
@@ -57,7 +59,10 @@ export function MobileTabBar({
               {tab.id === 'calls' && activeCallCount > 0 && (
                 <span
                   className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 flex items-center justify-center rounded-full text-[8px] font-bold leading-none animate-pulse"
-                  style={{ backgroundColor: 'var(--danger, #dc2626)', color: 'var(--primary-text)' }}
+                  style={{
+                    backgroundColor: 'var(--danger, #dc2626)',
+                    color: 'var(--primary-text)',
+                  }}
                   aria-label={`${activeCallCount} active call${activeCallCount > 1 ? 's' : ''}`}
                 >
                   {activeCallCount > 99 ? '99+' : activeCallCount}

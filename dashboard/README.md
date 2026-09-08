@@ -9,7 +9,7 @@ This is the **management UI** for the SecretaryHQ SaaS. It lets owners and admin
 - Tweak AI persona settings (system prompt, voice, working hours).
 - Manage employee attributes (name, email, phone) and shift schedules.
 
-The dashboard is built with **Next.js (App Router)** and **Tailwind CSS**. It calls the Fastify backend API (29 top-level route modules plus the `agentTools/` module dir), which enforces RLS via `withTenantClient()` and reads/writes to the shared Postgres database (Supabase or local Docker). Bookings created by the voice AI tools and the dashboard all hit the same source of truth.
+The dashboard is built with **Next.js (App Router)** and **Tailwind CSS**. It calls the Fastify backend API (route count verified separately; see docs/planning/TODO.md for live counts), which enforces RLS via `withTenantClient()` and reads/writes to the shared Postgres database (Supabase or local Docker). Bookings created by the voice AI tools and the dashboard all hit the same source of truth.
 
 ---
 
@@ -46,7 +46,7 @@ You should see:
 
 ## Deployment
 
-The dashboard (and full stack) is deployed on **Railway** in production (see `docs/DEPLOYMENT.md` for the current setup with `railway.json` + nixpacks for all three services: backend, `secretary-hq-agent`, and this dashboard).
+The dashboard (and full stack) is deployed on **Railway** in production (see `docs/planning/` and `railway.json` in root for current setup; nixpacks config covers backend, agent, and dashboard).
 
 For local/self-host development:
 

@@ -70,7 +70,7 @@
   },
 
   "documentation": {
-    "filesThatMustBeUpdated": ["README.md", "CONTRIBUTING.md", "docs/TODO.md"],
+    "filesThatMustBeUpdated": ["README.md", "CONTRIBUTING.md", "docs/planning/TODO.md"],
     "driftDetectorScript": "echo 'Point this at your doc-drift detector (e.g. npm run verify:claude-md) or leave the echo above'"
   },
 

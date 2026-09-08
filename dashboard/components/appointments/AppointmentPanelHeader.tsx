@@ -56,20 +56,13 @@ export function AppointmentPanelHeader({
                 ? `Edit ${vocab.booking_label}`
                 : selectedAppointment?.description}
           </h1>
-          {selectedAppointment?.status === 'canceled' && (
-            <Badge variant="danger">Canceled</Badge>
-          )}
+          {selectedAppointment?.status === 'canceled' && <Badge variant="danger">Canceled</Badge>}
         </div>
       </div>
       <div className="flex items-center space-x-2">
         {!isEditing && !isCreating ? (
           <>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={onDelete}
-              title="Cancel this appointment"
-            >
+            <Button variant="danger" size="sm" onClick={onDelete} title="Cancel this appointment">
               <Trash2 className="w-4 h-4 mr-1" /> Cancel Appointment
             </Button>
             {selectedAppointment?.status === 'scheduled' && (
@@ -92,7 +85,9 @@ export function AppointmentPanelHeader({
           </>
         ) : (
           <Button variant="ghost" onClick={onCancelEdit} aria-label="Cancel edit">
-            <span className="text-xl leading-none" aria-hidden="true">✕</span>
+            <span className="text-xl leading-none" aria-hidden="true">
+              ✕
+            </span>
           </Button>
         )}
       </div>

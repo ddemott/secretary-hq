@@ -133,12 +133,7 @@ export function OutlookLayout({
   // they always land on the simplest working surface.
   useEffect(() => {
     if (!isFrontDeskOnly) return;
-    const restrictedTabs = new Set<Tab>([
-      'setup',
-      'ai-insights',
-      'settings',
-      'all-businesses',
-    ]);
+    const restrictedTabs = new Set<Tab>(['setup', 'ai-insights', 'settings', 'all-businesses']);
     if (restrictedTabs.has(activeTab)) setActiveTab('dashboard');
   }, [isFrontDeskOnly, activeTab, setActiveTab]);
 
@@ -252,7 +247,11 @@ export function OutlookLayout({
         </div>
 
         {/* CROSS-APP NAV */}
-        <AppShell currentAppId="secretary-hq" userName={userName ?? undefined} onSignOut={onLogout} />
+        <AppShell
+          currentAppId="secretary-hq"
+          userName={userName ?? undefined}
+          onSignOut={onLogout}
+        />
 
         {/* ADMIN HEADER (super-admin only) */}
         {isAdmin && managedTenantName && (
@@ -348,9 +347,7 @@ export function OutlookLayout({
                 title={`Account: ${userName || 'Profile'}`}
                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                 className={`inline-flex items-center justify-center min-w-[40px] min-h-[40px] p-2 rounded-md transition-all ${
-                  profileMenuOpen || activeTab === 'profile'
-                    ? ''
-                    : 'hover:brightness-110'
+                  profileMenuOpen || activeTab === 'profile' ? '' : 'hover:brightness-110'
                 }`}
                 style={
                   profileMenuOpen || activeTab === 'profile'
@@ -452,7 +449,9 @@ export function OutlookLayout({
           managedTenantId={managedTenantId}
           anchorRect={tenantBtnRect}
           onClose={() => setTenantDropdownOpen(false)}
-          onSelect={(id, name) => { if (onSelectTenant) onSelectTenant(id, name); }}
+          onSelect={(id, name) => {
+            if (onSelectTenant) onSelectTenant(id, name);
+          }}
           onSelectTab={(tab) => setActiveTab(tab as Tab)}
           activeTab={activeTab}
         />

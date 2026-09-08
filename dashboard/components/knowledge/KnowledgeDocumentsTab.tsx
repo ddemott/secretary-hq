@@ -64,10 +64,7 @@ export function KnowledgeDocumentsTab({
       >
         {uploading ? (
           <>
-            <Loader2
-              className="w-10 h-10 animate-spin mb-4"
-              style={{ color: 'var(--warning)' }}
-            />
+            <Loader2 className="w-10 h-10 animate-spin mb-4" style={{ color: 'var(--warning)' }} />
             <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
               Processing document...
             </p>
@@ -85,9 +82,9 @@ export function KnowledgeDocumentsTab({
         )}
       </div>
       <p className="text-xs mt-4" style={{ color: 'var(--text-muted)' }}>
-        Upload your price sheet, service menu, warranty policy, or any document about your
-        business. When a caller asks a question, the AI searches your documents for the answer and
-        reads it back to them.
+        Upload your price sheet, service menu, warranty policy, or any document about your business.
+        When a caller asks a question, the AI searches your documents for the answer and reads it
+        back to them.
       </p>
       {files.length > 0 && (
         <div className="mt-6 space-y-2">

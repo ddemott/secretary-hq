@@ -51,7 +51,9 @@ function fillForm() {
   fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Dale Demott' } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'dale@dynatire.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2' } });
-  fireEvent.click(screen.getByRole('checkbox', { name: /I am authorized to set up Secretary HQ/i }));
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: /I am authorized to set up Secretary HQ/i })
+  );
 }
 
 describe('RegisterPage — self-serve signup', () => {
@@ -64,8 +66,14 @@ describe('RegisterPage — self-serve signup', () => {
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'dale@dynatire.com' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2' } });
     expect(screen.getByRole('button', { name: /start free trial/i })).toBeDisabled();
-    expect(screen.getByRole('link', { name: /Terms of Service/i })).toHaveAttribute('href', '/terms');
-    expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute('href', '/privacy');
+    expect(screen.getByRole('link', { name: /Terms of Service/i })).toHaveAttribute(
+      'href',
+      '/terms'
+    );
+    expect(screen.getByRole('link', { name: /Privacy Policy/i })).toHaveAttribute(
+      'href',
+      '/privacy'
+    );
     expect(screen.getByRole('link', { name: /Data Protection Addendum/i })).toHaveAttribute(
       'href',
       '/dpa'

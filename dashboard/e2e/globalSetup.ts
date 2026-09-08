@@ -29,7 +29,7 @@ import { spawnSync } from 'child_process';
 import { readdirSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 
-const BACKEND_URL = process.env.BACKEND_URL ?? 'https://localhost:4001';
+const BACKEND_URL = process.env.BACKEND_URL ?? 'https://localhost:4000';
 const REPO_ROOT = resolve(__dirname, '..', '..');
 
 /**
@@ -38,7 +38,15 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
  * what "local" means. `db` / `postgres` / `secretary-hq-db` are container hostnames
  * (docker-compose, CI service containers).
  */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '', 'db', 'postgres', 'secretary-hq-db']);
+const LOCAL_HOSTS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '',
+  'db',
+  'postgres',
+  'secretary-hq-db',
+]);
 
 function hostOf(url: string): string {
   try {
@@ -144,12 +152,12 @@ async function assertBackendFresh(): Promise<void> {
     // Self-signed cert on https://localhost:4001 — bypass via env var
     // so we don't have to wire a global rejectUnauthorized override.
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    const res = await fetch(`${BACKEND_URL}/health`);
+    const res = await fetch(`${BACKEND_URL}/api/health`);
     const body = (await res.json()) as { started_at?: string; status?: string };
     startedAt = body.started_at;
   } catch (err) {
     throw new Error(
-      `[globalSetup] could not reach ${BACKEND_URL}/health to verify backend freshness: ${
+      `[globalSetup] could not reach ${BACKEND_URL}/api/health to verify backend freshness: ${
         err instanceof Error ? err.message : String(err)
       }. Start the backend (\`npm start\` from the repo root) and re-run.`
     );

@@ -156,7 +156,10 @@ export function CustomerCreateModal({
         </div>
       }
     >
-      <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1" data-testid="customer-create-form">
+      <div
+        className="space-y-4 max-h-[60vh] overflow-y-auto pr-1"
+        data-testid="customer-create-form"
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Input
             label="First Name"

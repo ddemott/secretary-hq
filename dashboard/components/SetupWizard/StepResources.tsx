@@ -31,7 +31,10 @@ export function Step2Resources({
       title: `Remove ${vocab.resource_label}?`,
       message: `Remove "${res.name}"? This won't affect existing appointments.`,
       confirmLabel: 'Remove',
-      onConfirm: () => { closeConfirm(); onDelete(res.resource_id); },
+      onConfirm: () => {
+        closeConfirm();
+        onDelete(res.resource_id);
+      },
     });
   }
 

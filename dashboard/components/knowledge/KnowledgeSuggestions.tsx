@@ -95,9 +95,7 @@ export function KnowledgeSuggestions({ tenantId, onCountChange }: Props) {
   }
 
   if (error) {
-    return (
-      <div className="text-red-500 text-sm py-4">{error}</div>
-    );
+    return <div className="text-red-500 text-sm py-4">{error}</div>;
   }
 
   if (suggestions.length === 0) {
@@ -115,17 +113,14 @@ export function KnowledgeSuggestions({ tenantId, onCountChange }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">
-        {suggestions.length} item{suggestions.length !== 1 ? 's' : ''} extracted from your website
-        — approve to add to your AI&apos;s knowledge, or reject to discard.
+        {suggestions.length} item{suggestions.length !== 1 ? 's' : ''} extracted from your website —
+        approve to add to your AI&apos;s knowledge, or reject to discard.
       </p>
 
       {suggestions.map((s) => {
         const busy = actioning[s.id];
         return (
-          <div
-            key={s.id}
-            className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm"
-          >
+          <div key={s.id} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-800 mb-1">{s.question}</p>

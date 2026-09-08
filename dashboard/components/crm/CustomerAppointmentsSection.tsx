@@ -114,10 +114,7 @@ export function CustomerAppointmentsSection({
               const Body = (
                 <>
                   <div className="space-y-1">
-                    <p
-                      className="text-sm font-semibold"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                       {a.description}
                     </p>
                     <p
@@ -134,18 +131,10 @@ export function CustomerAppointmentsSection({
                   </div>
                   <Badge
                     variant={
-                      a.status === 'completed'
-                        ? 'success'
-                        : isCanceled
-                          ? 'danger'
-                          : 'secondary'
+                      a.status === 'completed' ? 'success' : isCanceled ? 'danger' : 'secondary'
                     }
                   >
-                    {a.status === 'completed'
-                      ? 'Completed'
-                      : isCanceled
-                        ? 'Canceled'
-                        : a.status}
+                    {a.status === 'completed' ? 'Completed' : isCanceled ? 'Canceled' : a.status}
                   </Badge>
                 </>
               );

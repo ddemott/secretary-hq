@@ -107,8 +107,16 @@ export function WeekView({ tenantId, employees, vocab, onNavigate }: WeekViewPro
         const shiftPromises = employees.map((emp) =>
           Api.shifts.schedule
             .forDate(tenantId, emp.employee_id, days[0], days[2])
-            .then((shifts) => ({ empId: emp.employee_id, empName: emp.first_name || emp.name, shifts }))
-            .catch(() => ({ empId: emp.employee_id, empName: emp.first_name || emp.name, shifts: [] }))
+            .then((shifts) => ({
+              empId: emp.employee_id,
+              empName: emp.first_name || emp.name,
+              shifts,
+            }))
+            .catch(() => ({
+              empId: emp.employee_id,
+              empName: emp.first_name || emp.name,
+              shifts: [],
+            }))
         );
         const results = await Promise.all(shiftPromises);
         for (const { empName, shifts } of results) {

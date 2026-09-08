@@ -37,8 +37,12 @@ export default function ServiceAssignmentView() {
     refresh,
   } = useStaticData(tenantId);
 
-  const [resMappings, setResMappings] = useState<{ service_id: string; resource_id?: string }[]>([]);
-  const [empMappings, setEmpMappings] = useState<{ service_id: string; employee_id?: string }[]>([]);
+  const [resMappings, setResMappings] = useState<{ service_id: string; resource_id?: string }[]>(
+    []
+  );
+  const [empMappings, setEmpMappings] = useState<{ service_id: string; employee_id?: string }[]>(
+    []
+  );
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Wizard state (creation)

@@ -132,7 +132,9 @@ export function AppointmentCalendar({
             onView={(view: CalendarViewType) => onViewChange(view)}
             onNavigate={(date: Date) => onNavigate(date)}
             onSelectEvent={(event: CalendarEvent) => onSelectEvent(event)}
-            onEventDrop={({ event, start, end }: DnDEventArgs) => onEventDrop({ event, start, end })}
+            onEventDrop={({ event, start, end }: DnDEventArgs) =>
+              onEventDrop({ event, start, end })
+            }
             onEventResize={({ event, start, end }: DnDEventArgs) =>
               onEventResize({ event, start, end })
             }

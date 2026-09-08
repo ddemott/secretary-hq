@@ -1,9 +1,11 @@
 import { Client, type Pool } from 'pg';
 import bcrypt from 'bcrypt';
 
-// Always use test_db for tests — never the main database.
-// DATABASE_URL from .env points to the production DB and must not be used here.
-export const ROOT_DB_URL = 'postgres://postgres:postgres@localhost:5433/test_db';
+// Always use test_db for tests. Prefer DATABASE_URL or TEST_ADMIN_DATABASE_URL from env
+// (set by test:ci or command line) with correct password; fallback to local postgres one.
+export const ROOT_DB_URL = process.env.DATABASE_URL?.includes('test_db')
+  ? process.env.DATABASE_URL
+  : (process.env.TEST_ADMIN_DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/test_db');
 
 // ── Honest-skip helper ────────────────────────────────────────────────
 // Used in `beforeEach` to mark a test as SKIPPED (not silently PASSED)

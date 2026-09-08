@@ -356,10 +356,9 @@ test('call-summaries-sad-missing-id: GET /call-summaries without customer_id ret
   let tenant: RegisteredTenant | null = null;
   try {
     tenant = await registerFreshTenant(request);
-    const res = await request.get(
-      `${BACKEND_URL}/call-summaries?tenant_id=${tenant.tenantId}`,
-      { headers: { Authorization: `Bearer ${tenant.token}` } }
-    );
+    const res = await request.get(`${BACKEND_URL}/call-summaries?tenant_id=${tenant.tenantId}`, {
+      headers: { Authorization: `Bearer ${tenant.token}` },
+    });
     expect(res.status()).toBe(400);
     const body = await res.json();
     expect(body.success).toBe(false);
@@ -495,9 +494,7 @@ test('analytics-cohorts-api: two calls from one phone surface as a repeat caller
     expect(typeof body.summary.repeat_callers).toBe('number');
 
     // The two same-caller calls collapse to one repeat caller with count 2.
-    const repeat = body.repeat_callers.find(
-      (r: { phone: string }) => r.phone === '6305559999'
-    );
+    const repeat = body.repeat_callers.find((r: { phone: string }) => r.phone === '6305559999');
     expect(repeat, 'the two same-phone calls must surface as one repeat caller').toBeTruthy();
     expect(repeat.call_count).toBe(2);
     expect(body.summary.repeat_callers).toBeGreaterThanOrEqual(1);

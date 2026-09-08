@@ -246,9 +246,7 @@ export default function AuditLogView() {
               const diff = changedFields(selected.old_data, selected.new_data);
               if (diff.length === 0) {
                 return (
-                  <p className="text-gray-500">
-                    No field-level changes recorded for this entry.
-                  </p>
+                  <p className="text-gray-500">No field-level changes recorded for this entry.</p>
                 );
               }
               return (

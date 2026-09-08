@@ -340,7 +340,10 @@ export default function RegisterPage() {
               </p>
             </div>
 
-            <label className="flex items-start gap-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <label
+              className="flex items-start gap-3 text-sm"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               <input
                 id="reg-agree"
                 type="checkbox"

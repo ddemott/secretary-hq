@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Plus,
-  Edit,
-  Trash2,
-  RotateCcw,
-  RefreshCw,
-  Merge,
-  Clock,
-} from 'lucide-react';
+import { Plus, Edit, Trash2, RotateCcw, RefreshCw, Merge, Clock } from 'lucide-react';
 import type { ChangeType, ChangeSource } from '../../lib/types';
 
 export function formatChangeSource(source: ChangeSource): string {

@@ -185,7 +185,12 @@ test('owner-config-happy: fresh tenant configures employee + shifts + service, t
     await expandWeeklyShifts(request, tenant.token, tenant.tenantId, empId, startDate);
 
     // 3. Create supporting service + resource
-    const _svcId = await createServiceViaApi(request, tenant.token, tenant.tenantId, 'New Test Service');
+    const _svcId = await createServiceViaApi(
+      request,
+      tenant.token,
+      tenant.tenantId,
+      'New Test Service'
+    );
     const resId = await createResourceViaApi(request, tenant.token, tenant.tenantId, 'New Bay');
 
     // 4. Book on the first Monday (covered 09:00-17:00) — guaranteed to be in the expanded window.
@@ -216,7 +221,10 @@ test('owner-config-happy: fresh tenant configures employee + shifts + service, t
     // Light UI smoke: the newly configured employee should be selectable in the scheduler
     // (this touches the surface owners actually use after configuring in My Team)
     await page.goto('/dashboard');
-    await page.getByRole('tab', { name: /^Schedule$/ }).first().click();
+    await page
+      .getByRole('tab', { name: /^Schedule$/ })
+      .first()
+      .click();
     // We don't do a full Quick Book flow here (that would duplicate other specs),
     // but we at least verify the scheduler loads without crashing after fresh config.
     await expect(page.getByTestId('scheduler-view')).toBeVisible({ timeout: 10000 });
@@ -247,7 +255,13 @@ test('owner-config-sad: booking against an employee with no shifts returns EMPLO
   try {
     tenant = await registerFreshTenant(request);
 
-    const empId = await createEmployeeViaApi(request, tenant.token, tenant.tenantId, 'No', 'Shifts');
+    const empId = await createEmployeeViaApi(
+      request,
+      tenant.token,
+      tenant.tenantId,
+      'No',
+      'Shifts'
+    );
 
     // Intentionally do NOT call expandWeeklyShifts
 
@@ -267,7 +281,7 @@ test('owner-config-sad: booking against an employee with no shifts returns EMPLO
       tenant_id: tenant.tenantId,
       // resource is optional in some paths; provide a dummy one that exists
       // by creating a minimal resource
-      resource_id: (await createResourceViaApi(request, tenant.token, tenant.tenantId, 'Dummy Bay')),
+      resource_id: await createResourceViaApi(request, tenant.token, tenant.tenantId, 'Dummy Bay'),
       customer_id: customerId,
       employee_id: empId,
       start_time: startTime,

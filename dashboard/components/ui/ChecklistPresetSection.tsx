@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { ListChecks } from 'lucide-react';
-import { Api } from '../lib/api';
+import { Api } from '../../lib/api';
 import type { Tenant } from '@/lib/types';
-import { deriveChecklistRuntimeConfig } from '../../shared/checklistPresetDerivation';
-import { MAX_WORDING_LENGTH } from '../../shared/checklistOverrides';
-import { PREVIEW_FIELD_DEFAULT_ASK, previewChecklistCall } from '../../shared/checklistPreview';
+import { deriveChecklistRuntimeConfig } from '../../../shared/checklistPresetDerivation';
+import { MAX_WORDING_LENGTH } from '../../../shared/checklistOverrides';
+import { PREVIEW_FIELD_DEFAULT_ASK, previewChecklistCall } from '../../../shared/checklistPreview';
 import {
   CHECKLIST_PRESET_IDS,
   CHECKLIST_PRESET_LABELS,
@@ -18,12 +18,12 @@ import {
   checklistPresetLabel,
   conversationBlockLabel,
   runtimeForTenant,
-} from '../lib/checklistPresets';
-import { Card } from './ui/Card';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Select } from './ui/Select';
-import { showToast } from './ui/Toast';
+} from '../../lib/checklistPresets';
+import { Card } from './Card';
+import { Button } from './Button';
+import { Input } from './Input';
+import { Select } from './Select';
+import { showToast } from './Toast';
 
 interface ChecklistPresetSectionProps {
   tenantId: string | null;

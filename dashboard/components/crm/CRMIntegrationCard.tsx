@@ -16,7 +16,11 @@ interface CRMProvider {
   disconnect: (tenantId: string | null) => Promise<{ success: boolean }>;
   triggerSync: (tenantId: string | null) => Promise<unknown>;
   connectedParam: string; // URL param to check (e.g. 'squareConnected')
-  getSyncStatus?: (tenantId: string | null) => Promise<{ pending_count?: number; error_count?: number; total_mapped?: number | { customers: number; appointments: number } } | null>;
+  getSyncStatus?: (tenantId: string | null) => Promise<{
+    pending_count?: number;
+    error_count?: number;
+    total_mapped?: number | { customers: number; appointments: number };
+  } | null>;
 }
 
 interface CRMIntegrationCardProps {
@@ -26,7 +30,11 @@ interface CRMIntegrationCardProps {
 
 export function CRMIntegrationCard({ provider, tenantId }: CRMIntegrationCardProps) {
   const [settings, setSettings] = useState<{ last_sync_at?: string } | null>(null);
-  const [syncStatus, setSyncStatus] = useState<{ pending_count?: number; error_count?: number; total_mapped?: number | { customers: number; appointments: number } } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    pending_count?: number;
+    error_count?: number;
+    total_mapped?: number | { customers: number; appointments: number };
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -191,16 +199,18 @@ export function CRMIntegrationCard({ provider, tenantId }: CRMIntegrationCardPro
                   ? `Last synced: ${new Date(settings.last_sync_at).toLocaleString('en-US', { hour12: true })}`
                   : 'Not yet synced'}
               </div>
-              {syncStatus && (syncStatus.pending_count != null || syncStatus.error_count != null) && (
-                <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  Sync health: {syncStatus.pending_count ?? 0} pending • {syncStatus.error_count ?? 0} errors
-                  {syncStatus.total_mapped != null
-                    ? typeof syncStatus.total_mapped === 'object'
-                      ? ` • ${syncStatus.total_mapped.customers + syncStatus.total_mapped.appointments} mapped`
-                      : ` • ${syncStatus.total_mapped} mapped`
-                    : ''}
-                </div>
-              )}
+              {syncStatus &&
+                (syncStatus.pending_count != null || syncStatus.error_count != null) && (
+                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Sync health: {syncStatus.pending_count ?? 0} pending •{' '}
+                    {syncStatus.error_count ?? 0} errors
+                    {syncStatus.total_mapped != null
+                      ? typeof syncStatus.total_mapped === 'object'
+                        ? ` • ${syncStatus.total_mapped.customers + syncStatus.total_mapped.appointments} mapped`
+                        : ` • ${syncStatus.total_mapped} mapped`
+                      : ''}
+                  </div>
+                )}
             </div>
           </div>
           <div className="flex items-center gap-2">

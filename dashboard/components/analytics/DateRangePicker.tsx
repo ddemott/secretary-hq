@@ -23,10 +23,7 @@ export function DateRangePicker({
 }: DateRangePickerProps) {
   return (
     <div className="flex flex-wrap items-end gap-3 mb-6">
-      <label
-        className="flex flex-col gap-1 text-xs"
-        style={{ color: 'var(--text-secondary)' }}
-      >
+      <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
         From
         <input
           type="date"
@@ -38,10 +35,7 @@ export function DateRangePicker({
           style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
         />
       </label>
-      <label
-        className="flex flex-col gap-1 text-xs"
-        style={{ color: 'var(--text-secondary)' }}
-      >
+      <label className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
         To
         <input
           type="date"

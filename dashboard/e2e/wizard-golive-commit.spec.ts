@@ -3,7 +3,7 @@
  * click-path (Phase B / PR D follow-up, 2026-07-06).
  *
  * Complements the unit-level "commits the draft graph exactly once" test
- * (SetupWizard.test.tsx, mocked fetch) with the real thing: drives the
+ * (SetupWizard/SetupWizard.test.tsx, mocked fetch) with the real thing: drives the
  * wizard's actual UI through to step 9, then asserts against the REAL
  * database (not the UI) that the whole draft graph actually landed — proving
  * the full chain (click → Api.setup.commit → POST /setup/commit →

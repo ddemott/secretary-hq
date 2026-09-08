@@ -455,7 +455,10 @@ test('edit appointment: time changes persist to DB through PUT /appointments', a
       `SELECT employee_id FROM employees WHERE tenant_id = $1 AND (is_deleted IS NULL OR is_deleted = false) LIMIT 1`,
       [freshTenant.tenantId]
     );
-    expect(employee.rowCount, 'at least one employee must exist in the test tenant').toBeGreaterThanOrEqual(1);
+    expect(
+      employee.rowCount,
+      'at least one employee must exist in the test tenant'
+    ).toBeGreaterThanOrEqual(1);
 
     // Insert (or upsert) the employee's shift covering the test slot.
     await pool.query(
@@ -526,7 +529,13 @@ test('edit appointment: time changes persist to DB through PUT /appointments', a
         });
         return { status: res.status, body: await res.json() };
       },
-      { token, id: apptId, tenantId: freshTenant.tenantId, startIso: newStart.toISOString(), backendUrl: BACKEND_URL }
+      {
+        token,
+        id: apptId,
+        tenantId: freshTenant.tenantId,
+        startIso: newStart.toISOString(),
+        backendUrl: BACKEND_URL,
+      }
     );
     expect(badResp.status, 'expected 400 from validator on end<=start').toBe(400);
     expect(String(badResp.body?.error || '')).toMatch(/End time must be after start time/i);
@@ -779,7 +788,9 @@ function generateTestSelfServiceToken(
   return `${h}.${p}.${sig}`;
 }
 
-test('self-service E2E: book → send links (API trigger) → customer uses cancel/reschedule public pages → negatives + double-use', async ({ page }) => {
+test('self-service E2E: book → send links (API trigger) → customer uses cancel/reschedule public pages → negatives + double-use', async ({
+  page,
+}) => {
   // WHO: owner + customer (via public token links from SMS or "Send Links" button)
   // WHAT: full journey: owner triggers send (or booking embeds links), customer loads public cancel/reschedule UI, acts, sees feedback; negatives show friendly errors; double-use is safe.
   // WHEN: after a scheduled booking with customer phone.
@@ -800,10 +811,9 @@ test('self-service E2E: book → send links (API trigger) → customer uses canc
     // uses it (or TELNYX_PHONE_NUMBER env) as the SMS "from" number; both from and to
     // must normalize + pass isValidPhone, else it 400s with "Invalid phone number".
     // Freshly registered e2e tenants don't have one set (provisioning normally does this).
-    await pool.query(
-      `UPDATE tenants SET inbound_phone = '+15551234567' WHERE tenant_id = $1`,
-      [tid]
-    );
+    await pool.query(`UPDATE tenants SET inbound_phone = '+15551234567' WHERE tenant_id = $1`, [
+      tid,
+    ]);
 
     // Seed supporting data (employee/resource/customer + shifts) so booking can succeed.
     // Use one UTC date string for BOTH the seeded shift and the booked time, and
@@ -839,16 +849,20 @@ test('self-service E2E: book → send links (API trigger) → customer uses canc
       description: 'Self-Service Test Booking',
     });
     expect(bookRes.status, 'booking for self-service E2E must succeed').toBe(200);
-    apptId = (bookRes.body as any).appointment_id || (bookRes.body as any).appointment?.appointment_id;
+    apptId =
+      (bookRes.body as any).appointment_id || (bookRes.body as any).appointment?.appointment_id;
     expect(apptId, 'expected appointment_id from book response').toBeTruthy();
 
     // 1. Owner "Send Links" trigger (the dashboard surface API; button in AppointmentDetailPanel calls exactly this).
     // Note: omit Content-Type (no JSON body for this endpoint). Including it with no body
     // causes Fastify's JSON parser to 400 "Invalid JSON". The dashboard apiMutate does
     // the same (deletes Content-Type when !body).
-    const sendRes = await apiCtx.post(`${BACKEND_URL}/appointments/${apptId}/send-self-service-links`, {
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const sendRes = await apiCtx.post(
+      `${BACKEND_URL}/appointments/${apptId}/send-self-service-links`,
+      {
+        headers: { Authorization: `Bearer ${tok}` },
+      }
+    );
     const sendBody = (await sendRes.json().catch(() => ({}))) as {
       success?: boolean;
       message?: string;
@@ -882,12 +896,17 @@ test('self-service E2E: book → send links (API trigger) → customer uses canc
 
     // 4. Customer cancel via public page (the link that would be in the SMS).
     await page.goto(`/self/cancel?token=${encodeURIComponent(cancelToken)}`);
-    await expect(page.getByText(/Are you sure you want to cancel your appointment/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Are you sure you want to cancel your appointment/i)).toBeVisible({
+      timeout: 10000,
+    });
     await page.getByRole('button', { name: /Yes, cancel my appointment/i }).click();
     await expect(page.getByText(/has been canceled/i)).toBeVisible();
 
     // Verify DB side-effect (status flipped by the token-gated route).
-    const afterCancel = await pool.query('SELECT status FROM appointments WHERE appointment_id = $1', [apptId]);
+    const afterCancel = await pool.query(
+      'SELECT status FROM appointments WHERE appointment_id = $1',
+      [apptId]
+    );
     expect(afterCancel.rows[0]?.status).toBe('canceled');
 
     // 5. Double-use (idempotent): reload the link (shows confirm UI again), click the action button a second time;

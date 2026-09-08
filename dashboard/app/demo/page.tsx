@@ -34,7 +34,7 @@ export default function DemoPage() {
           body: JSON.stringify({}),
         });
 
-        const data: DemoStartResponse = await res.json() as DemoStartResponse;
+        const data: DemoStartResponse = (await res.json()) as DemoStartResponse;
 
         if (cancelled) return;
 

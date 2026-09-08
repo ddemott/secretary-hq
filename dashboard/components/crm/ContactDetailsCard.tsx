@@ -62,10 +62,7 @@ export function ContactDetailsCard({
             </span>
           </div>
           <div className="mt-6 pt-6" style={{ borderTop: '1px solid var(--border-soft)' }}>
-            <p
-              className="text-xs font-bold uppercase mb-2"
-              style={{ color: 'var(--text-muted)' }}
-            >
+            <p className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
               Internal Notes
             </p>
             <p className="italic leading-relaxed" style={{ color: 'var(--text-secondary)' }}>

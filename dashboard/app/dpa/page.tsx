@@ -44,9 +44,8 @@ export default function DpaPage(): React.ReactElement {
           <Link className="text-sky-300 underline" href="/terms">
             Terms of Service
           </Link>{' '}
-          (the Main Agreement).
-          It applies when we Process Customer Personal Data for you. You agree by using the Cloud
-          Service or by signing an Order that references these pages.
+          (the Main Agreement). It applies when we Process Customer Personal Data for you. You agree
+          by using the Cloud Service or by signing an Order that references these pages.
         </p>
       </section>
 
@@ -69,7 +68,9 @@ export default function DpaPage(): React.ReactElement {
             </Link>
           </dd>
           <dt className="text-slate-400">DPA Effective Date</dt>
-          <dd>{LEGAL_EFFECTIVE}, or the date you first use the Cloud Service, whichever is later</dd>
+          <dd>
+            {LEGAL_EFFECTIVE}, or the date you first use the Cloud Service, whichever is later
+          </dd>
           <dt className="text-slate-400">Roles</dt>
           <dd>
             Customer is Controller (or a Processor for its own customers). Provider is Processor of
@@ -119,9 +120,9 @@ export default function DpaPage(): React.ReactElement {
       <section>
         <h2 className="text-xl font-semibold text-white">4. Subprocessor list</h2>
         <p className="mt-3">
-          We may use these subprocessors to Process Customer Personal Data. We will update this
-          list and give at least 30 days’ notice before a new subprocessor Processes Customer
-          Personal Data, as required by the Standard DPA.
+          We may use these subprocessors to Process Customer Personal Data. We will update this list
+          and give at least 30 days’ notice before a new subprocessor Processes Customer Personal
+          Data, as required by the Standard DPA.
         </p>
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li>Railway — application hosting (United States)</li>

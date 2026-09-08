@@ -264,6 +264,11 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
 ## 🟢 P2 — Quality, scale & ops visibility
 
 - [ ] **(code)** **Volume metering + tier cap enforcement** — do after first customer, once real usage data sets the bands. Data already exists (`voice_sessions` per tenant per month). Build: (1) monthly call counter endpoint; (2) per-plan limit config (Solo ~300–400 calls, Growth ~1,000, Pro unlimited); (3) dashboard usage meter + 80% warning banner; (4) soft cap enforcement. No Stripe Metered Billing needed — flat bands with a DB query. See pricing notes in §2 Billing above.
+- [ ] **(code)** **Three warnings the backend suite still prints on a fully green run.** None is a failure; all three are real and none should be read as noise-by-default.
+  1. **Vite `configLoader: 'native'`** — `vitest.config.ts` uses ESM syntax in a file loaded as CommonJS. `npm test` sets `VITE_CONFIG_NATIVE_IGNORE_WARNING=true`, which is Vite's OWN documented suppression (it prints the variable name in the warning), so the warning is hidden but the cause is not fixed. Native config loading is planned to become the default in a future Vite major, and on that day the suppression stops being enough. The actual fix is what the warning says: rename to `vitest.config.mts` or set `"type": "module"`. Verify by running any test WITHOUT the env var — the warning is still there.
+  2. **`vite:dynamic-import-vars`** on `tests/regression/type-safety.test.ts` — `import('../../src/routes/${mod}')` has no static file extension. Not suppressed by anything; fix the import shape in the test.
+  3. **`pg` `DeprecationWarning: Calling client.query() when the client is already executing a query`** — a real overlapping-query pattern in test helpers, and it is REMOVED in pg@9. This is a future break, not cosmetics.
+  (Also emitted, and correct: `ai_cost_model_unpriced` WARN rows for the fixture models `gpt-4o-mini-tts` / `grok-tts` / `gpt-9-imaginary`. That is the SAD path doing its job — leave it, or assert on it so it stops reading as a defect.)
 - [ ] **(Dale/code)** _(Optional)_ Repoint Railway `healthcheckPath` → `/ready` to gate deploy **promotion** on DB reachability (behavior change — could block promotion during a DB blip; your call).
 - [x] ~~**(Dale)** **Alert rules** — stand up a hosted monitoring destination~~ — **DROPPED 2026-07-09. No vendor meets the "really free forever" bar.** Researched rather than assumed:
   - **UptimeRobot free is not usable here at all** — since 2024-12-01 its ToS restricts the free plan to _personal, non-commercial_ use, explicitly prohibiting revenue-generating applications. SecretaryHQ is a paid SaaS.
@@ -352,7 +357,7 @@ Each screen below has had NO dedicated UX review (owner-judgment items). Most al
 
 ## 🧹 Doc hygiene (mechanical, ongoing — low priority)
 
-- [ ] Continue count-drift passes (route modules / migrations / test numbers) after any new route or migration; keep secondary docs synced. **2026-09-08 pass:** routes **32**; `supabase/migrations/` **192**; dashboard loose `.tsx` at `components/` is **38** (drifted back up from the **35** counted 2026-09-05 — new components landed since; open PR #402 `fix/test-db-bootstrap` already does a further round of the subdirectory migration, unmerged as of this pass).
+- [ ] Continue count-drift passes (route modules / migrations / test numbers) after any new route or migration; keep secondary docs synced. **2026-09-08 pass:** routes **32**; `supabase/migrations/` **192**; dashboard loose `.tsx` at `components/` is **35** (was **38** on `main` before PR #402 merged its further round of the subdirectory migration back down to 35).
 - [ ] Trim remaining historical narrative from active docs into `planning/RESOLVED.md` when it goes cold.
 
 ---

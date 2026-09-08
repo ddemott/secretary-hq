@@ -101,9 +101,7 @@ export function CallDetailPanel({ selectedCall, isOwner, onDeleteCall }: CallDet
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
               <span className="text-gray-500">Started</span>
-              <p className="font-medium">
-                {new Date(selectedCall.started_at).toLocaleString()}
-              </p>
+              <p className="font-medium">{new Date(selectedCall.started_at).toLocaleString()}</p>
             </div>
             <div>
               <span className="text-gray-500">Duration</span>
@@ -194,9 +192,7 @@ export function CallDetailPanel({ selectedCall, isOwner, onDeleteCall }: CallDet
                                 minute: '2-digit',
                               })}
                             </p>
-                            {apt.description && (
-                              <p className="text-gray-600">{apt.description}</p>
-                            )}
+                            {apt.description && <p className="text-gray-600">{apt.description}</p>}
                           </div>
                         ))}
                       </div>

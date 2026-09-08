@@ -37,11 +37,7 @@ export function useCustomerForm({
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const {
-    form: editForm,
-    setField,
-    setForm: setEditForm,
-  } = useFormState({ ...BLANK_FORM });
+  const { form: editForm, setField, setForm: setEditForm } = useFormState({ ...BLANK_FORM });
 
   // Populate form when selected customer changes; also reset edit/create modes.
   useEffect(() => {

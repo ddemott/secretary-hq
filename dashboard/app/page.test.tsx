@@ -162,4 +162,3 @@ describe('LandingPage legal footer', () => {
     expect(document.querySelector('footer a[href="/dpa"]')).toBeTruthy();
   });
 });
-

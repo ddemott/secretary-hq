@@ -56,7 +56,7 @@ export function CommsSentView({ tenantId }: { tenantId: string | null }) {
           offset: p * PAGE_SIZE,
         });
         if (res?.success) {
-          setRows((res.history ?? []));
+          setRows(res.history ?? []);
           setTotal(res.total ?? 0);
         } else {
           setError('Failed to load sent messages.');

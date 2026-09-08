@@ -38,7 +38,9 @@ export function LegalDocLayout(props: {
         <h1 className="mt-3 text-4xl font-semibold tracking-tight">{props.title}</h1>
         <p className="mt-3 text-slate-300">{props.subtitle}</p>
         <p className="mt-2 text-sm text-slate-400">Effective {LEGAL_EFFECTIVE}.</p>
-        <div className="legal-prose mt-10 space-y-6 text-[15px] leading-7 text-slate-200">{props.children}</div>
+        <div className="legal-prose mt-10 space-y-6 text-[15px] leading-7 text-slate-200">
+          {props.children}
+        </div>
       </main>
       <footer className="border-t border-white/10 py-8 text-center text-sm text-slate-400">
         <p>
@@ -55,10 +57,10 @@ export function LegalDocLayout(props: {
 export function LegalNotice(): ReactElement {
   return (
     <aside className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
-      These pages implement published, lawyer-committee templates (Bonterms Standard
-      Agreements, CC BY 4.0) plus a privacy notice written for this product. They are{' '}
-      <strong>not a substitute for advice from your own lawyer</strong>. Bonterms is
-      not a party to your agreement with us.
+      These pages implement published, lawyer-committee templates (Bonterms Standard Agreements, CC
+      BY 4.0) plus a privacy notice written for this product. They are{' '}
+      <strong>not a substitute for advice from your own lawyer</strong>. Bonterms is not a party to
+      your agreement with us.
     </aside>
   );
 }

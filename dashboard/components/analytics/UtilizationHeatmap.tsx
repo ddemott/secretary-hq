@@ -201,8 +201,7 @@ function HeatmapGrid({ cells }: { cells: UtilizationCell[] }) {
                   />
                 );
               }
-              const pct =
-                cell.utilization === null ? 0 : Math.round(cell.utilization * 100);
+              const pct = cell.utilization === null ? 0 : Math.round(cell.utilization * 100);
               const label = `${dayFull} ${formatHour(hour)} — ${pct}% booked (${cell.booked_minutes} of ${cell.staffed_minutes} staffed minutes)`;
               return (
                 <div

@@ -52,10 +52,7 @@ export interface Tenant {
   name: string;
   business_type: string;
   checklist_preset_id?:
-    | 'auto_shop_front_desk'
-    | 'salon_front_desk'
-    | 'local_service_front_desk'
-    | null;
+    'auto_shop_front_desk' | 'salon_front_desk' | 'local_service_front_desk' | null;
   checklist_overrides?: {
     disabled_conversation_blocks?: string[];
     booking_mode?: 'offer_once' | 'prefer' | 'never';
@@ -542,12 +539,7 @@ export type ChangeType = 'create' | 'update' | 'delete' | 'restore' | 'sync' | '
 export type ChangeSource = 'local' | 'square' | 'voice_call' | 'system' | 'api';
 
 export type VersionedTable =
-  | 'customers'
-  | 'appointments'
-  | 'voice_sessions'
-  | 'employees'
-  | 'services'
-  | 'resources';
+  'customers' | 'appointments' | 'voice_sessions' | 'employees' | 'services' | 'resources';
 
 export interface RecordVersion {
   record_version_id: string;

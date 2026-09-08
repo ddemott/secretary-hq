@@ -87,8 +87,16 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     setLoadError(null);
     const todayDate = new Date();
     // Use local midnight as ISO so Postgres TIMESTAMPTZ >= comparison is timezone-correct.
-    const startOfToday = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
-    const endOfWindow = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() + 8);
+    const startOfToday = new Date(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate()
+    );
+    const endOfWindow = new Date(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate() + 8
+    );
 
     const results = await Promise.allSettled([
       Api.appointments.list(tenantId, {
@@ -117,7 +125,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     setResources(resR.status === 'fulfilled' && Array.isArray(resR.value) ? resR.value : []);
     setCustomers(custR.status === 'fulfilled' && Array.isArray(custR.value) ? custR.value : []);
     if (configR.status === 'fulfilled') {
-      setTenantPhone((configR.value)?.inbound_phone ?? null);
+      setTenantPhone(configR.value?.inbound_phone ?? null);
     }
     if (statsR.status === 'fulfilled' && statsR.value) {
       setAnalyticsStats(statsR.value);
@@ -268,16 +276,22 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         />
       )}
       {stage === 'wizard' && mode === 'solo' && (
-        <SoloWizard isOpen={true} onClose={handleCloseWizard} onBackToPicker={transitions.backToPicker} />
+        <SoloWizard
+          isOpen={true}
+          onClose={handleCloseWizard}
+          onBackToPicker={transitions.backToPicker}
+        />
       )}
       {stage === 'wizard' && mode === 'team' && (
-        <SetupWizard isOpen={true} onClose={handleCloseWizard} onBackToPicker={transitions.backToPicker} />
+        <SetupWizard
+          isOpen={true}
+          onClose={handleCloseWizard}
+          onBackToPicker={transitions.backToPicker}
+        />
       )}
 
       {/* AI Receptionist status */}
-      {!needsSetup && (
-        <HomeAiStatus tenantPhone={tenantPhone} onNavigate={onNavigate} />
-      )}
+      {!needsSetup && <HomeAiStatus tenantPhone={tenantPhone} onNavigate={onNavigate} />}
 
       {/* Analytics top-line snapshot */}
       {analyticsStats && <HomeAnalyticsBar stats={analyticsStats} />}

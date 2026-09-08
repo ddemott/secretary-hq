@@ -5,7 +5,7 @@ import { Settings, ArrowRight } from 'lucide-react';
 import { Api } from '../lib/api';
 import { CRMIntegrationCard } from './crm/CRMIntegrationCard';
 import BusinessTypeSection from './BusinessTypeSection';
-import ChecklistPresetSection from './ChecklistPresetSection';
+import ChecklistPresetSection from './ui/ChecklistPresetSection';
 import { useStaticData } from '../lib/hooks';
 import { useActiveTenantId } from '../lib/SessionContext';
 import { useVocabulary, useVocabularyRefresh } from '@/lib/VocabularyContext';
