@@ -51,10 +51,7 @@ import {
 
 let pool: Pool;
 
-async function getCustomerNotes(
-  tenantId: string,
-  customerId: string
-): Promise<string | null> {
+async function getCustomerNotes(tenantId: string, customerId: string): Promise<string | null> {
   const r = await pool.query(
     `SELECT metadata->>'notes' AS notes
        FROM customers
@@ -115,7 +112,12 @@ test('customer-notes-happy: setting notes via the update payload the UI uses sto
 
   try {
     tenant = await registerFreshTenant(request);
-    customerId = await createCustomerAs(request, tenant.token, tenant.tenantId, 'Note Test Customer');
+    customerId = await createCustomerAs(
+      request,
+      tenant.token,
+      tenant.tenantId,
+      'Note Test Customer'
+    );
 
     const noteText = 'VIP client — prefers morning appointments and always wants the same bay.';
 
@@ -157,10 +159,21 @@ test('customer-notes-sad: empty note does not crash and results in empty or null
 
   try {
     tenant = await registerFreshTenant(request);
-    customerId = await createCustomerAs(request, tenant.token, tenant.tenantId, 'Empty Note Customer');
+    customerId = await createCustomerAs(
+      request,
+      tenant.token,
+      tenant.tenantId,
+      'Empty Note Customer'
+    );
 
     // First set a real note
-    await updateCustomerNotesViaApi(request, tenant.token, tenant.tenantId, customerId, 'initial note');
+    await updateCustomerNotesViaApi(
+      request,
+      tenant.token,
+      tenant.tenantId,
+      customerId,
+      'initial note'
+    );
 
     // Now clear it (the UI will send empty string)
     const clearRes = await updateCustomerNotesViaApi(
@@ -205,7 +218,7 @@ test('customer-notes-ui-visibility: notes created via API are visible in the Cus
   // exercising the real rendered UI.
   const BELLA_TENANT_ID = 'b3e1aaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
   const ADMIN_EMAIL = 'bella@bellashair.com';
-  const ADMIN_PASSWORD = 'password';
+  const ADMIN_PASSWORD = 'p@ssw0rd';
 
   // Create a customer with a note directly in the DB for this UI smoke
   // (fast and avoids any auth complexity for the test customer).

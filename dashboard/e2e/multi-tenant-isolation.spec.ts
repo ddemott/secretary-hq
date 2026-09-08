@@ -266,7 +266,7 @@ test('isolation: super-admin CAN read across tenants (positive control)', async 
   //        UI. This positive control catches over-correction. Without it,
   //        a refactor that hardens the gate could lock the admin out and
   //        we'd only find out at the next browser session.
-  const auth = await loginAs(page, 'admin@secretaryhq.com', 'password');
+  const auth = await loginAs(page, 'admin@secretaryhq.com', 'p@ssw0rd');
   expect(auth.tenant_id).toBe(SUPER_ADMIN_ID);
 
   // GET /tenants must succeed for super-admin.
