@@ -201,6 +201,36 @@ export function createWithTenantClient(pool: Pool): WithTenantClient {
  * Session-level (`is_local = false`) so it works whether or not the caller has
  * a transaction open; the restore in `finally` is what bounds it.
  */
+/**
+ * Run queries that share ONE pg client one after another.
+ *
+ * `await Promise.all([client.query(a), client.query(b)])` looks concurrent and is
+ * not: node-postgres serialises statements on a single client anyway, so the only
+ * thing the array literal buys is starting every query before the first has
+ * finished — which is exactly the state pg warns about,
+ *
+ *     DeprecationWarning: Calling client.query() when the client is already
+ *     executing a query is deprecated and will be removed in pg@9.
+ *
+ * Passing THUNKS instead of promises is the whole point: `() => client.query(...)`
+ * is not started until its turn, so nothing overlaps. They are REST parameters, not
+ * an array, because that is what makes TypeScript infer a tuple and give each
+ * destructured result its own row type instead of a union of all of them. Wall-clock is unchanged
+ * because there was never any real parallelism to lose. Giving each query its own
+ * pooled client WOULD be concurrent, but every one of them would need the tenant
+ * GUC set again, and a request that checks out five connections to render one
+ * dashboard panel is a worse trade than a few serial round-trips.
+ */
+export async function queryInSeries<T extends readonly (() => Promise<unknown>)[]>(
+  ...thunks: T
+): Promise<{ -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+  const results: unknown[] = [];
+  for (const thunk of thunks) {
+    results.push(await thunk());
+  }
+  return results as { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> };
+}
+
 export async function withTenantContext<T>(
   client: PoolClient,
   tenantId: string,

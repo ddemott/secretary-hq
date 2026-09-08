@@ -8,6 +8,7 @@ import {
   withPoolClient,
   type AppRequest,
 } from '../middleware/fastify-middleware';
+import { queryInSeries } from '../database/index';
 import { parseDateRange } from './routeHelpers';
 import { getAiCostBreakdown } from '../services/analytics/aiCost';
 import { getCohortAnalytics } from '../services/analytics/cohorts';
@@ -37,31 +38,35 @@ export function registerAnalyticsRoutes(
       if (!tenantId) return;
 
       const stats = await withTenantClient(tenantId, async (client) => {
-        const [calls, appts, custs, activity] = await Promise.all([
-          client.query<{ total: number; today: number; week: number }>(
-            `SELECT count(*)::int AS total,
+        const [calls, appts, custs, activity] = await queryInSeries(
+          () =>
+            client.query<{ total: number; today: number; week: number }>(
+              `SELECT count(*)::int AS total,
                     count(*) FILTER (WHERE started_at >= date_trunc('day', now()))::int AS today,
                     count(*) FILTER (WHERE started_at >= now() - interval '7 days')::int AS week
              FROM voice_sessions WHERE tenant_id = $1 AND is_deleted = false`,
-            [tenantId]
-          ),
-          client.query<{ total: number; today: number; week: number; upcoming: number }>(
-            `SELECT count(*)::int AS total,
+              [tenantId]
+            ),
+          () =>
+            client.query<{ total: number; today: number; week: number; upcoming: number }>(
+              `SELECT count(*)::int AS total,
                     count(*) FILTER (WHERE start_time >= date_trunc('day', now())
                                        AND start_time < date_trunc('day', now()) + interval '1 day')::int AS today,
                     count(*) FILTER (WHERE start_time >= now() - interval '7 days')::int AS week,
                     count(*) FILTER (WHERE start_time >= now())::int AS upcoming
              FROM appointments WHERE tenant_id = $1 AND is_deleted = false`,
-            [tenantId]
-          ),
-          client.query<{ total: number; new_this_week: number }>(
-            `SELECT count(*)::int AS total,
+              [tenantId]
+            ),
+          () =>
+            client.query<{ total: number; new_this_week: number }>(
+              `SELECT count(*)::int AS total,
                     count(*) FILTER (WHERE created_at >= now() - interval '7 days')::int AS new_this_week
              FROM customers WHERE tenant_id = $1 AND is_deleted = false`,
-            [tenantId]
-          ),
-          client.query<{ type: string; description: string; timestamp: string }>(
-            `(SELECT 'appointment' AS type,
+              [tenantId]
+            ),
+          () =>
+            client.query<{ type: string; description: string; timestamp: string }>(
+              `(SELECT 'appointment' AS type,
                      'Appointment booked: ' || coalesce(description, 'appointment') AS description,
                      created_at AS timestamp
               FROM appointments WHERE tenant_id = $1 AND is_deleted = false
@@ -75,9 +80,9 @@ export function registerAnalyticsRoutes(
               FROM customers WHERE tenant_id = $1 AND is_deleted = false
               ORDER BY created_at DESC LIMIT 10)
              ORDER BY timestamp DESC LIMIT 15`,
-            [tenantId]
-          ),
-        ]);
+              [tenantId]
+            )
+        );
 
         return {
           calls: calls.rows[0] ?? { total: 0, today: 0, week: 0 },
@@ -110,11 +115,12 @@ export function registerAnalyticsRoutes(
       const { start, end } = optionalDateBounds(req.query as Record<string, string>);
 
       const data = await withTenantClient(tenantId, async (client) => {
-        const [byOutcome, byDay, totals] = await Promise.all([
+        const [byOutcome, byDay, totals] = await queryInSeries(
           // Outcome breakdown — powers Conversion, Abandonment, and the WHY cut.
           // NULL/empty outcome collapses to 'no_outcome' (an abandoned/unclassified call).
-          client.query<{ outcome: string; count: number; booked: number }>(
-            `SELECT coalesce(nullif(outcome, ''), 'no_outcome') AS outcome,
+          () =>
+            client.query<{ outcome: string; count: number; booked: number }>(
+              `SELECT coalesce(nullif(outcome, ''), 'no_outcome') AS outcome,
                     count(*)::int AS count,
                     count(*) FILTER (WHERE appointment_id IS NOT NULL)::int AS booked
              FROM voice_sessions
@@ -123,12 +129,13 @@ export function registerAnalyticsRoutes(
                AND ($3::date IS NULL OR started_at < ($3::date + interval '1 day'))
              GROUP BY 1
              ORDER BY count DESC`,
-            [tenantId, start, end]
-          ),
+              [tenantId, start, end]
+            ),
           // Per-day call volume, with booked count. Lower bound: the supplied
           // start, else the last 30 days. Upper bound: the supplied end (inclusive).
-          client.query<{ day: string; total: number; booked: number }>(
-            `SELECT to_char(date_trunc('day', started_at), 'YYYY-MM-DD') AS day,
+          () =>
+            client.query<{ day: string; total: number; booked: number }>(
+              `SELECT to_char(date_trunc('day', started_at), 'YYYY-MM-DD') AS day,
                     count(*)::int AS total,
                     count(*) FILTER (WHERE appointment_id IS NOT NULL)::int AS booked
              FROM voice_sessions
@@ -137,11 +144,12 @@ export function registerAnalyticsRoutes(
                AND ($3::date IS NULL OR started_at < ($3::date + interval '1 day'))
              GROUP BY 1
              ORDER BY 1 ASC`,
-            [tenantId, start, end]
-          ),
+              [tenantId, start, end]
+            ),
           // Top-line totals so the dashboard never has to re-derive the denominator.
-          client.query<{ total: number; booked: number; abandoned: number }>(
-            `SELECT count(*)::int AS total,
+          () =>
+            client.query<{ total: number; booked: number; abandoned: number }>(
+              `SELECT count(*)::int AS total,
                     count(*) FILTER (WHERE appointment_id IS NOT NULL)::int AS booked,
                     count(*) FILTER (WHERE appointment_id IS NULL
                                        AND coalesce(nullif(outcome, ''), 'no_outcome') = 'no_outcome')::int AS abandoned
@@ -149,9 +157,9 @@ export function registerAnalyticsRoutes(
              WHERE tenant_id = $1 AND is_deleted = false
                AND ($2::date IS NULL OR started_at >= $2::date)
                AND ($3::date IS NULL OR started_at < ($3::date + interval '1 day'))`,
-            [tenantId, start, end]
-          ),
-        ]);
+              [tenantId, start, end]
+            )
+        );
 
         return {
           totals: totals.rows[0] ?? { total: 0, booked: 0, abandoned: 0 },

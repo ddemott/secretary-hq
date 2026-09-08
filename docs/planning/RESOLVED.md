@@ -4,6 +4,53 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-08 — The three warnings the suite printed on every green run, and the pg@9 break hiding in one of them
+
+**The third one was production code with a real expiry date.** `/analytics/stats`,
+`/analytics/calls` and `getCohortAnalytics` each ran
+`await Promise.all([client.query(…), client.query(…), …])` against ONE pooled
+client. node-postgres serialises statements on a single client no matter how they
+are launched, so `Promise.all` bought **no concurrency at all** — it only started
+each query before the previous one finished, which is precisely what pg deprecates
+and **removes in pg@9**. `cohorts.ts`'s own header asserted the opposite ("six
+queries run concurrently through Promise.all — running them in sequence would
+multiply one round trip by six"); that was never true, and a comment that confidently
+explains a benefit which does not exist is worse than no comment, because it argues
+against the fix. All three now use `queryInSeries(...)` (`src/database/index.ts`),
+which takes THUNKS so nothing starts out of turn, and takes them as REST parameters
+so TypeScript still infers a tuple and each destructured result keeps its own row
+type instead of collapsing to a union of all of them.
+
+Guarded by `tests/regression/singleClientQueryOverlap.test.ts`: a source scan over
+`src/**` (comments stripped — the first version flagged the doc comment on
+`queryInSeries` itself, which quotes the bad pattern in order to explain it) plus an
+ordering assertion on the helper with the SLOW thunk first, so a helper that
+secretly parallelised would fail. Red-green proven: a probe file carrying the old
+pattern fails the guard by name; deleting it passes.
+
+**The other two were the reason nobody looked.** `vitest.config.ts` → `.mts` (what
+the warning asked for), and `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` removed from
+`npm test` — it was hiding the warning, not fixing it, and native config loading is
+scheduled to become Vite's default. The rename broke
+`tests/services/deadlock-prevention.test.ts`, which read the config off disk BY NAME
+— the same off-disk coupling CLAUDE.md flags for `available-slots.test.ts`; it now
+discovers the file, because the assertion is about `fileParallelism: false` and not
+about an extension, while an absent config still fails loudly.
+`tests/regression/type-safety.test.ts` gained the `.ts` suffix its dynamic import
+pattern needs for `vite:dynamic-import-vars`.
+
+**Acceptance, with nothing suppressed:** `npm run checks` exit 0;
+`npm test` → **3,031 passing (255 files)**; `configLoader` 0, `DeprecationWarning` 0,
+`dynamic-import-vars` 0 across the whole run. `ai_cost_model_unpriced` x4 remains and
+should — that is the SAD path doing its job on fixture models with no price entry.
+
+**The lesson worth keeping:** a warning that prints on every green run stops being
+read, and the suppression that quiets it converts "we know about this" into "nobody
+will ever look again". One of these three was a scheduled outage in the analytics
+endpoints, sitting in the output everyone had learned to scroll past.
+
+---
+
 ## 2026-09-08 — PR #402: one bootstrap path for the local test DB, and three docs that were lying
 
 Merged as `58d5c68`. Prod deploy verified rather than assumed: backend `/health`

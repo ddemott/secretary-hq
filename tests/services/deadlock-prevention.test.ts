@@ -184,17 +184,26 @@ describe('Deadlock Prevention: Consistent Lock Ordering', () => {
   );
 
   it('HAPPY: vitest config enforces sequential file execution', () => {
-    // WHO: the vitest test runner executing all 78 test files
-    // WHAT: vitest.config.ts sets fileParallelism: false
+    // WHO: the vitest test runner executing every backend test file
+    // WHAT: the root vitest config sets fileParallelism: false
     // WHEN: npx vitest run (any invocation, not just npm test)
-    // WHERE: vitest.config.ts test.fileParallelism setting
+    // WHERE: vitest.config.* at the repo root, test.fileParallelism
     // WHY: parallel file execution caused 128 test failures due to deadlocks (40P01).
     //      Test files use TRUNCATE (AccessExclusiveLock) and transactions (RowShareLock).
     //      When two files run simultaneously, File A's TRUNCATE blocks on File B's row locks,
     //      while File B's TRUNCATE blocks on File A's row locks → circular wait → deadlock.
     //      Sequential execution ensures each file completes cleanup before the next starts.
+    //
+    // The filename is DISCOVERED, not hardcoded. This assertion is about the setting,
+    // not the extension, and it has already been broken once by a legitimate rename
+    // (.ts → .mts, to stop Vite loading an ESM config as CommonJS). Resolving the file
+    // means the next rename does not turn a real guarantee into a red test — but an
+    // ABSENT config still fails loudly, which is the case actually worth catching.
     const fs = require('fs');
-    const config = fs.readFileSync('vitest.config.ts', 'utf8');
+    const candidates = ['vitest.config.mts', 'vitest.config.ts', 'vitest.config.mjs'];
+    const found = candidates.find((f) => fs.existsSync(f));
+    expect(found, `no root vitest config found (looked for ${candidates.join(', ')})`).toBeDefined();
+    const config = fs.readFileSync(found, 'utf8');
     expect(config).toContain('fileParallelism: false');
   });
 });
