@@ -2,7 +2,38 @@
 
 Read this first after session reset.
 
-_Updated 2026-09-04 — newest section is the branch-merge queue below; older handoffs follow._
+_Updated 2026-09-08 — newest section first; older handoffs follow._
+
+## 2026-09-08 — PR #402 merged; no open PRs, no branches but `main`
+
+`git ls-remote --heads origin` shows **only `main`**. `gh pr list` is empty. The one
+branch that was in flight, `fix/test-db-bootstrap` (#402), is merged as `58d5c68` and
+purged local + remote.
+
+**Deploy verified, not assumed.** Backend `/health` `started_at` moved
+`2026-09-08T06:00:29Z` → `18:32:34Z`; `npm run status -- --env prod` reported 4/4
+core checks including a deep LiveKit dispatch to the agent worker. `main` CI went
+green on the merge commit, so nothing was marked SKIPPED.
+
+**Local suites, measured today, all green:** backend `npm test` **3,029** (254
+files), dashboard **1,069** (99), agent **981** (60). `npm run checks` clean across
+backend / agent / dashboard. `npm run verify:claude-md` clean.
+
+**Start the local test DB with `npm run test-db:start`.** One compose file, one
+container (`secretary-hq-db`, ankane/pgvector), one port (5433). If you have another
+project's container on 5433, stop it first — and know that a container which lost the
+port race can sit `Up (healthy)` with **no published port at all**, passing every
+in-container health check while nothing on the host can reach it. The script now
+detects that and recreates; the full write-up is in `docs/planning/RESOLVED.md`
+(2026-09-08).
+
+**What is next is not code.** The top of `docs/planning/TODO.md` is Dale-owned and
+has been for a while: the live validation call from a different carrier (booking +
+transfer + preference legs), the `pin-owner-for-hire-preset.sql` run against prod
+followed by a test call that lands a `job_inquiries` row, the two credential
+rotations, and the Stripe test-mode wiring — none of which a session can close.
+
+---
 
 ## 2026-09-04 — The branch-merge queue is CLOSED
 

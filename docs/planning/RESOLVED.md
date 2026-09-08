@@ -4,6 +4,72 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-08 — PR #402: one bootstrap path for the local test DB, and three docs that were lying
+
+Merged as `58d5c68`. Prod deploy verified rather than assumed: backend `/health`
+`started_at` moved `2026-09-08T06:00:29Z` → `18:32:34Z`, `npm run status --env prod`
+reported 4/4 including a deep LiveKit dispatch to the agent worker.
+
+**What it delivers.** `scripts/start-test-db.sh` (`npm run test-db:start`) is the one
+entry point: bring up the canonical compose `db` service (ankane/pgvector, container
+`secretary-hq-db`, port 5433), prove a connection **from the host**, then run
+`scripts/setup-test-db.ts` for `test_db` + migrations + the `app_user` role. That
+closes the 2026-08-18 blocker in which the root suite reported 9 failures because
+`tests/regression/rlsIsolation.test.ts` could not reach `test_db` as `app_user`.
+
+**The bug the script itself had, found by running it.** `secretary-hq-db` reported
+`Up (healthy)` with `NetworkSettings.Ports` **empty** — the state a container is left
+in by being started while something else holds 5433. `docker compose up -d db`
+*starts* such a container rather than recreating it, so it inherits the broken state,
+and `pg_isready` through `docker compose exec` passed the whole time because the
+server really was up **inside** the container. `psql -h localhost -p 5433` said
+`Connection refused`. The rule this encodes: **the tests run on the host, so the host
+is where readiness has to be proven** — an in-container health check answers a
+different question than the one being asked. The script now polls a real host
+connection, recovers an unpublished port with one `--force-recreate`, and exits
+non-zero naming the cause otherwise. Verified end to end afterwards: 192 migrations,
+`app_user` with NOBYPASSRLS, verification passed; then `rlsIsolation` +
+`rlsAppWritePaths.realdb` + `reminderClaimRealDb` against the fresh `test_db` → 19
+passed.
+
+**A second bootstrap on the same port, removed.** `dashboard/docker-compose.test.yml`
+declared its own `db` on 5433 with a different image (`pgvector/pgvector:pg15`) and a
+different volume, and `dashboard/scripts/start-test-db.sh` was a fork of the root
+script hardcoding `/home/dale/projects/secretary-hq/dashboard/node_modules/pg`. Two
+composes fighting for one port is two databases, and a bootstrap against the wrong
+one looks like it worked — this repo has already lost a schema to that exact shape
+(honcho on 5433, 2026-08-05). Nothing referenced either file.
+
+**A second backlog, removed.** `dashboard/docs/planning/{TODO,RESOLVED,TEST_DB_AUDIT}.md`
+plus `dashboard/docs/DIRECTORY_STRUCTURE.md` had grown a parallel "Pepper
+Documentation Backlog" next to the file whose first line is "This is the one and only
+backlog", and a TEST_DB_AUDIT that contradicted the root one about the container name.
+
+**Two documents restored after being pruned as hindsight.**
+`tests/regression/rlsAppWritePaths.realdb.test.ts` had lost the 27-line header
+recording the 2026-07-27 incident (`POST /demo/start` 500ing on `tenant_skills` the
+moment the role stopped bypassing RLS) and gained the word "Honcho" — a different
+project, and its only occurrence anywhere in this repo. `docs/planning/TEST_DB_AUDIT.md`
+had been overwritten with a bootstrap how-to, destroying the HIGH/MED real-SQL
+coverage map, the five bugs that audit surfaced, and the standing rule for new
+dynamic SQL; the how-to that replaced it already lived in root
+`DEVELOPMENT_WORKFLOW.md`.
+
+**A correction made inside the branch's own history, recorded because the mistake is
+the instructive part.** An earlier commit removed `VITE_CONFIG_NATIVE_IGNORE_WARNING`
+from `npm test`, calling it a no-op with an invented name — reasoning from the
+warning's *absence* in a run where the variable was doing its job. Vite prints that
+exact variable name inside the warning; running the suite without it showed the
+warning immediately. Restored, and `docs/planning/TODO.md` P2 now says the true
+thing: the warning is **suppressed, not fixed**, the cause is ESM syntax in a
+CommonJS-loaded `vitest.config.ts`, and native config loading becoming Vite's default
+is the day suppression stops being enough.
+
+**CLAUDE.md** had nine doc paths left dangling by the #401 reorg and a Project Status
+paragraph still reporting the failures this branch fixes. Re-measured 2026-09-08:
+backend **3,029** passing (254 files), dashboard **1,069** (99), agent **981** (60),
+32 route modules, 192 migrations, 40 e2e specs, `verify:claude-md` clean.
+
 ## 2026-07-13 (re-verified 2026-08-21) — Code review four-reviewer sweep (backend, security, reliability, dead code)
 
 Moved here from `docs/planning/TODO.md` §4b 2026-09-08 (doc-hygiene trim — every item in this section was `[x]` done, none open). Kept verbatim including the self-corrections and re-audit notes, because the corrections are as instructive as the findings.
