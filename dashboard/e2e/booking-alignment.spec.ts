@@ -30,7 +30,7 @@ import { registerFreshTenant, cleanTenantData, BACKEND_URL } from './helpers/fix
 
 const PG_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/postgres';
 const ADMIN_EMAIL = 'admin@secretaryhq.com';
-const ADMIN_PASSWORD = 'password';
+const ADMIN_PASSWORD = 'p@ssw0rd';
 
 let pool: Pool;
 
