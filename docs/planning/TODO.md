@@ -69,7 +69,7 @@ turned `main` red on `2aa61d4`.
       asserting the machine's speed, not the code's behaviour.**
 - [x] **THE FOURTH ONE ARRIVED (2026-09-03), and it is the same shape.**
       `tests/services/deadlock-prevention.test.ts > clearDB truncates all tables
-    in a single statement` timed out on PR #394's Backend job at **5,004 ms
+in a single statement` timed out on PR #394's Backend job at **5,004 ms
       against vitest's default 5,000 ms budget** — a four-millisecond miss on a
       test that does a real `TRUNCATE ... CASCADE` over every seeded table. It
       passes locally in ~3 s and had never failed before. The prediction in the
@@ -84,33 +84,8 @@ turned `main` red on `2aa61d4`.
       I/O under vitest's 5 s default is a deploy outage waiting for a busy
       runner.** The next one gets a budget at the time it is written, not after
       it reddens `main`.
-- [ ] **Dashboard flake, not yet diagnosed** —
-      `SetupWizard.test.tsx > shows success state with phone number after activation`.
-      Failed once on 2026-08-20 (#362's run) and passes locally in isolation; took 1,115 ms on
-      the CI runner. Not patched — one occurrence is not a diagnosis, and
-      guessing at a fix for a timing-sensitive React test usually produces a
-      test that passes for a new wrong reason. Recorded so the second occurrence
-      is recognized as a pattern rather than investigated from scratch.
-- [ ] **`customer-preferences-config.spec.ts` — root cause NOT yet proven.** It
-      has now failed twice on 2026-08-20, on two different PRs, always the same
-      way: the save succeeds, the toggle persists (`aria-checked=true` passes),
-      and the guidance textarea comes back **empty** after the reload. Serial
-      execution (`workers: 1`, `fullyParallel: false`) rules out cross-spec
-      interference, and the backend merge semantics are correct
-      (`body.preferences_instructions !== undefined ? … : prior`), so the two
-      obvious explanations are already eliminated. **Not blind-patched.** What
-      shipped instead makes the next occurrence diagnostic: the test now waits on
-      the actual `update-config` RESPONSE rather than the "Saved!" label, and
-      then asserts the value is IN POSTGRES before reloading — so a failure
-      before the reload is a write bug and a failure after it is a read/render
-      bug, which the previous version could not distinguish. If it recurs, read
-      which assertion failed first.
-  - **Also fixed here, and it was a real landmine:** the spec's `afterAll` ran
-    `UPDATE tenants SET save_preferences_enabled = false, preferences_instructions = NULL`
-    with **no WHERE clause** — resetting every tenant in the database. Harmless
-    only because `workers: 1` pins serial execution; the day anyone raises that
-    for speed it becomes cross-spec corruption presenting as a flake somewhere
-    else entirely. Now scoped to the one tenant the spec edits.
+- [x] ~~**Dashboard flake, not yet diagnosed** — `SetupWizard.test.tsx > shows success state with phone number after activation`~~ — **FIXED 2026-09-03, PR #391 (`2ab4363`, T-007). This entry had gone stale — it sat unmarked for two weeks after its own fix shipped.** Root cause: Testing Library's `waitFor` defaults to a 1000ms ceiling; CI run `33249344101` (2026-08-29) failed at 1110ms because the runner was slow, not because the component was wrong. Fixed once, centrally, with `configure({ asyncUtilTimeout })` in `dashboard/vitest.setup.ts` (a ceiling that threatened every async dashboard test, not just this one). Acceptance was 20/20 local runs. **Re-verified here 2026-09-08**: `npx vitest run components/SetupWizard.test.tsx -t "shows success state with phone number after activation"` → 1 passed.
+- [x] ~~**`customer-preferences-config.spec.ts` — root cause NOT yet proven.**~~ — **FIXED 2026-09-03, same PR #391 (`2ab4363`, T-007) as the item above. Also stale.** Root cause was NOT timing: a wrong-tenant-row bug. `useActiveTenantId()` falls back to `useSuperAdminTenants`'s auto-selected `tenantsArray[0]` when a super-admin session has no `managedTenantId` yet, and the spec's save landed on tenant `d5e3c6a1…` (Thinking Hammer) while its reset/assert targeted `00000000…` (platform) — which was still NULL, read as "textarea comes back empty." The unqualified `UPDATE tenants SET … ` (no WHERE clause) in `afterAll` masked this by also clearing the real row. Fixed with a shared `dashboard/e2e/helpers/aiPersona.ts`: pins the managed tenant via `addInitScript` before navigation, asserts the config GET was for the pinned tenant, waits on the `update-config` POST response instead of the "Saved!" label, and scopes both specs' resets to `WHERE tenant_id = $1`. Acceptance was 201/201 Playwright runs at `--repeat-each 20`. **Re-verified here 2026-09-08**: `npx playwright test e2e/customer-preferences-config.spec.ts` → 2 passed.
 
 ---
 
@@ -237,122 +212,16 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
 
 ### 4b. Code review 2026-07-13 — four-reviewer sweep (backend, security, reliability, dead code)
 
-> **Adversarially re-reviewed 2026-07-13 (Opus).** Two of my findings were **REFUTED and dropped**:
-> **CORS is NOT open in prod** (`curl -H "Origin: https://evil.example.com"` → `access-control-allow-origin: https://www.secretaryhq.com`; Railway sets `CORS_ORIGIN`, only the code _default_ is bad), and my **`message_delivery_status` RLS finding was measured against the LOCAL database and reported as production** — where it is in fact RLS-enabled-with-zero-policies (see 4a). The proposed "fix" would have changed nothing under BYPASSRLS and then been written into `SECURITY.md` as "RLS enforced" — worse than leaving it.
->
-> **Severity corrections:** `isTenantExempt`'s blanket `/tenants/*` exemption is **not latent** now that middleware is the sole boundary. The schedule-extender poison is **over-rated** (it is a _future_ regression needing an owner to add a far-future one-off shift — it is NOT the bug that killed the 2026-07-12 call, which was simply "the schedule ran out"). `ENABLE_VOICE_SESSION_REAPER`/`ENABLE_SCHEDULE_EXTENDER`: **my proposed "fix" was a regression** — those vars _do_ work outside production (that is how the realdb tests drive the workers); the real defect is the inverse (no way to turn a worker **off** in prod).
-
-Every item below was **verified by reading the code**, not inferred. Ranked by what bites first.
-The two CRITICALs are **fixed on branch `fix/jwt-type-confusion-and-context-gate`** (not yet merged).
-
-> ## ⚠️ Re-verified end-to-end 2026-08-19 — and this list had drifted badly
->
-> Two consecutive sessions found that most of what this section called open had
-> already been fixed weeks earlier. Every remaining unchecked item was re-read
-> against the working tree; the results are recorded inline below, including where
-> the ORIGINAL FINDING WAS WRONG (`/templates/full` is not anonymous;
-> `isTenantExempt` was never a behaviour bug) and where it was overstated
-> (`find-customer-by-name` no longer matches a single letter).
->
-> **Scoreboard:** 4 genuinely broken and now fixed (alternatives-search duration,
-> purge `--older-than` NaN, `telnyxNumbers` timeout, plus the reminder-claim
-> outage from the previous session) · 3 already fixed and merely unmarked
-> (`'Caller'` placeholder, `/metrics` `!==`, and five items in the SMS/reminders
-> block) · 2 wrong or overstated as written · 6 dead-code items still real and
-> deliberately deferred to their own PR.
->
-> **The meta-lesson, which is worth more than any single item:** a backlog nobody
-> re-verifies becomes actively misleading, and it costs more than an empty one —
-> it sends the next session to fix what is already fixed while the real outage
-> (13 days of zero reminders) sat one line below, unnoticed. Mark items done when
-> they ship, and re-verify before trusting an entry older than a few weeks.
-
-**A grounding fact that reframes the rest:** production has **never booked an appointment** — 5 voice
-calls, **0 appointments, 0 reminder_schedules, 0 communications_history**, all time. So no reminder
-has ever been seeded, no SMS ever sent, and no self-service token ever minted. Several findings below
-are unexploited _only because the feature has never once run_. The first real call is the moment they
-all go live at the same time.
-
-**CRITICAL — fixed on branch, awaiting merge**
-
-- [x] ~~**Self-service SMS link authenticated as tenant OWNER.**~~ Cancel/reschedule tokens are signed with the same `JWT_SECRET` as sessions; `verifyToken` couldn't tell them apart and the hook did `role: decoded.role ?? 'owner'`. Anyone holding an appointment-confirmation text could replay it as a Bearer token and dump the tenant's customers/appointments/transcripts via `GET /export/tenant-data` for 24h, no password. Never exploited — no SMS has ever been sent. **Fix: every token declares a `typ`; each verifier accepts only its own kind; no owner default.**
-- [x] ~~**The OTP gate guarded 1 of 3 doors.**~~ `identify-caller` was gated 2026-07-13; `customer-context` and `customer-history` returned the same name/preferences/history with **no check**, and the LLM picks the phone number it passes. Found independently by two reviewers. **Fix: one shared `callerMayHearCustomerData()` in front of all three; `phone_source` defaults to the cautious `'spoken'`.**
-
-**HIGH — the OTP gate is still weaker than it looks**
-
-> **Re-audited 2026-08-03 while wiring the tools into the live call (below): three of the four findings here were already fixed in `src/routes/agentTools/identity.ts` — this section had drifted stale the same way §4a had. Re-verified by reading the current code, not carried over on trust.**
-
-- [x] ~~**OTP verification is phone-global for 24h, not call-bound.**~~ **FIXED** (`identity.ts:99-116`, `callerMayHearCustomerData`) — the gate now requires a `phone_verifications` row whose `call_id` matches the live call; a NULL/missing `call_id` can never satisfy it. Backed by migration `20260714000000_phone_verification_call_binding.sql`.
-- [x] ~~**A 4-digit code is brute-forceable because the attempt cap resets per code.**~~ **FIXED** (`identity.ts:837-874`) — attempts are now summed per `(tenant, phone)` over a rolling 1-hour window across every code issued (not per-row); a resend expires all prior live codes first (one live code at a time); a lockout emits `errors_total{event="otp_phone_locked_out"}`.
-- [x] ~~**A verified caller still can't cancel, reschedule, or hear their appointments.**~~ **FIXED** (`agent/src/tools.ts:854-876`, `verify_phone_code`) — on `verified:true` the tool now sets `ctx.callerPhone` to the server-normalized E.164 number, so `get_my_appointments`/`send_self_service_link`/cancel/reschedule stop hard-bailing after a successful OTP.
-- [x] ~~**(code)** **`find-customer-by-name` enumerated real customers' NAMES on an unanchored `ILIKE '%…%'`.**~~ — **FIXED 2026-08-19.** The 4-character floor and LIKE-metacharacter escaping (2026-08-07) removed the cheapest probes and left the oracle intact: a 4+ character surname still returned up to 5 real customers plus the last four digits of each phone, with the guessed name as the only credential. **The match is now near-exact and LIKE is gone entirely** (`identity.ts`): the caller must supply BOTH name parts, and they must match exactly modulo case, punctuation, honorifics, and an extra middle name or suffix on either side (`normalizeNameForSearch` + `nameMatchesNearExactly`). One token — a bare first name or a bare surname — short-circuits before any SQL runs, and so does initials-only input under the retained 4-character floor. SQL prefilters on the surname as a whole word (same normalization on both sides) and the precise rule runs in-process, so a shared surname can no longer return the family that shares it. **What it costs, stated plainly:** fuzzy recovery. "Thornbury" for "Thornberry" now returns nothing and the caller is treated as new — the safe direction to fail. The route stays OUT of the model's toolset; tighten before wiring, not after. Tests: 8 in `tests/routes/agentTools/agentTools.test.ts` (guards + in-process filter, mocked pool) and 20 real-Postgres cases in `tests/integration/agentToolsCustomerSearch.realdb.test.ts` (three of them assert the old partial-match probes now return nothing). Tool description in `agent/src/tools.ts` updated to demand a full name.
-- [x] ~~**None of the above ever ran on a live call anyway.**~~ **FIXED 2026-08-03.** All three backend fixes above were correct and complete — and entirely unreachable. Production runs question trees (`agent/src/checklist/`), and `checklistTools.ts`'s `selectedTools()` builds the model's toolset from an allowlist (`TREE_PASSTHROUGH_TOOLS`) that never included `send_verification_code`, `verify_phone_code`, or `get_customer_context` — they existed fully built in `agent/src/tools.ts` but no call could ever reach them. **They ARE capability-gated, in a second and independent place** (corrected 2026-08-07 from PR review — the earlier "confirmed unconditional" reading was wrong): `tools.ts:87-88` maps both OTP tools to the `'verification'` capability, `buildTools` drops them unless `capabilities` includes it (`tools.ts:280`), and `index.ts:884-890` filters `'verification'` out of `activeCapabilities` whenever `ENABLE_PHONE_VERIFICATION` is false. So a tool must clear BOTH gates to reach a live call — the tree allowlist AND the capability list — and neither implies the other. Do not read the fix below as "the OTP tools are always present in ToolContext"; with phone verification off they are absent regardless of the allowlist. A forwarded-line caller could never be recognized or verified, no matter what the backend was ready to do. Fix: added `identity: ['get_customer_context', 'send_verification_code', 'verify_phone_code']` to `TREE_PASSTHROUGH_TOOLS` — the `identity` tree is selected on every goal-bearing call. `find_caller_by_name` deliberately excluded (see item above). 2 new tests in `checklistTools.test.ts`; full agent suite (83 files / 1295 tests) + typecheck green.
-
-**HIGH — SMS/reminders.** Re-audited against the code 2026-08-19. **Most of this
-block had already been fixed and the list still said otherwise** — every claim below
-is now re-verified against the source, not carried forward.
-
-- [x] ~~The retry policy is unreachable dead code~~ — **DONE (2026-07-13).** `processReminder` rethrows; the worker's catch owns `decideRetry` / `retry_count` / the 5m/30m/2h backoff. Verified in `src/services/reminders/index.ts` (`ReminderSendError`).
-- [x] ~~A reminder cancelled for "no consent" is silent~~ — **DONE.** `remindersSkippedTotal.inc({reason:'no_consent'})` + a 5W warn, plus `appointment_cancelled` / `appointment_passed` on the neighbouring branches.
-- [x] ~~`reminders_sent_total` is never incremented~~ — **DONE.** `remindersSentTotal` fires on both outcomes inside the LIVE `ReminderService`, and `smsSendsTotal` is incremented at 5 call sites in the live `smsService.ts` / `telnyxSms.ts`. (The dead parallel `ReminderProcessor` is still to be deleted — see the dead-code item below.)
-- [x] ~~Unbounded `fetch()` to Telnyx can wedge the reminder worker~~ — **DONE for the SMS paths.** `AbortSignal.timeout(10_000)` in `TelnyxSmsAdapter.ts:60` and `telnyxSms.ts` (`SEND_TIMEOUT_MS`). **Narrower remainder FIXED 2026-08-19:** `src/services/telnyxNumbers.ts` (the number-PROVISIONING client — it could never wedge the reminder tick, only hang a provisioning request an owner is watching) now carries `AbortSignal.timeout(TELNYX_REQUEST_TIMEOUT_MS)` on every call, and its catch names the cap instead of reporting the generic `TimeoutError` message.
-- [x] ~~SIGTERM doesn't drain in-flight worker ticks~~ — **DONE.** `stopReminderScheduler()` awaits `_currentTick` behind a 10s timeout, wired to SIGTERM/SIGINT.
-
-**MEDIUM — correctness in the code shipped 2026-07-12/13**
-
-- [x] ~~**(code)** **One far-future shift row poisons the schedule extender forever.**~~ — **FIXED 2026-08-20** on `fix/schedule-extender-stores-the-rule`. `tail` was `MAX(shift_date)` over _all time_ and the pattern was the 7 days ending there, so one one-off shift 300 days out ("annual inventory Saturday") made the pattern **Saturday-only**; Mon–Fri quietly stopped being extended and the business went unbookable in ~180 days, killed by the worker written to prevent exactly that.
-  - **Done as prescribed: STORE THE RULE.** Migration `20260820000000` adds `employee_schedule_pattern (tenant_id, employee_id, day_of_week, start_time, end_time)` — natural composite PK, RLS + admin bypass matching `employee_schedule`. `expandWeeklyToSchedule` now writes it from the same weekly grid the wizard already collects (both callers pass the COMPLETE pattern for one employee, so the rule is **replaced, not merged** — merging would resurrect a weekday the owner dropped, the same bug one table over). `extendSchedules` projects the declared rule where one exists; the `tail` CTE excludes rule-bearing employees outright, so declared and derived are disjoint by construction and `UNION ALL` cannot double-count.
-  - **The derived fallback survives, with its tail clamped to `CURRENT_DATE + 14`.** That clamp is what fixes every tenant who predates the table. It keeps the two properties that mattered — a lapsed schedule is still backfilled (the tail is wherever it actually ended, however far back) and a dropped weekday is still not resurrected — while putting a far-future one-off out of reach. It is a fixed point, not a feedback loop: past the clamp the tail week IS the worker's own output, a faithful copy of the same pattern. The three rejected derivations are recorded in the file header so nobody re-proposes them.
-  - **NO BACKFILL, deliberately.** Inventing a rule from existing rows is the archaeology the table exists to end. Existing tenants (Thinking Hammer included) keep the clamped fallback until they next save their hours, at which point the rule lands and the guessing stops for them permanently. **Consequence to know:** the poisoning is fixed for them by the clamp, not by the rule.
-  - Tests: 5 real-DB cases in `tests/services/extendSchedules.realdb.test.ts` (incl. the far-future-Saturday regression, **verified to fail with the clamp removed**) + 3 in `tests/services/expand-weekly-integration.test.ts` (rule written / rule replaced on drop / empty pattern leaves the rule alone).
-- [x] ~~**`SIGTERM drain` + `atomic claim` are ONE bug, and it fires on EVERY DEPLOY**~~ —
-      **BOTH SHIPPED, AND THE CLAIM HALF THEN TOOK THE WHOLE PIPELINE DOWN FOR 13 DAYS.**
-      Fixed 2026-08-19 on `fix/reminder-claim-status-constraint`. The claim landed in
-      #322 (`6d94cf9`, 2026-08-06) exactly as prescribed here —
-      `UPDATE ... SET status='sending' ... FOR UPDATE SKIP LOCKED RETURNING *` — and
-      `reminder_schedules_status_check` allowed only `scheduled|sent|failed|cancelled`.
-      So every 60s tick threw `violates check constraint`, `processBatch`'s outer catch
-      bumped `errors_total{event="reminder_batch_failed"}` on the token-gated `/metrics`
-      that nothing scrapes, and returned 0. **Not one reminder or confirmation was sent
-      between 2026-08-06 and 2026-08-19.** `/health` green, worker "running", no alert.
-      Reproduced against real Postgres before any code was written.
-      **Three things ship together and all three must stay together:** migration
-      `20260819000000` (widen the enum), `processReminder` accepting `'sending'` (it
-      gated on `!== 'scheduled'`, so the moment the claim worked it would have silently
-      skipped every claimed row and stranded it where the claim query never looks
-      again — a second bug hiding behind the first), and `releaseStaleClaims()`
-      returning rows abandoned in `'sending'` past 5 minutes (a claim introduces a way
-      to LOSE a reminder that `'scheduled'` never had). `triggerReminder` deliberately
-      still refuses `'sending'`.
-      **The lesson, which is the whole point:** a reliability fix shipped with green
-      unit tests that all mocked the pool, and a mock has no CHECK constraints. The
-      guard is now `tests/regression/reminderClaimRealDb.test.ts` — real DB, running
-      the worker's claim statement verbatim. Verified both directions: 5 of its 6 tests
-      fail with the migration reverted, all 6 pass with it.
-
-- [x] ~~**The alternatives search offers slots the booking then refuses**~~ — **FIXED 2026-08-19.** Re-verified as REAL before fixing, and the original description was half right: skills/capabilities were already threaded through, but the duration was not. The failure branch built its search from `args.requirements.*` — the MODEL's guess, which usually omits `durationMinutes` — while the RPC above used `resolved.duration_minutes` and preferred `resolved.required_skills`. A 90-minute skill-gated service was offered a 30-minute gap with an unskilled employee; the caller accepted and got `NO_SKILLED_EMPLOYEE`. The dead end became a rejection loop. **The reason it was not a one-line fix:** `resolved` is scoped inside the `outcomeOfBooking` callback and is not in scope at the failure branch (a first attempt failed `tsc` on exactly that), so the resolved duration + skills are now carried out on the callback's return value. Guarded by a new case in `agentTools.test.ts` asserting the slots query receives the resolved `90` and `['alignment']`; verified it fails with the fix reverted.
-- [x] ~~**`'Caller'` is still an unfixable placeholder on the OTHER write path**~~ — **ALREADY FIXED 2026-07-13; this entry was stale.** `identity.ts`'s `ON CONFLICT DO UPDATE` now tests `customers.name = ANY($4::text[])` against the shared `PLACEHOLDER_NAMES` (`['Valued Customer', 'Caller', 'Unknown']`), so the `'Caller'` that `scheduling.ts:594` writes on a nameless booking IS overwritten when the caller later gives a name. The fix even carries a comment describing this exact bug. A real name is still never clobbered; a 2026-08-01 `is_correction` flag additionally allows a same-call correction.
-- [x] ~~**`purge-soft-deleted.ts` `--older-than` typo → `NaN` → cutoff silently dropped**~~ — **FIXED 2026-08-19.** Verified real: `Number(valueOf('--older-than') ?? 0)` yielded NaN, `NaN > 0` was false, and the `AND deleted_at < …` clause was omitted ENTIRELY, so `--older-than abc --execute --yes` hard-deleted every soft-deleted tenant while the operator believed they had set a floor. Now rejects non-finite and negative values and exits non-zero before any DB connection is attempted (a negative would push the cutoff into the future — the same over-broad purge by another route). New `scripts/purge-soft-deleted.test.ts` drives the real script as a subprocess, because the guard runs at module scope and calls `process.exit`; verified both cases fail with the guard removed.
-- [x] ~~`/metrics` compares its bearer token with `!==`~~ — **ALREADY FIXED; this entry was stale.** `health.ts:81` uses `safeEquals(provided, token)`, with a comment explaining the timing oracle.
-- [x] ~~**(code)** **`GET /templates/full`**~~ — **FIXED 2026-08-20** on `fix/templates-full-super-admin`, **and the prescribed fix was wrong too.** The first finding (anonymous read) was already known to be wrong — the route is absent from `PUBLIC_ROUTES`, so the JWT preHandler rejects an unauthenticated request. The follow-up prescription, "add `requireSuperAdmin`, matching `/templates/create`", **would have broken onboarding for every real customer**: five owner-facing surfaces read this route (`SetupView`, `SetupWizard/index`, `SoloWizard`, `DashboardHome`, `BusinessTypeSection`), and the picker's own `TemplatePreviewModal` RENDERS `system_prompt_template` and `first_message` to the owner on purpose, under the headings "AI System Prompt" and "Greeting Message". Owners are not withheld the prompt anywhere in this product — `AIConfigView` lets them edit their own copy. A route whose whole job is showing templates to owners cannot be owner-inaccessible. **What was actually wrong was `SELECT *`** — an implicit contract that grows by itself: every column ever added to `business_templates` was published to every authenticated user the moment the migration landed, with nobody deciding to publish it. Today that meant `voice_provider` / `voice_name` (backfilled `'cartesia'` / `'elevenlabs'` — TTS providers this stack has never used, so the dashboard was handed values that are simply false) and `example_resources` (no client has ever heard of it). The route now selects an explicit 15-column list matching `BusinessTemplate` in `dashboard/lib/types.ts` field for field, pinned by two real-DB tests in `tests/integration/tenants.realdb.test.ts` — **both verified to fail against the old `SELECT *`** — so publishing a new column is a deliberate act, not a side effect of a migration. **Open decision, not code:** whether to narrow the audience from "any authenticated user" to owners/admins. It would exclude `front_desk` staff and, more to the point, self-serve `POST /demo/start` tenants — which mint an owner-role token, so anyone on the internet can read every template today. Left alone because `DashboardHome`'s business-type picker is a Primary tab and I could not prove no front-desk user reaches it; that is a product call.
-- [x] ~~`isTenantExempt` exempts _all_ of `/tenants/*` regardless of the list~~ — **the code was rewritten 2026-08-19, but be clear about what that did: it changed NOTHING about behaviour.** The old predicate `path === r || path.startsWith('/tenants/')` ignores its loop variable, so `.some()` answered on the first element for any `/tenants/*` path — but the result is identical to an explicit prefix rule for every input, which was confirmed by running the new tests against the OLD implementation and watching all 46 pass. So this was never a live hole, and the backlog's "a new `/tenants/*` route inherits no middleware protection" is true of the intended design (those routes self-check with `requireSuperAdmin`), not of a defect. The rewrite splits `TENANT_EXEMPT_ROUTES` (exact matches) from `TENANT_EXEMPT_PREFIXES` (`/tenants/`, `/agent-tools/`) so the prefix rule is stated rather than smuggled into a predicate, and two tests now pin both halves.
-
-**Dead code / simplification** (see also 🧹 Doc hygiene)
-
-> **Every item below was re-verified against the working tree on 2026-08-19 and all
-> of them are still real** — unlike the correctness block above, which was mostly
-> stale. Deliberately NOT bundled into the fix PR: deleting ~600 lines is a
-> different risk class from fixing four bugs, and mixing them makes both harder to
-> review. Evidence is recorded per item so the follow-up does not have to re-derive
-> it.
-
-- [x] ~~**Delete the orphaned parallel reminder implementation — 391 lines, zero prod callers.**~~ — **DONE 2026-08-20.** Deleted `reminderProcessor.ts`, `reminderScheduler.ts`, `reminderRepository.ts` and `reminderProcessor-metrics.test.ts`. **The metrics halo was worse than "redundant coverage":** that test asserted `reminders_sent_total{channel: email|sms}` and `reminders_skipped_total{reason: processing_error}` — shapes the LIVE service has never emitted (it partitions by reminder `type`, and rethrows processing failures into `errors_total`). `metrics.ts` and `docs/ALERTS.md` documented the dead shape too, so any dashboard or alert filtering on `channel` matched nothing and read as "healthy". Replaced with `tests/services/reminders/reminderService-metrics.test.ts` against the live emitter, descriptions corrected, and `appointment_not_found` — documented since forever, never incremented — is now emitted (it fired 8 times in one prod minute on 2026-08-20 with nothing counting it). Original text: **Re-verified 2026-08-19:** `services/reminders/reminderScheduler.ts` has **zero** importers anywhere in `src/` or `tests/`; `reminderProcessor.ts` is reached only by that dead file's discarded `_ReminderProcessor` dynamic import and by its own metrics test. `services/reminders/reminderProcessor.ts` + `services/reminders/reminderScheduler.ts` are a second, unused implementation whose only caller is a discarded `_`-prefixed dynamic import and a test. The **name collision with the live `workers/reminderScheduler.ts` is what hid it** — and it holds the metrics that were supposed to be watching prod. Its `reminderProcessor-metrics.test.ts` gives the dead class a green-CI halo. Textbook "test it or delete it".
-- [x] ~~**(code)** **Live `n8n` trigger fired on every appointment INSERT**~~ — **DONE 2026-08-21**, migration `20260821000000_drop_n8n_webhook`: trigger, SECURITY DEFINER function, and `tenants.n8n_webhook_url` all dropped. **Checked against PROD before touching schema — 0 tenants held a value and `pg_net` was not installed**, so nothing was lost and nothing behaved differently. What it cost while it lived: a `SELECT` against `tenants` on every appointment INSERT, inside the booking transaction, to read a column with zero readers and zero writers. What made it worth removing rather than leaving inert: with `pg_net` present the POST runs SYNCHRONOUSLY inside that transaction, so `book_with_scheduling_atomic` would block on an external host while holding the GiST exclusion constraints — a slow webhook endpoint becomes a booking outage. Guarded by `tests/regression/n8nWebhookRemoved.realdb.test.ts` (4 real-DB cases: trigger gone, function gone, column gone, and **a booking still INSERTs** — proving the drop by writing, not by reading the catalog).
-- [x] ~~**`shared/dateTime.ts` — 85 lines, 8 exports, zero importers.**~~ — **DELETED 2026-08-20.** Import grep across `src/`, `shared/`, `dashboard/`, `agent/src/` and `tests/` returned nothing; removed from CLAUDE.md's `/shared` resident list at the same time. **Re-verified 2026-08-19:** still exactly 85 lines / 8 exports, and an import grep across `src/`, `shared/`, `dashboard/`, `agent/src/` and `tests/` returns nothing.
-- [x] ~~**`TelephonyProvider`: 4 of 5 methods are dead Twilio residue**~~ — **DONE 2026-08-20.** Collapsed to `{ getName, sendSMS }`; `TelephonyCallRequest` removed. Verified zero callers of `makeCall` / `createInstruction` / `wrapResponse` / `generateInstruction` anywhere in `src/` or `tests/` before deleting, and `TelnyxSmsAdapter` threw on all four anyway. A knock-on the deletion exposed: `smsServiceMetrics.test.ts` carried an `as unknown as` cast that existed only to paper over the four members its literal did not implement — now unnecessary, and lint caught it. `ProviderRegistry`'s dead `JEST_WORKER_ID` disjunct went too (repo is Vitest-only). Original text: — both adapters `throw` on them, and `MockAdapter` still emits **TwiML XML** for a stack that dropped Twilio months ago. Collapse to `{ getName, sendSMS }` (~120 lines); the registry's one real job (the no-creds Mock switch) is a one-liner.
-- [x] ~~**(code)** **42 migrations self-managed a transaction the runner already owns.**~~ — **DONE 2026-08-21.** All 42 stripped of their top-level `BEGIN;`/`COMMIT;`. The runner applies each file as `psql --single-transaction <<SQL \i <file> / INSERT INTO schema_migrations … SQL`, so `--single-transaction` wraps the whole heredoc — a file's own `COMMIT;` ended that wrapper early and the tracking INSERT landed outside it, meaning a later failure could leave DDL applied with no `schema_migrations` row. The file's own `BEGIN;` was separately a no-op that only warned "there is already a transaction in progress". Inert against prod (all 42 long applied); the damage was confined to fresh rebuilds and new environments. **Verified end-to-end by `npm run db:rebuild -- --yes`** — DROP SCHEMA, full chain, seed, clean, and `supabase/baseline.sql` came back byte-identical, which is the proof that stripping changed no schema. The strip skipped dollar-quoted bodies so `DO $$ BEGIN … END $$;` was never touched. Guarded by `tests/regression/migrationsOwnTransaction.test.ts`, which carries both a negative control (plpgsql must NOT be flagged) and a positive one (a real top-level transaction MUST be flagged) — a guard nobody has watched fail is not a guard. `scripts/setup-db.sh`'s comment now states the dependency instead of assuming it.
-- [x] ~~**(code)** Inert columns to drop~~ — **DONE 2026-08-21**, migration `20260821010000_drop_inert_columns`. **Checked against prod first:** `business_templates` held 30 rows with `voice_provider` ∈ {cartesia, elevenlabs, NULL} and `voice_name` ∈ {Josh, Rachel, Default Male, NULL} — an ElevenLabs vocabulary for a product whose TTS has only ever been OpenAI and then Deepgram Aura, so those were not stale values but FALSE ones; `tenant_integration_settings` holds **zero rows**, so `webhook_secret` dropped nothing at all. All three had zero TypeScript readers. **`ENABLE_VOICE_SESSION_REAPER` / `ENABLE_SCHEDULE_EXTENDER` / `ENABLE_REMINDER_SCHEDULER`: decided and fixed.** The asymmetry is kept — prod ON by default, elsewhere OFF by default — because defaulting a worker off in prod because nobody set a variable is the failure this project has already lived through (13 days of zero reminders). What was missing was the escape hatch: `isProduction || flag === 'true'` is simply `true` in prod, so a misbehaving worker could only be stopped by shipping a deploy. New `src/services/workerEnabled.ts` honours an exact `ENABLE_X=false` in production and is otherwise byte-for-byte the old behaviour; near-misses (`False`, `0`, `no`, `' false'`) deliberately do NOT disable, because a kill switch that fires on a typo stops a worker silently. 7 unit tests. **`JEST_WORKER_ID` was already removed** in #353 (`ProviderRegistry.ts:42` now carries only the two live `VITEST` checks) — this entry was stale. **`STRIPE_AUTO_TAX` needs no code change**: it is correctly gated at `billing.ts:107` and `docs/planning/RESOLVED.md` accurately describes the code as shipped while naming the Railway step as an outstanding user action — so `automatic_tax` has genuinely never been sent, and that remains a **(Dale)** item under P0 §2, not a code defect.
-- [x] ~~**CLAUDE.md called `tts_soft`/`tts_cheerful` "inert"** — false, and dangerous next to "delete on sight."~~ **Fixed 2026-07-13.** They are live LLM prompt-style flags with dashboard toggles; deleting them would have removed two working features. HIPAA-residue sweep came back **clean**.
+**All items resolved — moved to `docs/planning/RESOLVED.md` 2026-09-08 (doc-hygiene
+trim; content dated 2026-07-13, re-verified 2026-08-21) — every entry was `[x]`,
+nothing left open.** Covered: self-service SMS
+token type confusion, OTP gate coverage gaps, `find-customer-by-name` enumeration,
+reminder retry/metrics/SIGTERM-drain, schedule-extender far-future-shift poisoning,
+alternatives-search duration mismatch, `'Caller'` placeholder, `purge-soft-deleted`
+`--older-than` NaN, `/metrics` timing-safe compare, `GET /templates/full` column
+leak, `isTenantExempt` (no-op rewrite), and the dead-code sweep (orphaned reminder
+implementation, n8n webhook trigger, `shared/dateTime.ts`, `TelephonyProvider`
+Twilio residue, self-managed migration transactions, inert columns).
 
 ### 5. Legal / business (long lead time — start early)
 
@@ -483,7 +352,7 @@ Each screen below has had NO dedicated UX review (owner-judgment items). Most al
 
 ## 🧹 Doc hygiene (mechanical, ongoing — low priority)
 
-- [ ] Continue count-drift passes (route modules / migrations / test numbers) after any new route or migration; keep secondary docs synced. **2026-09-05 pass:** routes **32**; `supabase/migrations/` **192**; dashboard loose `.tsx` at `components/` is **35** (post-subdir-migration).
+- [ ] Continue count-drift passes (route modules / migrations / test numbers) after any new route or migration; keep secondary docs synced. **2026-09-08 pass:** routes **32**; `supabase/migrations/` **192**; dashboard loose `.tsx` at `components/` is **38** (drifted back up from the **35** counted 2026-09-05 — new components landed since; open PR #402 `fix/test-db-bootstrap` already does a further round of the subdirectory migration, unmerged as of this pass).
 - [ ] Trim remaining historical narrative from active docs into `planning/RESOLVED.md` when it goes cold.
 
 ---
