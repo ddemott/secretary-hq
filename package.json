@@ -9,8 +9,9 @@
   "scripts": {
     "dev:backend": "ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:dashboard": "cd dashboard && npm run dev",
-    "test": "VITE_CONFIG_NATIVE_IGNORE_WARNING=true vitest run tests/ scripts/ --fileParallelism=false",
+    "test": "vitest run tests/ scripts/ --fileParallelism=false",
     "test:ci": "DATABASE_URL=postgres://postgres:postgres@localhost:5433/test_db vitest run src/ scripts/ --fileParallelism=false",
+    "test-db:start": "bash scripts/start-test-db.sh",
     "verify:claude-md": "npx tsx scripts/verify-claude-md.ts",
     "verify:schema": "npx tsx scripts/verify-schema-alignment.ts",
     "bootstrap": "bash scripts/bootstrap.sh",

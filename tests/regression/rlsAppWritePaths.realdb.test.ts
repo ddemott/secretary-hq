@@ -1,7 +1,32 @@
 /**
- * rlsAppWritePaths.realdb.test.ts
- * App write paths as non-bypassing app_user (Honcho test for real services + RLS).
- * Catches seedDemoTenant missing tenant context.
+ * THE APP'S OWN WRITE PATHS, RUN AS THE NON-BYPASSING ROLE.
+ *
+ * WHY THIS EXISTS — a production incident, 2026-07-27. `DATABASE_URL` was
+ * repointed to `app_user` after the database side had been verified thoroughly:
+ * policies null-safe, both landmines probed dead against prod, cross-tenant
+ * isolation and WITH CHECK confirmed, and a privilege audit showing zero
+ * missing grants on any table, function or sequence.
+ *
+ * `POST /demo/start` — the public "Try live demo" button — 500'd within seconds:
+ *
+ *     new row violates row-level security policy for table "tenant_skills"
+ *       at async insertDemoData (dist/src/services/demoSeed.js:45)
+ *
+ * The database was fine. The APPLICATION was not: `seedDemoTenant` wrote through
+ * the raw pool with no tenant context — its own comment said so — which is
+ * indistinguishable from a correct write while the role bypasses RLS, and is a
+ * refused write the moment it doesn't. Only tenants/users/business_templates
+ * carry an admin_bypass policy; everything else is isolation-only, so an unset
+ * context means `tenant_ctx_uuid()` is NULL and the WITH CHECK denies.
+ *
+ * rlsIsolation.test.ts proves the POLICIES behave. It cannot catch this, because
+ * it issues its own SQL rather than calling the app's services. This file closes
+ * that gap: it runs the real service functions against a real database as
+ * `app_user`, which is the only arrangement in which the defect is visible.
+ *
+ * The rule this encodes: a code path that writes tenant-scoped rows must carry a
+ * tenant context, and "it works in production today" is not evidence of that
+ * while production bypasses RLS.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Pool } from 'pg';

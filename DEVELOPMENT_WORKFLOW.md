@@ -3,6 +3,14 @@
 ## Local Development Setup
 
 1. Start services: `npm run start` or `docker compose up -d db` for DB only.
+   - **One compose file, one container, one port.** The canonical `db` service is
+     `ankane/pgvector` as container `secretary-hq-db` on **5433**. Anything else
+     bound to 5433 (another project's compose, a hand-run `docker run`) is a
+     different database with a different volume, and a bootstrap run against it
+     looks like it worked. Check with `docker ps` before migrating.
+   - `npm run test-db:start` (`./scripts/start-test-db.sh`) does steps 1 and 2 together: brings the
+     canonical service up, waits on its healthcheck rather than sleeping, proves
+     `SELECT 1`, then runs the bootstrap below.
 2. Bootstrap test database: `npx tsx scripts/setup-test-db.ts`
    - Creates `test_db` if missing.
    - Runs all `supabase/migrations/` up to and including `20260724000100_app_user_role.sql` **as superuser**.
@@ -61,6 +69,7 @@ generateResolvConf = false
 
 ## DB Scripts Overview (match project style)
 
+- `scripts/start-test-db.sh`: Brings the canonical compose `db` service up, waits on its healthcheck, proves a connection, then runs `setup-test-db.ts`. The one entry point — there is deliberately no second compose file or per-package copy.
 - `scripts/setup-test-db.ts`: Targeted test bootstrap (this file; uses pg Client + schema_migrations tracking like `setup-db.sh`).
 - `scripts/setup-db.sh`: General migration applicator.
 - `scripts/rebuild-db.sh`: DROP + full rebuild + seed (re-applies role migration post-baseline).
