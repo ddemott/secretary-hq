@@ -27,7 +27,7 @@
  */
 import { voice } from '@livekit/agents';
 import { getFillerFrame, frameStream } from './fillerCache.js';
-import { isToolRunning } from './toolActivity.js';
+import { isToolRunning, wasMessageTaken } from './toolActivity.js';
 
 /** SpeechHandle (not re-exported by the package) — the return type of say(). */
 type SpeechHandle = ReturnType<voice.AgentSession['say']>;
@@ -44,6 +44,13 @@ export interface WatchdogOptions {
    * mid-call. Both lines are pre-synthesized.
    */
   thinkingText: string;
+  /**
+   * Recovery line spoken at deadline 2 once a message has ALREADY been taken on
+   * this call. Optional; without it the plain recovery line is used, which is
+   * what shipped the 2026-09-09 defect of offering a message to a caller who had
+   * just left one.
+   */
+  recoveryTextAfterMessage?: string;
   /** Recovery line spoken at deadline 2. */
   recoveryText: string;
   /** ms of 'thinking' with no audio before the filler plays. */
@@ -296,7 +303,15 @@ export function attachOutputWatchdog(
     // Otherwise: still dead air (gating on agentState==='thinking' instead would
     // wrongly skip recovery when the filler's own playout ended mid-transition).
     // Return value (the SpeechHandle thenable) intentionally unused — fire-and-forget.
-    void speakHold(opts.recoveryText, 'recovery');
+    //
+    // WHICH recovery line depends on what the caller already has. Offering to take
+    // a message is only useful to someone who has not left one; after that it is a
+    // line the caller has to refuse (2026-09-09, SCL_A5wnBexPbwCC at 4:14).
+    const recovery =
+      wasMessageTaken() && opts.recoveryTextAfterMessage
+        ? opts.recoveryTextAfterMessage
+        : opts.recoveryText;
+    void speakHold(recovery, 'recovery');
   };
 
   const onAgentState = (ev: voice.AgentStateChangedEvent) => {

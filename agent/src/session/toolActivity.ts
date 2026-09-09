@@ -31,6 +31,7 @@
  */
 
 let inFlight = 0;
+let messageTaken = false;
 
 /** A tool's execute() has started. */
 export function toolStarted(): void {
@@ -50,7 +51,54 @@ export function isToolRunning(): boolean {
   return inFlight > 0;
 }
 
+/**
+ * THE RECOVERY LINE OFFERED A MESSAGE TO SOMEONE WHO HAD JUST LEFT ONE.
+ *
+ * 2026-09-09, call SCL_A5wnBexPbwCC, at 4:14: the caller had finished a full job
+ * intake, `take_message` had already returned, and the watchdog's deadline-2 line
+ * said "Sorry, this is taking me a moment. If you'd like, I can take a message and
+ * have someone get right back to you." He answered "No. No message. Just pass this
+ * on." The dead air was real — the model was slow composing its wrap-up — so firing
+ * was correct. The OFFER was not: it proposed the one thing already done.
+ *
+ * Same rule as the hold line above it: the line the runtime speaks has to be true
+ * at the moment it plays. Once a message exists, the recovery line stops offering
+ * to take one and just asks for the beat it actually needs.
+ */
+export function markMessageTaken(): void {
+  messageTaken = true;
+}
+
+/** True once this call has successfully recorded a message for the owner. */
+export function wasMessageTaken(): boolean {
+  return messageTaken;
+}
+
+/**
+ * Clear both flags for a NEW CALL. Called from `entry()` before anything else.
+ *
+ * WHY THIS EXISTS (Copilot review, PR #409): this module's state is module-level
+ * — deliberately, since one agent session runs per job process — but "one session
+ * per process" is not the same claim as "one process per session". The SDK keeps
+ * idle job processes warm (`numIdleProcesses`), and a process that outlives its
+ * job carries these values into the next caller.
+ *
+ * What that costs if it is true: `messageTaken` never falls back to false, so
+ * every later call on that process gets the after-message recovery line and is
+ * NEVER offered a message — the exact fix inverted into a new defect, on a caller
+ * who has left nothing. `inFlight` is the same shape and predates it: a tool still
+ * in flight when a call drops leaves the count above zero forever, and the hold
+ * line goes back to claiming a lookup that is not happening.
+ *
+ * Resetting at the start of a call is correct whether or not processes are reused,
+ * costs two assignments, and removes the question entirely.
+ */
+export function resetCallActivity(): void {
+  inFlight = 0;
+  messageTaken = false;
+}
+
 /** Test seam — reset between cases. */
 export function _resetToolActivityForTest(): void {
-  inFlight = 0;
+  resetCallActivity();
 }

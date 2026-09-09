@@ -5,7 +5,13 @@
  * separate, manual validation item per the never-silent spec.)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { toolStarted, toolFinished, _resetToolActivityForTest } from './toolActivity.js';
+import {
+  toolStarted,
+  toolFinished,
+  markMessageTaken,
+  resetCallActivity,
+  _resetToolActivityForTest,
+} from './toolActivity.js';
 import { voice } from '@livekit/agents';
 import {
   attachOutputWatchdog,
@@ -19,6 +25,7 @@ const STATE_EV = voice.AgentSessionEventTypes.AgentStateChanged;
 const noopLog = { info: () => {}, warn: () => {} };
 const FILLER = 'One moment while I check that for you.';
 const RECOVERY = 'Sorry, this is taking me a moment.';
+const RECOVERY_AFTER_MESSAGE = "Sorry — still writing that up. One more moment and I'll have it.";
 
 interface FakeHandle {
   id: string;
@@ -119,6 +126,7 @@ describe('attachOutputWatchdog', () => {
       thinkingText: 'Just a moment.',
       fillerText: FILLER,
       recoveryText: RECOVERY,
+      recoveryTextAfterMessage: RECOVERY_AFTER_MESSAGE,
       log: noopLog,
     });
 
@@ -240,6 +248,76 @@ describe('attachOutputWatchdog', () => {
     await vi.advanceTimersByTimeAsync(2500); // filler
     await vi.advanceTimersByTimeAsync(4000); // recovery
     expect(f.sayCalls.map((c) => c.text)).toEqual([FILLER, RECOVERY]);
+  });
+
+  it('SAD: a message was already taken → the recovery line stops offering to take one', async () => {
+    // WHO: John Smith, prod call SCL_A5wnBexPbwCC, 2026-09-09 11:12 CT, at 4:14.
+    // WHAT: the full job intake was done and take_message had returned when the
+    //       watchdog said "Sorry, this is taking me a moment. If you'd like, I can
+    //       take a message and have someone get right back to you." He replied
+    //       "No. No message. Just pass this on."
+    // WHERE: fireRecovery's line selection in watchdog.ts.
+    // WHEN: any deadline-2 stall after a message has been recorded on the call.
+    // WHY: the dead air was real, so firing was right — the OFFER was the lie. A
+    //      runtime line has to be true at the moment it plays, and offering the
+    //      caller a thing he has already done makes him refuse it.
+    _resetToolActivityForTest();
+    toolStarted();
+    markMessageTaken();
+    const f = makeFakeSession();
+    attach(f);
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2500); // filler
+    await vi.advanceTimersByTimeAsync(4000); // recovery
+    expect(f.sayCalls.map((c) => c.text)).toEqual([FILLER, RECOVERY_AFTER_MESSAGE]);
+  });
+
+  it('HAPPY: with no message taken, the recovery line still offers one', async () => {
+    // The fix must not cost the offer its whole reason for existing: a caller who
+    // has NOT left a message is exactly who that sentence is for.
+    _resetToolActivityForTest();
+    toolStarted();
+    const f = makeFakeSession();
+    attach(f);
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(f.sayCalls.map((c) => c.text)).toEqual([FILLER, RECOVERY]);
+  });
+
+  it('SAD: the message flag does NOT survive into the next call', async () => {
+    // WHO: the caller AFTER someone who left a message, on a reused job process.
+    // WHAT: resetCallActivity() (called from entry()) clears the flag, so this
+    //       caller is offered a message like anyone else.
+    // WHERE: session/toolActivity.ts resetCallActivity, wired in index.ts entry().
+    // WHEN: any call that lands on a process which already handled one.
+    // WHY: Copilot review on PR #409. The flag is module-level and nothing reset
+    //      it, so once ANY call took a message every later call on that process
+    //      would get the after-message line and never be offered one — the fix
+    //      inverted into a worse defect than the one it cured.
+    markMessageTaken();
+    resetCallActivity(); // ← what entry() does at the top of the next call
+    toolStarted();
+    const f = makeFakeSession();
+    attach(f);
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2500);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(f.sayCalls.map((c) => c.text)).toEqual([FILLER, RECOVERY]);
+  });
+
+  it('SAD: a tool left in flight by a dropped call does not poison the next one', async () => {
+    // Same shape, older exposure: inFlight is module-level too. A call that dies
+    // mid-tool leaves the count above zero, and the hold line would go back to
+    // claiming a lookup that is not running — the 2026-07-14 lie, resurrected by
+    // a stale counter instead of by a bad prompt.
+    toolStarted(); // never balanced — the call dropped
+    resetCallActivity();
+    const f = makeFakeSession();
+    attach(f);
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(f.sayCalls.map((c) => c.text)).toEqual(['Just a moment.']);
   });
 
   it("the filler's OWN 'speaking' doesn't disarm; once it's done + real audio plays, no recovery", async () => {

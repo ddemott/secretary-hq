@@ -280,6 +280,30 @@ describe('choice branching', () => {
     expect(t.value('job_type')).toBe('contract'); // stored as the real option, not the fused form
   });
 
+  it('a PARTIAL node_id fusion is accepted too (2026-09-09 live call)', () => {
+    // SCL_A5wnBexPbwCC, 11:12 CT. Asked `hiring_for`, John Smith said "I'm hiring
+    // for my own" and the model recorded "hiring_own_company" — ONE TOKEN short of
+    // the `hiring_for_` prefix the 2026-08-19 repair strips, so it fell through,
+    // the node stayed open, and he was asked the same question again. He answered
+    // it a second time, word for word. A repair that catches only one spelling of
+    // a mistake is a repair the caller still pays for.
+    //
+    // Same shape on this file's fixture node: job_type + "job_contract".
+    const t = make();
+    t.select(['job']);
+    expect(t.record('job_type', { value: 'job_contract' })).toBe('answered');
+    expect(t.value('job_type')).toBe('contract');
+  });
+
+  it("the leading words dropped must be the NODE_ID's own — not any words at all", () => {
+    // The repair walks off leading tokens only while each one belongs to the
+    // node_id. "contract" is a real option; "urgent_contract" is not a fusion of
+    // anything, and accepting it would store an answer nobody gave.
+    const t = make();
+    t.select(['job']);
+    expect(() => t.record('job_type', { value: 'urgent_contract' })).toThrow(RecordError);
+  });
+
   it('a value that merely LOOKS prefixed but is not a real option still throws', () => {
     const t = make();
     t.select(['job']);

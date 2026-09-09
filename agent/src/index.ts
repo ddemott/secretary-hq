@@ -60,6 +60,7 @@ import {
   HOLD_LINE,
   THINKING_LINE,
   RECOVERY_LINE,
+  RECOVERY_LINE_AFTER_MESSAGE,
   CALLER_CHECK_IN_LINE,
   CALLER_SILENCE_GOODBYE,
   OUTAGE_LINE,
@@ -71,6 +72,7 @@ import {
   attachCallerSilenceWatch,
 } from './session/watchdog.js';
 import { attachThinkingSound } from './session/thinkingSound.js';
+import { resetCallActivity } from './session/toolActivity.js';
 import { TurnLatencyCollector } from './session/turnLatency.js';
 import { TranscriptRecorder } from './transcript.js';
 import { ToolCallLog } from './toolCallLog.js';
@@ -294,6 +296,10 @@ export default defineAgent({
     // the participant joining (the leg is up). MEASURE before fixing: the last
     // voice "freeze" turned out to be TTS, not any of the things that were
     // guessed at, and a whole afternoon went into the guesses.
+    // Module-level per-call state starts CLEAN, whether or not this process has
+    // handled a call before (see session/toolActivity.ts). Two assignments, and
+    // the "are job processes reused?" question stops mattering.
+    resetCallActivity();
     const entryAtMs = Date.now();
     let participantAtMs: number | null = null;
 
@@ -1798,7 +1804,11 @@ export default defineAgent({
             apiKey: config.DEEPGRAM_API_KEY,
             model: ttsVoiceKey,
           }) as unknown as Parameters<typeof warmFillers>[0];
-          void warmFillers(fillerTts, watchdogVoice, [fillerText, recoveryText]).then(
+          void warmFillers(fillerTts, watchdogVoice, [
+            fillerText,
+            recoveryText,
+            RECOVERY_LINE_AFTER_MESSAGE,
+          ]).then(
             ({ failed }) => {
               if (failed.length > 0) {
                 callLog.warn(
@@ -1833,6 +1843,10 @@ export default defineAgent({
             deadline1Ms: Number(process.env.WATCHDOG_DEADLINE_1_MS ?? 2800),
             fillerText,
             recoveryText,
+            // Once a message exists, the recovery line stops offering to take one
+            // (2026-09-09, SCL_A5wnBexPbwCC at 4:14 — it offered, and the caller
+            // had to say "No. No message. Just pass this on.").
+            recoveryTextAfterMessage: RECOVERY_LINE_AFTER_MESSAGE,
             log: callLog,
             // Hold lines are addToChatCtx:false (never pollute the model's
             // context) — this puts them in the TRANSCRIPT anyway, so a silent

@@ -2697,6 +2697,68 @@ describe('agentTools /book-with-scheduling', () => {
     expect(queries, 'rejected before any DB statement ran').toHaveLength(0);
   });
 
+  it('HAPPY: a one-minute window pinning a legal start is BOOKED, not refused', async () => {
+    // WHO: John Smith, prod call SCL_A5wnBexPbwCC, 2026-09-09 11:12 CT.
+    // WHAT: the model pinned 1:00 PM the way its own tool description invites —
+    //       window [13:00, 13:01) — because book_with_scheduling takes the
+    //       EARLIEST slot at or after `from`. The guard checked `to` against the
+    //       quarter-hour grid, 13:01 is off-grid, and the booking died twice
+    //       (12ms, 31ms — no DB statement ran). The caller was then told "I can
+    //       only book times on the quarter hour. I have 1:00, 1:15, or 2:00",
+    //       twenty seconds after the agent had offered him 1:00, and he left
+    //       with no appointment.
+    // WHERE: the grid guard in src/routes/agentTools/scheduling.ts.
+    // WHEN: any booking whose window END is not on the grid — which is every
+    //       exact-time booking the model makes.
+    // WHY: `to` is an upper BOUND the caller never hears, and the RPC never even
+    //      reads it (it books at p_window_from). Only `from` is a booking time.
+    const { app, queries } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        {
+          rows: [
+            {
+              success: true,
+              appointment_id: '99999999-8888-4777-8666-555555555555',
+              start_time: '2026-09-09T18:00:00.000Z',
+              end_time: '2026-09-09T18:30:00.000Z',
+              resource_name: 'Chair 1',
+              employee_name: 'Dale',
+            },
+          ],
+        },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'John Smith',
+      requirements: { serviceType: 'a meeting to talk about a contract role' },
+      window: { from: '2026-09-09T13:00:00', to: '2026-09-09T13:01:00' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error_code).not.toBe('OFF_GRID_TIME');
+    expect(queries.length, 'the guard no longer short-circuits the DB work').toBeGreaterThan(0);
+  });
+
+  it('SAD: an off-grid START is still refused — the grid rule itself is intact', async () => {
+    // The narrowing must not become a removal: `from` IS a booking time, and the
+    // appointments_start_time_15min CHECK still rejects it at the database. A
+    // spoken refusal here is what lets the model renegotiate instead of relaying
+    // a 500 (2026-07-17).
+    const { app, queries } = buildApp({ queryResponses: [] });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Jack Smith',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-09T13:07:00', to: '2026-09-09T13:37:00' },
+    });
+    expect(res.json().error_code).toBe('OFF_GRID_TIME');
+    expect(queries, 'rejected before any DB statement ran').toHaveLength(0);
+  });
+
   it('HAPPY: RPC returns success with resource + employee names', async () => {
     // WHO: Happy-path booking where the RPC found a matching slot
     // WHAT: Route returns the booked details for the agent to confirm aloud

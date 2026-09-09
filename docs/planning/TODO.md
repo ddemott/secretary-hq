@@ -18,6 +18,30 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
 
 ## Next items to fix (coverage/build/deploy review)
 
+- [x] ~~**PROD WAS SIX MIGRATIONS BEHIND, AND ONE DEPLOYED CODE PATH WAS ALREADY BROKEN BY IT.**~~ — **FOUND AND FIXED 2026-09-09.**
+      `schema_migrations` on prod ended at `20260820000000` while `main` carried seven more. The
+      gap was not inert: `availabilitySearch.ts` has joined `blackout_dates` since `d8f4e72`
+      (#395, 2026-09-04), that commit is an ancestor of what prod was running, and **the table did
+      not exist there.** So `findNextAvailableSlots` — the "when is your next opening?" path —
+      returned `{"success":false,"error":"Failed to compute available slots"}` on production for
+      five days. Probed directly: the same route WITH a `date` worked (different query), which is
+      exactly why nobody noticed; the failure lived behind a generic error string on the one path
+      that has no date to hand.
+      Applied in order: `20260821000000` (drop n8n webhook), `20260821010000` (drop inert
+      columns), `20260821020000` (narrow dead CRM provider CHECKs), `20260901000000` (vertical
+      intake preset ids), `20260901100000` (starter services, `text[]`→`jsonb`), `20260903000000`
+      (blackout_dates + `BUSINESS_CLOSED`), `20260909120000` (shift boundary slack). Preconditions
+      for the three destructive ones were re-verified against prod first and still held: 0 tenants
+      with an `n8n_webhook_url`, `pg_net` not installed, `tenant_integration_settings` and
+      `entity_sync_map` both empty. Verified after: `blackout_dates` present,
+      `shift_covers_booking` present and called 3× by the booking RPC, `n8n_webhook_url` gone,
+      `example_services` now `jsonb`, and the next-available path answering
+      _"The soonest I can get you in is tomorrow at 1:30 PM…"_.
+      **The lesson worth keeping: "deploy verified" was checked against `/health` and a booking,
+      and both were green while a third path was dead.** A merge that ships code and a migration
+      together can half-land — the code always deploys, the migration only if someone runs it —
+      and nothing in CI or the health board notices the half. Before calling a deploy done, compare
+      `max(schema_migrations.version)` on prod against the newest file in `supabase/migrations/`.
 - [x] ~~Commit E2E sweep fixes (20 defects, 4 livelocks)~~ — **DONE 2026-08-19**: Merged in PR #344 (`41c4d53`).
 - [x] ~~Deploy recent changes to prod (Railway lags)~~ — **DONE 2026-08-19**: Deployed to Railway (`started_at` `2026-08-19T08:22:19Z`). Verified `GET /health` (200) and `POST /demo/start` (200).
 - [x] ~~Create PR for main (protected branch)~~ — **DONE 2026-08-19**: PR #344 merged to `main`.
@@ -69,7 +93,7 @@ turned `main` red on `2aa61d4`.
       asserting the machine's speed, not the code's behaviour.**
 - [x] **THE FOURTH ONE ARRIVED (2026-09-03), and it is the same shape.**
       `tests/services/deadlock-prevention.test.ts > clearDB truncates all tables
-  in a single statement` timed out on PR #394's Backend job at **5,004 ms
+in a single statement` timed out on PR #394's Backend job at **5,004 ms
       against vitest's default 5,000 ms budget** — a four-millisecond miss on a
       test that does a real `TRUNCATE ... CASCADE` over every seeded table. It
       passes locally in ~3 s and had never failed before. The prediction in the
