@@ -1773,3 +1773,38 @@ describe('book_with_scheduling — a failed write is not an availability fact', 
     expect(parsed.error_code).toBe('OFF_GRID_TIME');
   });
 });
+
+/**
+ * WHO: an owner who cleared every call off the Calls screen and still saw the
+ *      nav badge counting one unanswered KB question (2026-09-09).
+ * WHAT: the gap row that policy-answer writes on zero RAG hits must carry the
+ *       call id, so deleting that call can clear the owner's to-do with it.
+ * WHEN: every get_company_policy_answer call.
+ * WHERE: knowledgeTools' /agent-tools/policy-answer body.
+ * WHY: for months the INSERT wrote (tenant_id, question) only — call_id was in
+ *      the schema and no writer ever set it. A cascade keyed on a column
+ *      nothing populates is a silent no-op that looks like it worked.
+ */
+describe('get_company_policy_answer — the gap row is attributable to its call', () => {
+  it('sends call_id with the question', async () => {
+    const { client, calls } = makeClient([{ ok: true as const, result: 'We open at nine.' }]);
+    const tools = buildTools(makeCtx(), client);
+    await exec(tools.get_company_policy_answer, { question: 'when do you open?' });
+    expect(calls[0].path).toBe('/agent-tools/policy-answer');
+    expect(calls[0].body).toMatchObject({
+      tenant_id: TENANT_ID,
+      question: 'when do you open?',
+      call_id: CALL_ID,
+    });
+  });
+
+  it('SAD: omits call_id rather than sending null when the call has no id', async () => {
+    // A browser/sim session with no SIP call id must not send `call_id: null` —
+    // the backend schema takes an optional non-empty string, and a null would
+    // 400 the whole lookup instead of degrading to an unattributed gap row.
+    const { client, calls } = makeClient([{ ok: true as const, result: 'We open at nine.' }]);
+    const tools = buildTools(makeCtx({ callId: null }), client);
+    await exec(tools.get_company_policy_answer, { question: 'when do you open?' });
+    expect(calls[0].body.call_id).toBeUndefined();
+  });
+});

@@ -27,6 +27,12 @@ export function knowledgeTools(d: ToolBuildDeps): ToolMap {
           {
             tenant_id: ctx.tenantId,
             question: args.question,
+            // The gap row this may write (zero RAG hits) is the owner's
+            // to-do. Without the call id it is an orphan: it cannot be
+            // traced back to the call that produced it, and deleting the
+            // call leaves the badge counting a question with no evidence
+            // behind it (2026-09-09).
+            call_id: ctx.callId || undefined,
           },
           { isReadOnly: true }
         );
