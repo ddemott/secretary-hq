@@ -1285,3 +1285,43 @@ Answer rate, booking rate, completion rate, dispatch note completeness, no-show 
 13. ~~What does onboarding look like for a new tenant?~~ **RESOLVED:** We have an onboarding wizard. Already exists. The only addition: ability for the tenant to add or remove questions from their decision tree. That's the tree editor piece — tricky but needed.
 14. ~~What does the first demo call look like for a prospect?~~ **RESOLVED:** After the onboarding wizard, tenant gets a test phone number for their own business. They can call it as many times as they want. They hear exactly what a real customer would hear. They can tweak the tree, RAG, or settings, then call again to test changes. This is the primary way they refine their voice agent before going live.
 15. ~~What metrics do we track from day one?~~ **RESOLVED:** Collect all metrics internally. Only show curated metrics — things that reflect good outcomes and show how secretary-hq makes their business better. Don't show cost of LLM (internal tracking only). Don't show everything. Curate what tells a good story. TODO: Design and build metrics screen, then revisit which metrics to surface.
+
+---
+
+# SECTION 5: Conversational Robustness — opener clarification, filler vs interruption, scratchpad
+
+_Rescued 2026-09-09 from `docs/planning/PLAN-08-10-2026.md`, which was deleted as a stale
+plan. **Nothing in it was ever built** — verified against `agent/src`: no scratchpad, no
+`clarify_opener` node, no filler-word detection, and no PR ever used its
+`PR-0x.08-10-2026` naming. The plan is gone; these five ideas are worth keeping, so
+they live here until something starts._
+
+Written originally for the checklist runtime, and all five still fit it — no new
+architecture, no DB change, no new trees.
+
+**1. The vague opener gets a capability answer, not a re-ask.** A caller who opens with
+"uh… I'm not sure who I need" should immediately hear what this line can actually do,
+built from tenant facts (`greeting_menu`, the service roster) and never from a
+hardcoded person's name. Today a confused opener produces another question.
+
+**2. Filler is not an interruption.** "yeah", "uh-huh", "k", "okay", "go on" are the
+noises people make WHILE listening; "what", "repeat that", "I don't get it", "wait" are
+requests to stop and re-explain. Treating the first group as a turn is what makes an
+agent talk over its own caller. The response to the second group is the model's to
+choose — repeat, simplify, or go deeper.
+
+**3. A scratchpad, so a fact given once is never asked twice.** Answers volunteered
+early should pre-fill later nodes before the checklist is rendered into context, rather
+than being re-collected when the tree eventually reaches them.
+
+**4. Mind-changes must not lose state.** When a caller pivots, acknowledge the change and
+update the scratchpad — but never re-ask what is already known. (The tracker already
+discards answers stranded on a dead branch; this is the other half of that.)
+
+**5. A service named inside a message is an offer, not a footnote.** If the caller
+mentions work the business does while leaving a message, that should surface an
+appointment offer instead of ending at "I'll pass it along."
+
+Original risks, still real: prompt bloat (the plan capped itself at +2k chars), over-
+filtering genuine speech as filler (needs real audio, not synthetic transcripts), and
+scratchpad key collisions (node_id discipline).

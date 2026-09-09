@@ -311,10 +311,9 @@ number of open branches. Finish one, purge it, then start the next.
 
 ## Related docs
 
-- `docs/DEVELOPMENT_WORKFLOW.md` — day-to-day standards, hooks, PR process, one-active-PR rule
-- `docs/BRANCH_CHECKLIST.md` — checkbox form for a single branch
-- `docs/PRODUCT_ROADMAP.md` §0.7 — when status may become `DONE`
+- `docs/workflow/DEVELOPMENT_WORKFLOW.md` — day-to-day standards, hooks, PR process, one-active-PR rule
+- `docs/workflow/BRANCH_CHECKLIST.md` — checkbox form for a single branch
+- `docs/planning/PRODUCT_ROADMAP.md` §0.7 — when status may become `DONE`
 - `docs/planning/TODO.md` / `docs/planning/RESOLVED.md` — backlog vs archive
-- `docs/OPEN-PR.md` — example inventory of open/merged/purged branches
 - `.github/BRANCH_PROTECTION.md` — what CI must be green to merge
 - `.github/pull_request_template.md` — PR evidence checklist
