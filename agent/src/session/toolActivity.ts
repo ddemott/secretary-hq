@@ -74,8 +74,31 @@ export function wasMessageTaken(): boolean {
   return messageTaken;
 }
 
-/** Test seam — reset between cases. */
-export function _resetToolActivityForTest(): void {
+/**
+ * Clear both flags for a NEW CALL. Called from `entry()` before anything else.
+ *
+ * WHY THIS EXISTS (Copilot review, PR #409): this module's state is module-level
+ * — deliberately, since one agent session runs per job process — but "one session
+ * per process" is not the same claim as "one process per session". The SDK keeps
+ * idle job processes warm (`numIdleProcesses`), and a process that outlives its
+ * job carries these values into the next caller.
+ *
+ * What that costs if it is true: `messageTaken` never falls back to false, so
+ * every later call on that process gets the after-message recovery line and is
+ * NEVER offered a message — the exact fix inverted into a new defect, on a caller
+ * who has left nothing. `inFlight` is the same shape and predates it: a tool still
+ * in flight when a call drops leaves the count above zero forever, and the hold
+ * line goes back to claiming a lookup that is not happening.
+ *
+ * Resetting at the start of a call is correct whether or not processes are reused,
+ * costs two assignments, and removes the question entirely.
+ */
+export function resetCallActivity(): void {
   inFlight = 0;
   messageTaken = false;
+}
+
+/** Test seam — reset between cases. */
+export function _resetToolActivityForTest(): void {
+  resetCallActivity();
 }

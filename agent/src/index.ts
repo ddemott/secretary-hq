@@ -72,6 +72,7 @@ import {
   attachCallerSilenceWatch,
 } from './session/watchdog.js';
 import { attachThinkingSound } from './session/thinkingSound.js';
+import { resetCallActivity } from './session/toolActivity.js';
 import { TurnLatencyCollector } from './session/turnLatency.js';
 import { TranscriptRecorder } from './transcript.js';
 import { ToolCallLog } from './toolCallLog.js';
@@ -295,6 +296,10 @@ export default defineAgent({
     // the participant joining (the leg is up). MEASURE before fixing: the last
     // voice "freeze" turned out to be TTS, not any of the things that were
     // guessed at, and a whole afternoon went into the guesses.
+    // Module-level per-call state starts CLEAN, whether or not this process has
+    // handled a call before (see session/toolActivity.ts). Two assignments, and
+    // the "are job processes reused?" question stops mattering.
+    resetCallActivity();
     const entryAtMs = Date.now();
     let participantAtMs: number | null = null;
 
