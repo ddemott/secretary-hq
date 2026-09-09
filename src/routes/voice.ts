@@ -101,14 +101,16 @@ async function resolveUnansweredForCalls(
   try {
     const res = await withTenantClient(tenantId, (client) =>
       client.query(
+        // No RETURNING: the caller wants a COUNT, and rowCount already carries
+        // it for an UPDATE. Returning the ids would materialise every resolved
+        // row into a payload nothing reads.
         `UPDATE unanswered_questions
             SET resolved = true
-          WHERE tenant_id = $1 AND resolved = false AND call_id = ANY($2::text[])
-          RETURNING unanswered_question_id`,
+          WHERE tenant_id = $1 AND resolved = false AND call_id = ANY($2::text[])`,
         [tenantId, ids]
       )
     );
-    return res.rowCount ?? res.rows.length;
+    return res.rowCount ?? 0;
   } catch {
     return 0;
   }

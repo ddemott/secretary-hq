@@ -1057,7 +1057,7 @@ describe('Voice Routes — Soft-delete calls', () => {
     // WHY: The badge counts KB gaps; leaving an orphan gap behind makes it
     //      count a to-do with no evidence attached.
     queryResponses.push({ rows: [{ voice_session_id: VOICE_SESSION_ID, call_id: CALL_ID }] });
-    queryResponses.push({ rows: [{ unanswered_question_id: 'q1' }] });
+    queryResponses.push({ rows: [], rowCount: 1 });
     const res = await app.inject({
       method: 'DELETE',
       url: `/voice/session/${VOICE_SESSION_ID}?tenant_id=${TENANT_ID}`,
@@ -1130,7 +1130,7 @@ describe('Voice Routes — Soft-delete calls', () => {
         { voice_session_id: 'c', call_id: 'call-c' },
       ],
     });
-    queryResponses.push({ rows: [{ unanswered_question_id: 'q1' }] });
+    queryResponses.push({ rows: [], rowCount: 1 });
     const res = await app.inject({
       method: 'POST',
       url: `/voice/delete-old?tenant_id=${TENANT_ID}`,
