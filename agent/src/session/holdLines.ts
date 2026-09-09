@@ -49,6 +49,22 @@ export const RECOVERY_LINE =
   "Sorry, this is taking me a moment. If you'd like, I can take a message and have someone get right back to you.";
 
 /**
+ * Deadline 2, but a message HAS already been taken on this call.
+ *
+ * 2026-09-09, call SCL_A5wnBexPbwCC at 4:14: the caller had just completed a full
+ * job intake and `take_message` had returned. The line above played anyway and
+ * offered to take a message. He said "No. No message. Just pass this on." The dead
+ * air was genuine, so firing was right — the OFFER was the lie, because the thing
+ * being offered was already done.
+ *
+ * A recovery line is only worth speaking if it offers the caller something they do
+ * not already have. Once the message exists, all that is left to be honest about is
+ * the wait itself.
+ */
+export const RECOVERY_LINE_AFTER_MESSAGE =
+  "Sorry — still writing that up. One more moment and I'll have it.";
+
+/**
  * Spoken when a TOOL fails outright (timeout / throw / empty) — wrapTool.ts hands
  * this to the model as the tool's result, so the caller hears a graceful offer
  * instead of a stack trace or silence. Lives here for the same cache-key reason:
@@ -104,6 +120,7 @@ export const HOLD_LINES = [
   HOLD_LINE,
   THINKING_LINE,
   RECOVERY_LINE,
+  RECOVERY_LINE_AFTER_MESSAGE,
   TOOL_FALLBACK_LINE,
   CALLER_CHECK_IN_LINE,
   CALLER_SILENCE_GOODBYE,

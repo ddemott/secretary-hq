@@ -60,6 +60,7 @@ import {
   HOLD_LINE,
   THINKING_LINE,
   RECOVERY_LINE,
+  RECOVERY_LINE_AFTER_MESSAGE,
   CALLER_CHECK_IN_LINE,
   CALLER_SILENCE_GOODBYE,
   OUTAGE_LINE,
@@ -1798,7 +1799,11 @@ export default defineAgent({
             apiKey: config.DEEPGRAM_API_KEY,
             model: ttsVoiceKey,
           }) as unknown as Parameters<typeof warmFillers>[0];
-          void warmFillers(fillerTts, watchdogVoice, [fillerText, recoveryText]).then(
+          void warmFillers(fillerTts, watchdogVoice, [
+            fillerText,
+            recoveryText,
+            RECOVERY_LINE_AFTER_MESSAGE,
+          ]).then(
             ({ failed }) => {
               if (failed.length > 0) {
                 callLog.warn(
@@ -1833,6 +1838,10 @@ export default defineAgent({
             deadline1Ms: Number(process.env.WATCHDOG_DEADLINE_1_MS ?? 2800),
             fillerText,
             recoveryText,
+            // Once a message exists, the recovery line stops offering to take one
+            // (2026-09-09, SCL_A5wnBexPbwCC at 4:14 — it offered, and the caller
+            // had to say "No. No message. Just pass this on.").
+            recoveryTextAfterMessage: RECOVERY_LINE_AFTER_MESSAGE,
             log: callLog,
             // Hold lines are addToChatCtx:false (never pollute the model's
             // context) — this puts them in the TRANSCRIPT anyway, so a silent

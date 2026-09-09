@@ -566,10 +566,18 @@ export function registerSchedulingRoutes({
       // come back as an unhandled 500 — which the agent relayed as "Backend
       // returned 500" and the model retried, identically, into the same wall.
       // Fail SPOKEN instead, naming the grid, so the model can renegotiate the time.
-      if (
-        !isFifteenMinuteIncrement(args.window.from) ||
-        !isFifteenMinuteIncrement(args.window.to)
-      ) {
+      //
+      // ONLY `from` IS A BOOKING TIME. The RPC books at `p_window_from` and never
+      // reads `p_window_to` at all — `to` is an upper bound the caller never hears.
+      // Checking it against the grid rejected bookings that were perfectly legal:
+      // on call SCL_A5wnBexPbwCC (2026-09-09 11:12 CT) the model pinned 1:00 PM by
+      // sending the one-minute window [13:00, 13:01) — the shape its own tool
+      // description invites, since the tool books the earliest slot at or after
+      // `from`. 13:01 is off-grid, so the booking died twice in 12ms and 31ms
+      // without touching the database, and the caller was told "I can only book
+      // times on the quarter hour. I have 1:00, 1:15, or 2:00" — twenty seconds
+      // after the agent itself had offered him 1:00. He never got an appointment.
+      if (!isFifteenMinuteIncrement(args.window.from)) {
         (reply as unknown as { _toolOutcome?: string })._toolOutcome = 'error';
         return reply.status(200).send({
           success: false,

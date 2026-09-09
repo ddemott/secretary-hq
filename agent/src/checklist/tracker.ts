@@ -392,6 +392,30 @@ export class ChecklistTracker {
       if (value.startsWith(prefixed) && Object.hasOwn(def.options, value.slice(prefixed.length))) {
         return this.record(nodeId, { value: value.slice(prefixed.length) });
       }
+      // ...AND IT FUSES PARTS OF THE NODE_ID TOO (2026-09-09 live call
+      // SCL_A5wnBexPbwCC). Same node, same question: asked `hiring_for`, the
+      // caller said "I'm hiring for my own", and the model recorded
+      // "hiring_own_company" — not `hiring_for_own_company`, so the exact-prefix
+      // strip above missed it by one token. The node stayed open, the model
+      // re-asked a question it already had the answer to, and the caller
+      // answered "I'm hiring for my own" a SECOND time. A repair that only
+      // catches one spelling of a mistake is a repair the caller still pays for.
+      //
+      // So: an option is accepted when the recorded value is that option plus
+      // any leading run of the node_id's own words. `hiring_own_company` =
+      // "hiring" (a node_id word) + `own_company`. This cannot reach an option
+      // the bare check would have refused — the suffix must still BE an option
+      // verbatim — and it cannot cross options, since dropping leading words
+      // can only ever land on one of them.
+      const nodeWords = new Set(nodeId.split('_').filter(Boolean));
+      const valueWords = value.split('_');
+      for (let i = 1; i < valueWords.length; i++) {
+        if (!nodeWords.has(valueWords[i - 1])) break;
+        const candidate = valueWords.slice(i).join('_');
+        if (Object.hasOwn(def.options, candidate)) {
+          return this.record(nodeId, { value: candidate });
+        }
+      }
       // THIS MESSAGE TAUGHT THE MODEL TO SAY "answering_service" OUT LOUD.
       //
       // 2026-08-15 sim (BUY THE SERVICE): the caller said "calls go to an

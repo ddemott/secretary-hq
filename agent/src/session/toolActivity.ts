@@ -31,6 +31,7 @@
  */
 
 let inFlight = 0;
+let messageTaken = false;
 
 /** A tool's execute() has started. */
 export function toolStarted(): void {
@@ -50,7 +51,31 @@ export function isToolRunning(): boolean {
   return inFlight > 0;
 }
 
+/**
+ * THE RECOVERY LINE OFFERED A MESSAGE TO SOMEONE WHO HAD JUST LEFT ONE.
+ *
+ * 2026-09-09, call SCL_A5wnBexPbwCC, at 4:14: the caller had finished a full job
+ * intake, `take_message` had already returned, and the watchdog's deadline-2 line
+ * said "Sorry, this is taking me a moment. If you'd like, I can take a message and
+ * have someone get right back to you." He answered "No. No message. Just pass this
+ * on." The dead air was real — the model was slow composing its wrap-up — so firing
+ * was correct. The OFFER was not: it proposed the one thing already done.
+ *
+ * Same rule as the hold line above it: the line the runtime speaks has to be true
+ * at the moment it plays. Once a message exists, the recovery line stops offering
+ * to take one and just asks for the beat it actually needs.
+ */
+export function markMessageTaken(): void {
+  messageTaken = true;
+}
+
+/** True once this call has successfully recorded a message for the owner. */
+export function wasMessageTaken(): boolean {
+  return messageTaken;
+}
+
 /** Test seam — reset between cases. */
 export function _resetToolActivityForTest(): void {
   inFlight = 0;
+  messageTaken = false;
 }

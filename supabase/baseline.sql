@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict TQL0PpzETkbUhKvGStuabekuzbNGf3QGbN78dfemsQQbOPHUGSPh7RdMhXGoBBf
+\restrict sP7mCEa4KIF3arYx4o0VTG9gjPro0wet8xZpdZHEgs1sPS3FE4bKQI1Z9vJgrBB
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -566,10 +566,9 @@ BEGIN
                 AND es.tenant_id = p_tenant_id
                 AND es.shift_date = v_shift_date
                 AND es.is_off = false
-                AND es.start_time <= v_start_time_of_day
-                AND CASE WHEN es.end_time < es.start_time
-                         THEN (NOT v_end_wraps) OR es.end_time >= v_end_time_of_day
-                         ELSE (NOT v_end_wraps) AND es.end_time >= v_end_time_of_day END
+                AND public.shift_covers_booking(
+                        es.start_time, es.end_time,
+                        v_start_time_of_day, v_end_time_of_day, v_end_wraps)
             WHERE res.tenant_id = p_tenant_id
                 AND res.is_active = true
                 AND emp.tenant_id = p_tenant_id
@@ -655,10 +654,9 @@ BEGIN
              WHERE es.tenant_id = p_tenant_id
                AND es.shift_date = v_shift_date
                AND es.is_off = false
-               AND es.start_time <= v_start_time_of_day
-               AND CASE WHEN es.end_time < es.start_time
-                         THEN (NOT v_end_wraps) OR es.end_time >= v_end_time_of_day
-                         ELSE (NOT v_end_wraps) AND es.end_time >= v_end_time_of_day END
+               AND public.shift_covers_booking(
+                       es.start_time, es.end_time,
+                       v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                AND emp.tenant_id = p_tenant_id
                AND emp.is_active = true
                AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
@@ -696,10 +694,9 @@ BEGIN
                     AND es.tenant_id = p_tenant_id
                     AND es.shift_date = v_shift_date
                     AND es.is_off = false
-                    AND es.start_time <= v_start_time_of_day
-                    AND CASE WHEN es.end_time < es.start_time
-                         THEN (NOT v_end_wraps) OR es.end_time >= v_end_time_of_day
-                         ELSE (NOT v_end_wraps) AND es.end_time >= v_end_time_of_day END
+                    AND public.shift_covers_booking(
+                            es.start_time, es.end_time,
+                            v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                 WHERE emp.tenant_id = p_tenant_id
                 AND emp.is_active = true
                 AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
@@ -2002,6 +1999,50 @@ BEGIN
   PERFORM set_config('app.current_tenant_id', p_tenant_id::TEXT, FALSE);
 END;
 $$;
+
+
+--
+-- Name: shift_covers_booking(time without time zone, time without time zone, time without time zone, time without time zone, boolean, interval); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.shift_covers_booking(p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval DEFAULT '00:01:00'::interval) RETURNS boolean
+    LANGUAGE sql IMMUTABLE
+    AS $$
+    SELECT
+        -- START EDGE: the shift may begin up to p_slack AFTER the booking starts.
+        (
+            p_shift_start <= p_slot_start
+            OR (
+                p_slot_start < TIME '23:59'          -- guard: no midnight wrap
+                AND p_shift_start <= p_slot_start + p_slack
+            )
+        )
+        AND
+        -- END EDGE, per shift SHAPE. The wrap semantics are unchanged from
+        -- 20260718003000; only the end comparison gains the slack.
+        --   DAY shift  (end > start): a wrapping slot is NEVER covered.
+        --   NIGHT shift (end < start): pre-midnight slots are covered by the
+        --     start check alone; a wrapping slot must end by the morning end.
+        CASE
+            WHEN p_shift_end < p_shift_start THEN
+                (NOT p_slot_end_wraps)
+                OR p_shift_end >= p_slot_end
+                OR (p_slot_end >= TIME '00:01' AND p_shift_end >= p_slot_end - p_slack)
+            ELSE
+                (NOT p_slot_end_wraps)
+                AND (
+                    p_shift_end >= p_slot_end
+                    OR (p_slot_end >= TIME '00:01' AND p_shift_end >= p_slot_end - p_slack)
+                )
+        END
+$$;
+
+
+--
+-- Name: FUNCTION shift_covers_booking(p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.shift_covers_booking(p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval) IS 'Does this employee shift cover this booking? One minute of slack at each boundary. The single source of truth for shift coverage: book_with_scheduling_atomic calls it three times and availabilitySearch.ts calls it once, so suggest and enforce cannot drift.';
 
 
 --
@@ -6643,5 +6684,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict TQL0PpzETkbUhKvGStuabekuzbNGf3QGbN78dfemsQQbOPHUGSPh7RdMhXGoBBf
+\unrestrict sP7mCEa4KIF3arYx4o0VTG9gjPro0wet8xZpdZHEgs1sPS3FE4bKQI1Z9vJgrBB
 

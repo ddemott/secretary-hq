@@ -4,6 +4,68 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-09 — The call that collected everything and booked nothing (SCL_A5wnBexPbwCC)
+
+**A caller asked for 1:00 PM, was offered 1:00 PM, and was told 1:00 PM was not on
+the quarter hour.** Prod call 11:12 CT, 292 seconds. The model pinned the exact time
+the way its own tool description invites — `window_from 13:00:00`, `window_to
+13:01:00`, because `book_with_scheduling` books the earliest slot at or after
+`from`. The route's grid guard checked BOTH ends, `13:01` is off-grid, and the
+booking died twice (12ms and 31ms — no DB statement ran). `window.to` is an upper
+bound the caller never hears and the RPC never reads: `book_with_scheduling_atomic`
+sets `v_start := p_window_from` and ignores `p_window_to` entirely. The guard now
+validates the START only, which is the only value that is a booking time.
+
+Everything downstream was that one rejection wearing different clothes. The model
+relayed the grid error as "I can only book times on the quarter hour. I have 1:00,
+1:15, or 2:00" — twenty seconds after offering 1:00, so the caller pushed back
+("Why couldn't you book? I thought you had one available") and got an invented
+explanation about minutes. After the second failure the 2-strike rule flipped
+purpose to `identity+message` with `booking` in `wrong_trees`, dropping what he rang
+for. He then asked for 1:30; the agent said "I'll check the schedule for 1:30 PM and
+confirm it for you" and **made no further tool call at all**. `job_inquiries` got a
+perfect row — role, full_time, 128k, hybrid, address, callback. The calendar got
+nothing.
+
+**Shift boundaries are now fuzzy by one minute, in ONE place.** Dale's rule: people
+butt meetings end to end and speak in round numbers, so a shift saved as ending 16:59
+must still cover the 17:00 a caller actually says. `shift_covers_booking()`
+(migration 20260909120000) takes a minute of slack at each edge and is called from
+all four sites that had hand-copied the comparison — three inside the booking RPC and
+one in `availabilitySearch.ts`. That duplication is not hypothetical debt: suggest and
+enforce disagreeing IS the 2026-07-17 midnight-wrap call, where the agent offered
+11:30 PM against a 1-5 PM shift and then booked it. The wrap guards are load-bearing
+(`'23:59'::time + '1 minute'` = `'00:00'`), so the un-slacked comparison is always
+tried first and the fuzzy path can only ever add a minute. Appointments stay on the
+quarter-hour grid — the `appointments_start/end_time_15min` CHECKs are untouched, so
+no odd-minute appointment is ever written and nothing else that assumes the grid had
+to be revisited.
+
+**He answered the same question twice.** Asked `hiring_for`, he said "I'm hiring for
+my own"; the model recorded `hiring_own_company`. Valid keys are `own_company` /
+`placing_with_client`. The 2026-08-19 repair strips the exact `hiring_for_` prefix —
+one token more than the model actually fused — so the value fell through, the node
+stayed open, and the question came back. The repair now walks off leading tokens
+while each belongs to the node_id, which can only ever land on an option a bare check
+would already have accepted.
+
+**And the recovery line offered a message to a man who had just left one.** At 4:14,
+with `take_message` already returned, the watchdog said "…I can take a message and
+have someone get right back to you." He said "No. No message. Just pass this on." The
+dead air was real, so firing was right; the OFFER was the lie. `markMessageTaken()`
+now flips a runtime flag on a successful message or page, and deadline 2 switches to
+a line that promises nothing it cannot deliver. Same rule as the hold line above it:
+what the runtime speaks has to be true at the moment it plays.
+
+Coverage: a real-DB guard on the slack function (11 cases — both edges at one minute,
+both refused at two, day/night wrap rules preserved, plus assertions that the RPC and
+the suggest side both call the function so the copies cannot come back), route tests
+for the one-minute window booking and for an off-grid START still being refused,
+tracker tests for the partial fusion and for a value that merely looks fused, and
+watchdog tests for both recovery lines.
+
+---
+
 ## 2026-09-09 — The nav badge counted a to-do nothing could clear, and sat on top of the theme button
 
 **The badge was honest about a column nobody wrote.** The upper-right pill counts

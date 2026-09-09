@@ -2,6 +2,7 @@ import { llm } from '@livekit/agents';
 import type { ToolMap } from './types.js';
 import type { ToolBuildDeps } from './deps.js';
 import { firstPhone, formatResponse } from './helpers.js';
+import { markMessageTaken } from '../session/toolActivity.js';
 
 export function messagingTools(d: ToolBuildDeps): ToolMap {
   const { ctx, client, outcome, speakFiller } = d;
@@ -61,6 +62,8 @@ export function messagingTools(d: ToolBuildDeps): ToolMap {
           // a FACT from the tool, not the post-call classifier's guess about why
           // the caller rang. See callOutcome.ts.
           outcome?.recordMessage();
+          // A page writes a customer_messages row too, so the same rule applies.
+          markMessageTaken();
         }
         return formatResponse(res);
       },
@@ -127,7 +130,14 @@ export function messagingTools(d: ToolBuildDeps): ToolMap {
         // Camille (2026-07-25) left one and the call was filed `wrong_service`,
         // because the LLM classifier was answering a different question. A tool
         // that succeeded outranks a guess. See callOutcome.ts.
-        if (res.ok) outcome?.recordMessage();
+        if (res.ok) {
+          outcome?.recordMessage();
+          // Tell the RUNTIME, not just the outcome tracker: once a message
+          // exists, the watchdog's recovery line must stop offering to take one
+          // (2026-09-09 call SCL_A5wnBexPbwCC — it offered, and the caller had
+          // to refuse a thing he had just done). See session/toolActivity.ts.
+          markMessageTaken();
+        }
         return formatResponse(res);
       },
     }),
