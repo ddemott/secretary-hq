@@ -316,6 +316,46 @@ describe('Knowledge upload → policy-answer retrieval (real DB + pgvector)', ()
     expect(logged.rows[0].question).toBe('Do you offer a discount?');
   });
 
+  it('SAD: the logged gap carries the call_id it was asked on', async () => {
+    // WHO: an owner clearing their Calls screen who still saw the nav badge
+    //      counting one unanswered question (2026-09-09).
+    // WHAT: policy-answer accepts an optional call_id and persists it on the
+    //       unanswered_questions row.
+    // WHEN: every zero-hit question asked on a real call.
+    // WHERE: the INSERT INTO unanswered_questions in
+    //        src/routes/agentTools/knowledge.ts.
+    // WHY: DELETE /voice/session/:id resolves gaps by call_id. The column
+    //      existed since 2026-04 and NO writer ever set it, so the cascade
+    //      would have matched nothing — a no-op that looks like it worked.
+    if (!dbAvailable) return;
+
+    const askRes = await app.inject({
+      method: 'POST',
+      url: '/agent-tools/policy-answer',
+      headers: { 'x-agent-secret': AGENT_SECRET },
+      payload: {
+        tenant_id: tenantId,
+        question: 'Do you validate parking downtown?',
+        call_id: 'sip-call-gap-1',
+      },
+    });
+    expect(askRes.statusCode).toBe(200);
+
+    // Same fire-and-forget poll as the test above.
+    let logged: { rows: { call_id: string | null }[] } = { rows: [] };
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      logged = await setup.query<{ call_id: string | null }>(
+        'SELECT call_id FROM unanswered_questions WHERE tenant_id = $1',
+        [tenantId]
+      );
+      if (logged.rows.length > 0) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(logged.rows.length).toBe(1);
+    expect(logged.rows[0].call_id).toBe('sip-call-gap-1');
+  });
+
   it('SAD: /agent-tools/policy-answer without the agent secret returns 401', async () => {
     // WHO: an unauthenticated client (web crawler, attacker, mis-wired
     //      worker that lost its secret).

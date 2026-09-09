@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type {Pool} from 'pg';
+import type { Pool } from 'pg';
 import { registerVoiceRoutes } from '../../src/routes/voice';
 import { createMockClient, createMockPool, createMockWithTenantClient } from '../mock';
 
@@ -56,11 +56,7 @@ function buildApp() {
     }
   });
 
-  registerVoiceRoutes(
-    fastify,
-    mockPool,
-    mockWithTenantClient
-  );
+  registerVoiceRoutes(fastify, mockPool, mockWithTenantClient);
 
   return fastify;
 }
@@ -1048,5 +1044,104 @@ describe('Voice Routes — Soft-delete calls', () => {
     });
     expect(res.statusCode).toBe(403);
     expect(mockClient.query.mock.calls.length).toBe(0);
+  });
+
+  it('40. DELETE /voice/session/:id resolves the KB gaps that belong to that call', async () => {
+    // WHO: Owner who cleared their Calls screen and still saw the upper-right
+    //      badge counting "1 unanswered" for a call they can no longer open
+    //      (reported 2026-09-09).
+    // WHAT: After the soft-delete, a second UPDATE resolves the
+    //      unanswered_questions rows carrying the deleted call's call_id.
+    // WHERE: resolveUnansweredForCalls in src/routes/voice.ts.
+    // WHEN: A single call delete whose row has a call_id.
+    // WHY: The badge counts KB gaps; leaving an orphan gap behind makes it
+    //      count a to-do with no evidence attached.
+    queryResponses.push({ rows: [{ voice_session_id: VOICE_SESSION_ID, call_id: CALL_ID }] });
+    queryResponses.push({ rows: [], rowCount: 1 });
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/voice/session/${VOICE_SESSION_ID}?tenant_id=${TENANT_ID}`,
+      headers: { 'x-role': 'owner' },
+    });
+    expect(res.statusCode).toBe(200);
+    const sql = mockClient.query.mock.calls[1][0] as string;
+    expect(sql).toContain('UPDATE unanswered_questions');
+    expect(sql).toContain('resolved = true');
+    expect(sql).toContain('resolved = false');
+    expect(sql).toContain('call_id = ANY($2::text[])');
+    const params = mockClient.query.mock.calls[1][1] as unknown[];
+    expect(params[0]).toBe(TENANT_ID);
+    expect(params[1]).toEqual([CALL_ID]);
+  });
+
+  it('41. DELETE /voice/session/:id skips the KB-gap UPDATE when the call has no call_id', async () => {
+    // WHO: Owner deleting a legacy row whose call_id is NULL.
+    // WHAT: No second query at all — never issue `call_id = ANY('{}')`, which
+    //      would scan and update nothing while looking like it worked.
+    // WHERE: the ids.length === 0 early return in resolveUnansweredForCalls.
+    // WHEN: Every delete of a session with a NULL call_id.
+    // WHY: A no-op write is the failure mode this repo keeps re-learning —
+    //      cheaper to not issue it than to explain it later.
+    queryResponses.push({ rows: [{ voice_session_id: VOICE_SESSION_ID, call_id: null }] });
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/voice/session/${VOICE_SESSION_ID}?tenant_id=${TENANT_ID}`,
+      headers: { 'x-role': 'owner' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockClient.query.mock.calls.length).toBe(1);
+  });
+
+  it('42. DELETE /voice/session/:id still succeeds when the KB-gap UPDATE throws', async () => {
+    // WHO: Owner deleting a call while the unanswered_questions write fails.
+    // WHAT: 200 — the delete already committed; the badge cleanup is
+    //      best-effort and must not turn a successful delete into a 500.
+    // WHERE: the catch in resolveUnansweredForCalls.
+    // WHEN: Any error on the follow-up UPDATE.
+    // WHY: Losing the cleanup costs one stale badge; failing the response
+    //      tells the owner their delete failed when it did not.
+    mockClient.query.mockImplementationOnce(() =>
+      Promise.resolve({
+        rows: [{ voice_session_id: VOICE_SESSION_ID, call_id: CALL_ID }],
+        rowCount: 1,
+      })
+    );
+    mockClient.query.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/voice/session/${VOICE_SESSION_ID}?tenant_id=${TENANT_ID}`,
+      headers: { 'x-role': 'owner' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+  });
+
+  it('43. POST /voice/delete-old resolves the KB gaps of every call it deleted', async () => {
+    // WHO: Owner clearing 90+ day calls in bulk.
+    // WHAT: One follow-up UPDATE carrying every deleted call_id; rows with a
+    //      NULL call_id are dropped from the array, not passed as null.
+    // WHERE: resolveUnansweredForCalls, bulk path.
+    // WHEN: Every bulk delete that removed at least one call with a call_id.
+    // WHY: Same badge honesty as the single delete, one query not N.
+    queryResponses.push({
+      rows: [
+        { voice_session_id: 'a', call_id: 'call-a' },
+        { voice_session_id: 'b', call_id: null },
+        { voice_session_id: 'c', call_id: 'call-c' },
+      ],
+    });
+    queryResponses.push({ rows: [], rowCount: 1 });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/voice/delete-old?tenant_id=${TENANT_ID}`,
+      headers: { 'x-role': 'owner' },
+      payload: { older_than_days: 90 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().result.deleted).toBe(3);
+    const sql = mockClient.query.mock.calls[1][0] as string;
+    expect(sql).toContain('UPDATE unanswered_questions');
+    const params = mockClient.query.mock.calls[1][1] as unknown[];
+    expect(params[1]).toEqual(['call-a', 'call-c']);
   });
 });

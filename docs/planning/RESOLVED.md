@@ -4,6 +4,49 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-09 — The nav badge counted a to-do nothing could clear, and sat on top of the theme button
+
+**The badge was honest about a column nobody wrote.** The upper-right pill counts
+`unanswered_questions` rows — questions a caller asked that RAG could not answer.
+An owner cleared every call off the Calls screen and the pill still read `1 KB`,
+so it looked like a stuck counter. It was not: the table has no FK to
+`voice_sessions`, and call deletion is a soft delete on `voice_sessions` alone.
+Nothing linked them.
+
+The link was SUPPOSED to be `unanswered_questions.call_id`, which has existed since
+migration 20260417000000 — and **no writer has ever set it**. The only INSERT
+(`src/routes/agentTools/knowledge.ts`, the zero-RAG-hit branch of
+`/agent-tools/policy-answer`) wrote `(tenant_id, question)`. A cascade keyed on that
+column would have matched zero rows forever: a no-op that reads as a working feature.
+So the fix is two halves that only work together — the agent now sends `call_id`
+(`agent/src/tools/knowledge.ts`) and the route persists it, and
+`resolveUnansweredForCalls()` in `src/routes/voice.ts` resolves those gaps on both
+`DELETE /voice/session/:id` and `POST /voice/delete-old`. It is best-effort (a
+failure there must not turn a committed delete into a 500), it skips the query
+entirely when every deleted row has a NULL `call_id` rather than issuing
+`call_id = ANY('{}')`, and it reports `unanswered_questions_resolved` in the event log.
+
+**No backfill.** Rows written before this ship carry a NULL `call_id` and are
+unreachable from the cascade by design — inventing an attribution for them would be
+archaeology. They clear from the Phone Assistant tab, as they always did.
+
+**The pill also covered the thing next to it.** It was `fixed top-3 right-4`, which is
+the AppShell bar's own right slot: the theme button rendered as "Na" with the pill
+over "vy". Fixed positioning was itself the second attempt — the first,
+`-top-1 -right-1` inside the tab row, got sliced by the `pointer-events: none`
+border trick that lifts the active tab. It is now an IN-FLOW row directly under the
+tab bar, which cannot overlap anything because nothing else occupies that line.
+Label `1 KB` → `1 unanswered`: "KB" reads as kilobytes, and the owner read it as a
+customer waiting on them.
+
+Coverage: 4 route tests (cascade, NULL-call_id skip, throw-still-200, bulk array),
+one real-DB test that `call_id` actually lands on the row, 2 agent tool tests
+(sends the id; OMITS it rather than sending null on a browser session, which the
+optional non-empty-string Zod field would 400), and a dashboard test asserting the
+strip is not `fixed` and says "unanswered".
+
+---
+
 ## 2026-09-08 — The three warnings the suite printed on every green run, and the pg@9 break hiding in one of them
 
 **The third one was production code with a real expiry date.** `/analytics/stats`,

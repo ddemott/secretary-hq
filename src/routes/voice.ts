@@ -78,6 +78,44 @@ interface SocketIoLike {
   to(room: string): { emit(event: string, payload: unknown): void };
 }
 
+/**
+ * Clear the owner's KB-gap to-dos that belong to calls just soft-deleted.
+ *
+ * WHY: the upper-right nav badge counts `unanswered_questions` rows, and an
+ * owner who clears their Calls screen reads that badge as "still one thing to
+ * handle" for a call they can no longer open (reported 2026-09-09). Resolving
+ * the gap with its call keeps the badge honest.
+ *
+ * NB rows written before 2026-09-09 have a NULL `call_id` — nothing ever wrote
+ * it — so they are unreachable from here by design and stay until the owner
+ * resolves them on the Phone Assistant tab. Best-effort: a failure here must
+ * never turn a successful delete into a 500, so it is caught and returns 0.
+ */
+async function resolveUnansweredForCalls(
+  withTenantClient: <T>(tenantId: string, fn: (client: PoolClient) => Promise<T>) => Promise<T>,
+  tenantId: string,
+  callIds: (string | null)[]
+): Promise<number> {
+  const ids = callIds.filter((c): c is string => Boolean(c));
+  if (ids.length === 0) return 0;
+  try {
+    const res = await withTenantClient(tenantId, (client) =>
+      client.query(
+        // No RETURNING: the caller wants a COUNT, and rowCount already carries
+        // it for an UPDATE. Returning the ids would materialise every resolved
+        // row into a payload nothing reads.
+        `UPDATE unanswered_questions
+            SET resolved = true
+          WHERE tenant_id = $1 AND resolved = false AND call_id = ANY($2::text[])`,
+        [tenantId, ids]
+      )
+    );
+    return res.rowCount ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function registerVoiceRoutes(
   app: AppFastifyInstance,
   pool: Pool,
@@ -673,19 +711,29 @@ export function registerVoiceRoutes(
       // Exclude active calls: never hide a live/in-progress call out from under the
       // agent (matches the bulk route). An active id → 0 rows → 404.
       const res = await withTenantClient(tenantId, (client) =>
-        client.query(
+        client.query<{ voice_session_id: string; call_id: string | null }>(
           `UPDATE voice_sessions
               SET is_deleted = true, deleted_at = now(), deleted_by = $3
             WHERE voice_session_id = $1 AND tenant_id = $2 AND is_deleted = false
               AND status != 'active'
-            RETURNING voice_session_id`,
+            RETURNING voice_session_id, call_id`,
           [id, tenantId, deletedBy]
         )
       );
 
       if (!assertRowAffected(res, reply, 'Voice session')) return;
 
-      logEvent(req, 'voice_session_deleted', { voice_session_id: id, deleted_by: deletedBy });
+      const resolved = await resolveUnansweredForCalls(
+        withTenantClient,
+        tenantId,
+        res.rows.map((r) => r.call_id)
+      );
+
+      logEvent(req, 'voice_session_deleted', {
+        voice_session_id: id,
+        deleted_by: deletedBy,
+        unanswered_questions_resolved: resolved,
+      });
       return reply.send({ success: true });
     }, 'Failed to delete voice session')
   );
@@ -720,23 +768,29 @@ export function registerVoiceRoutes(
       const deletedBy = req.auth?.email ?? 'owner';
 
       const res = await withTenantClient(tenantId, (client) =>
-        client.query(
+        client.query<{ voice_session_id: string; call_id: string | null }>(
           `UPDATE voice_sessions
               SET is_deleted = true, deleted_at = now(), deleted_by = $3
             WHERE tenant_id = $1
               AND is_deleted = false
               AND status != 'active'
               AND started_at < now() - make_interval(days => $2)
-            RETURNING voice_session_id`,
+            RETURNING voice_session_id, call_id`,
           [tenantId, older_than_days, deletedBy]
         )
       );
 
       const deleted = res.rowCount ?? res.rows.length;
+      const resolved = await resolveUnansweredForCalls(
+        withTenantClient,
+        tenantId,
+        res.rows.map((r) => r.call_id)
+      );
       logEvent(req, 'voice_sessions_bulk_deleted', {
         older_than_days,
         deleted,
         deleted_by: deletedBy,
+        unanswered_questions_resolved: resolved,
       });
       return reply.send({ success: true, result: { deleted } });
     }, 'Failed to delete old voice sessions')

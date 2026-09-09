@@ -116,6 +116,9 @@ export const BookAppointmentSchema = z.object({
 export const GetPolicyAnswerSchema = z.object({
   tenant_id: z.string().uuid(),
   question: z.string().min(1),
+  // Optional — attributes an unanswered-question gap row to the call that
+  // asked it, so deleting the call can clear the owner's to-do with it.
+  call_id: z.string().min(1).optional(),
 });
 
 export const GetSchedulingOptionsSchema = z.object({

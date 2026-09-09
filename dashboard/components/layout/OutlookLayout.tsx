@@ -373,18 +373,21 @@ export function OutlookLayout({
           ))}
         </FolderTabBar>
 
-        {/* NOTIFICATION STRIP — live counters parked in the upper-right gutter
-          so they never collide with the tab labels. Two of them (KB
-          unanswered on Phone Assistant, active voice calls on Calls) used
-          to ride as floating "-top-1 -right-1" badges glued to their tab;
-          because the FolderTab row uses pointer-events: none on the
-          border trick that gives the active tab its lift, those absolutely-
-          positioned children ended up rendering against the wrong layer
-          and got visually sliced. Moved here as a fixed top-right cluster
-          that's a sibling of the tab row instead of a child. */}
+        {/* NOTIFICATION STRIP — live counters (KB unanswered on Phone
+          Assistant, active voice calls on Calls). They started life as
+          floating "-top-1 -right-1" badges glued to their tab; because the
+          FolderTab row uses pointer-events: none on the border trick that
+          gives the active tab its lift, those absolutely-positioned
+          children rendered against the wrong layer and got visually
+          sliced. The next attempt — `fixed top-3 right-4` — moved them out
+          of the tab row but straight ON TOP of the AppShell bar's own
+          right slot, covering the theme name (2026-09-09: the theme button
+          read "Na" with the pill sitting over "vy"). Now it is an IN-FLOW
+          row directly under the tab bar: it cannot overlap anything,
+          because nothing else occupies that line. */}
         {(unansweredCount > 0 || activeCallCount > 0) && (
           <div
-            className="fixed top-3 right-4 z-50 flex items-center gap-2 pointer-events-auto"
+            className="shrink-0 flex items-center justify-end gap-2 px-4 py-1.5"
             data-testid="nav-notification-strip"
           >
             {activeCallCount > 0 && (
@@ -416,7 +419,7 @@ export function OutlookLayout({
                 title={`${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''} from callers`}
               >
                 <Bot className="w-3.5 h-3.5" aria-hidden="true" />
-                {unansweredCount > 99 ? '99+' : unansweredCount} KB
+                {unansweredCount > 99 ? '99+' : unansweredCount} unanswered
               </button>
             )}
           </div>

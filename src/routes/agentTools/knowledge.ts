@@ -101,9 +101,9 @@ export function registerKnowledgeRoutes({
         // Fire-and-forget; don't fail the call on logging errors.
         withTenantClient(args.tenant_id, (client) =>
           client.query(
-            `INSERT INTO unanswered_questions (tenant_id, question)
-           VALUES ($1, $2)`,
-            [args.tenant_id, args.question]
+            `INSERT INTO unanswered_questions (tenant_id, question, call_id)
+           VALUES ($1, $2, $3)`,
+            [args.tenant_id, args.question, args.call_id ?? null]
           )
         ).catch(() => undefined);
         return ok(reply, policyFallback);

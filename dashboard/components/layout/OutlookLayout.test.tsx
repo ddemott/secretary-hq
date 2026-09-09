@@ -192,6 +192,38 @@ describe('OutlookLayout role gating', () => {
     expect(screen.queryByLabelText(/active call/i)).not.toBeInTheDocument();
   });
 
+  test('HAPPY: the KB badge reads "unanswered" and sits in flow, not over the nav bar', async () => {
+    // WHO: an owner who read the old "1 KB" pill as "one customer to take
+    //      care of" and found it parked on top of the theme button, which
+    //      then read "Na" instead of "Navy" (2026-09-09).
+    // WHAT: the notification strip is an in-flow row under the tab bar —
+    //       no `fixed` positioning, nothing to overlap — and the badge says
+    //       what it counts.
+    // WHERE: the nav-notification-strip block in OutlookLayout.tsx.
+    // WHEN: any tenant with at least one unanswered KB question.
+    // WHY: "KB" reads as kilobytes, and a fixed overlay covers whatever the
+    //      AppShell puts in the same corner.
+    mockApi.knowledge.unanswered.mockResolvedValue({
+      questions: [{ unanswered_question_id: 'q1' }],
+    });
+
+    render(
+      <OutlookLayout
+        activeTab="dashboard"
+        setActiveTab={vi.fn()}
+        role="owner"
+        managedTenantId="tenant-kb"
+      >
+        <div>content</div>
+      </OutlookLayout>
+    );
+
+    const strip = await screen.findByTestId('nav-notification-strip');
+    expect(strip.className).not.toContain('fixed');
+    expect(strip.textContent).toContain('1 unanswered');
+    expect(strip.textContent).not.toContain('KB');
+  });
+
   test('HAPPY: super-admin with role=front_desk still sees management tabs', async () => {
     // WHO: Platform super-admin (tenant_id = 00000000...). The role
     //      column doesn't apply to them — admin status is identified by
