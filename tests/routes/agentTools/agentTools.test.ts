@@ -2759,6 +2759,115 @@ describe('agentTools /book-with-scheduling', () => {
     expect(queries, 'rejected before any DB statement ran').toHaveLength(0);
   });
 
+  it('SAD: a caller asking for someone who does not work there is REFUSED, not silently reassigned', async () => {
+    // WHO: Dale, 2026-09-09 — "when setting up a meeting make sure the person works
+    //      at the company."
+    // WHAT: with_person is resolved against live active employees BEFORE the RPC.
+    //      No match → NO_SUCH_EMPLOYEE, the real roster handed back, and the
+    //      booking RPC is never called.
+    // WHERE: the roster check in book-with-scheduling (scheduling.ts).
+    // WHEN: any booking where the caller named a person.
+    // WHY: the tool had NO person parameter at all — it passed null for
+    //      p_preferred_employee_id — so a caller could ask for "Jane", the agent
+    //      could confirm "with Jane", and the RPC would assign whoever was free.
+    //      The appointment was right and the sentence was a lie (2026-07-27:
+    //      "Jane" was STT for "Dale", the only employee). The prompt already
+    //      forbade this; a prompt sentence is a request, host code is a guarantee.
+    const { app, queries } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        { rows: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Dale DeMott' }] },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'Jane',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error_code).toBe('NO_SUCH_EMPLOYEE');
+    expect(body.roster).toEqual(['Dale']);
+    // The exact sentence Dale asked for, handed to the model to speak.
+    expect(body.error).toContain(`Jane doesn't work here. Did you mean someone else?`);
+    // And the correction it should offer instead of inventing one.
+    expect(body.error).toContain('Did you mean Dale?');
+    // The booking RPC must never have run.
+    expect(queries.some((q) => q.text.includes('book_with_scheduling_atomic'))).toBe(false);
+  });
+
+  it('HAPPY: a caller asking for someone who DOES work there books, bound to that person', async () => {
+    // First-name match, case-insensitive — what a caller actually says.
+    const { app, queries } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        { rows: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Dale DeMott' }] },
+        { rows: [] },
+        {
+          rows: [
+            {
+              success: true,
+              appointment_id: '99999999-8888-4777-8666-555555555555',
+              start_time: '2026-09-10T18:00:00.000Z',
+              end_time: '2026-09-10T18:30:00.000Z',
+              employee_name: 'Dale DeMott',
+            },
+          ],
+        },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'dale',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error_code).not.toBe('NO_SUCH_EMPLOYEE');
+    // The resolved employee id is bound as the preferred employee, so a real
+    // person who is off shift fails EMPLOYEE_NOT_SCHEDULED — a truthful refusal —
+    // rather than being silently swapped for whoever is free.
+    const rpcCall = queries.find((q) => q.text.includes('book_with_scheduling_atomic'));
+    expect(rpcCall, 'the booking RPC ran').toBeDefined();
+    // p_preferred_employee_id is the 14th positional parameter.
+    expect(rpcCall?.params).toContain('aaaaaaaa-1111-4222-8333-444444444444');
+  });
+
+  it('SAD: two people by the same name is refused, not guessed', async () => {
+    // Picking one would rebuild the exact defect this closes: a confident
+    // sentence about the wrong person.
+    const { app } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        {
+          rows: [
+            { employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Chris Bell' },
+            { employee_id: 'bbbbbbbb-1111-4222-8333-444444444444', name: 'Chris Dodd' },
+          ],
+        },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'Chris',
+    });
+    expect(res.json().error_code).toBe('AMBIGUOUS_EMPLOYEE');
+    expect(res.json().error).toContain('Chris Bell, Chris Dodd');
+  });
+
   it('HAPPY: RPC returns success with resource + employee names', async () => {
     // WHO: Happy-path booking where the RPC found a matching slot
     // WHAT: Route returns the booked details for the agent to confirm aloud

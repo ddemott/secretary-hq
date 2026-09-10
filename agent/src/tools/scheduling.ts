@@ -289,13 +289,19 @@ export function schedulingTools(d: ToolBuildDeps): ToolMap {
             description:
               'The exact start time the caller specifically asked for, local-naive ISO (e.g. 2026-07-15T16:30:00). Set ONLY when the caller named a specific time; OMIT for "next available" / open-ended requests. Lets the response tell the caller if the booked slot differs from their request.',
           },
+          with_person: {
+            type: 'string',
+            description:
+              "WHO the caller asked to see, in the caller's own words — whatever name they said. Set ONLY when they named a person; OMIT otherwise. The backend CHECKS the name against the real staff list and refuses the booking if nobody by that name works there — so passing it is how you avoid confirming a meeting with someone who does not exist. Do not translate it to an id; pass what you heard.",
+          },
           phone: { type: 'string' },
           name: { type: 'string' },
           description: { type: 'string' },
           reminder_lead_minutes: {
             type: 'number',
-            description:
-              'How many minutes BEFORE the appointment to text a reminder. Set ONLY when the caller agreed to a text reminder (after the SMS-consent disclosures — see "Text reminders"). Use 30 when they say yes without naming a time; use their number when they name one ("an hour before" → 60, "the day before" → 1440). OMIT entirely if they declined or were not asked.',
+            description: d.smsEnabled
+              ? 'How many minutes BEFORE the appointment to text a reminder. Set ONLY when the caller agreed to a text reminder (after the SMS-consent disclosures — see "Text reminders"). Use 30 when they say yes without naming a time; use their number when they name one ("an hour before" → 60, "the day before" → 1440). OMIT entirely if they declined or were not asked.'
+              : 'DO NOT SET THIS AND DO NOT MENTION TEXT REMINDERS. This deployment cannot send a text message at all — the number is not registered with the carriers, so anything "sent" is silently dropped. There is no consent to collect and no reminder to promise. If the caller asks for a text, say plainly that you cannot text them, and that the time is on the calendar.',
           },
           allow_duplicate: {
             type: 'boolean',
@@ -314,6 +320,7 @@ export function schedulingTools(d: ToolBuildDeps): ToolMap {
         window_from: string;
         window_to: string;
         requested_start?: string;
+        with_person?: string;
         phone: string;
         name?: string;
         description?: string;
@@ -334,6 +341,8 @@ export function schedulingTools(d: ToolBuildDeps): ToolMap {
             preferredResourceId: args.preferred_resource_id,
           },
           window: { from: args.window_from, to: args.window_to },
+          // Checked by the backend against the live roster, never trusted.
+          with_person: args.with_person || undefined,
           // Absent → backend falls back to the caller's stored lead preference,
           // then to the standard bundle. Never invent a value here.
           reminder_lead_minutes: args.reminder_lead_minutes ?? null,
@@ -403,7 +412,7 @@ export function schedulingTools(d: ToolBuildDeps): ToolMap {
     }),
     get_my_appointments: llm.tool({
       description:
-        "Fetch the caller's upcoming scheduled appointments. Call this when the caller says they want to cancel or reschedule — show them their appointments before acting. Does not require any input from the caller; phone is from caller-ID.",
+        "Fetch THE CALLER'S OWN upcoming scheduled appointments — the times THEY have booked, not the business's calendar and not anyone else's. Call this when the caller says they want to cancel or reschedule, so you can show them what they actually have before acting. Does not require any input from the caller; phone is from caller-ID.\n\nThese appointments belong to the PERSON ON THE PHONE. Never describe one as the owner's or a colleague's: on 2026-09-09 (SCL_A9GtJeZF7EwF) the result held the caller's own 2:30 booking from six minutes earlier, and it was relayed as though it were the OWNER'S calendar (\"he already has an appointment Thursday at 2:30\") — then used to push her onto a different DAY, while 1:30, 3:00, 3:30 and 4:00 sat open. A time already booked by this caller does NOT close the day: call get_available_slots and offer the other open times on the SAME day first. Whether they may hold two on one day is the booking tool's decision, not yours.",
       parameters: {
         type: 'object',
         properties: {},

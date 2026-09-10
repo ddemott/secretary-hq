@@ -108,6 +108,7 @@ describe('resolveChecklistLibrary', () => {
 describe('ChecklistAgent runtimeConfig path', () => {
   const runtime = {
     currentDate: 'Tuesday, August 11, 2026',
+    currentTime: '3:00 PM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: 'Friday, August 28, 2026',

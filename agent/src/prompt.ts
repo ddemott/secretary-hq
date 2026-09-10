@@ -650,6 +650,21 @@ Only once every ask is genuinely done: say a brief thank-you and end the call. D
  * Build the "today" string in a tenant's timezone.
  * Uses Intl.DateTimeFormat so Node doesn't need extra deps.
  */
+/**
+ * The current LOCAL time, e.g. "6:08 PM". Pairs with formatDateForPrompt.
+ *
+ * Split out rather than folded into the date string because the prompt states the
+ * two for different reasons — the date resolves "tomorrow", the time decides what
+ * is already past — and a test that pins one should not have to match the other.
+ */
+export function formatTimeForPrompt(now: Date, timezone: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timezone,
+  }).format(now);
+}
+
 export function formatDateForPrompt(now: Date, timezone: string): string {
   const formatter = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',

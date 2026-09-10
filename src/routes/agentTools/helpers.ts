@@ -321,3 +321,26 @@ export function pickOfferTimes(
   }
   return offers;
 }
+
+/**
+ * THE THREE OFFERED TIMES ARE A SAMPLE, AND THE SPOKEN SENTENCE MUST SAY SO.
+ *
+ * 2026-09-09, prod call SCL_HQNeyh5cVKd9: the agent offered 1:30, 2:00 and 2:30,
+ * the caller asked for 4 PM, and it answered "4 PM is not available on September
+ * 10. The available times are 1:30, 2:00, or 2:30." 4 PM was open — the shift runs
+ * to 5 — and the `note` on that very response already said, in plain words, that a
+ * time from open_times must never be refused. It refused anyway.
+ *
+ * So the correction moved out of the instructions and into the words the model
+ * reads aloud. A sentence that already contains the rest of the day cannot be
+ * spoken as "those three are all there is".
+ *
+ * Returns '' when the offers ARE the whole day — inviting a caller to name a time
+ * that does not exist would trade one wrong answer for another.
+ */
+export function offerBreadthClause(openTimes: string[], offerTimes: string[]): string {
+  const beyondOffers = openTimes.filter((t) => !offerTimes.includes(t));
+  if (beyondOffers.length === 0) return '';
+  const latest = openTimes[openTimes.length - 1];
+  return ` Those are just the soonest — any open quarter hour through ${latest} works too.`;
+}

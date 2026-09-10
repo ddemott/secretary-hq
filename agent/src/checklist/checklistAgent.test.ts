@@ -13,6 +13,7 @@ import { llm } from '@livekit/agents';
 import {
   buildChecklistPrompt,
   ChecklistAgent,
+  ownerReference,
   STALL_TURN_LIMIT,
   GOODBYE_STALL_LIMIT,
 } from './checklistAgent.js';
@@ -22,6 +23,7 @@ const prompt = buildChecklistPrompt({
   persona: 'You are Chris, the receptionist for Thinking Hammer.',
   runtime: {
     currentDate: 'Wednesday, July 22, 2026',
+    currentTime: '3:00 PM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: 'Friday, August 21, 2026',
@@ -86,6 +88,7 @@ describe('the stall detector (SCL_nRKo3KEVw8Yh — five minutes of bot-mirror)',
       persona: 'You are Piper, the receptionist for Thinking Hammer.',
       runtime: {
         currentDate: 'Thursday, July 30, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
         bookableThrough: 'Friday, August 28, 2026',
@@ -215,6 +218,7 @@ describe('the Known caller section (batch A — the CRM snapshot reaches the LIV
   //      handed only to the ladder prompt, which prod never runs.
   const runtime = {
     currentDate: 'Thursday, July 30, 2026',
+    currentTime: '3:00 PM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: 'Friday, August 28, 2026',
@@ -270,6 +274,7 @@ describe('the Known caller section (batch A — the CRM snapshot reaches the LIV
 describe('batch B — the Jaya-cascade prompt guarantees', () => {
   const runtime = {
     currentDate: 'Tuesday, July 21, 2026',
+    currentTime: '3:00 PM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: 'Friday, August 28, 2026',
@@ -341,6 +346,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
     persona: 'You are Chris, the receptionist for Thinking Hammer.',
     runtime: {
       currentDate: 'Wednesday, July 22, 2026',
+      currentTime: '3:00 PM',
       timezone: 'America/Chicago',
       businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
       bookableThrough: 'Friday, August 21, 2026',
@@ -367,6 +373,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
       persona: 'You are Chris.',
       runtime: {
         currentDate: 'Wednesday, July 22, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: null,
         bookableThrough: null,
@@ -489,6 +496,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
       persona: 'You are Chris.',
       runtime: {
         currentDate: 'Wednesday, July 22, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: null,
         bookableThrough: null,
@@ -510,6 +518,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
       persona: 'You are Chris.',
       runtime: {
         currentDate: 'Wednesday, July 22, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: null,
         bookableThrough: null,
@@ -611,6 +620,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
 describe('plan 08-10-2026 — capability menu + filler/interrupt (matrix)', () => {
   const runtime = {
     currentDate: 'Monday, August 10, 2026',
+    currentTime: '3:00 PM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 9:00 AM to 5:00 PM',
     bookableThrough: 'Friday, September 11, 2026',
@@ -853,6 +863,7 @@ describe('stall detector — re-arm after recovery (plan companion)', () => {
       persona: 'You are Piper.',
       runtime: {
         currentDate: 'Monday, August 10, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: null,
         bookableThrough: null,
@@ -910,6 +921,7 @@ describe('buildChecklistPrompt — hire / meeting purpose examples', () => {
     persona: 'You are Piper, the receptionist for Thinking Hammer.',
     runtime: {
       currentDate: 'Thursday, August 13, 2026',
+      currentTime: '3:00 PM',
       timezone: 'America/Chicago',
       businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
       bookableThrough: 'Friday, August 28, 2026',
@@ -938,5 +950,128 @@ describe('buildChecklistPrompt — hire / meeting purpose examples', () => {
   it('SAD: a service request that uses the word "job" is not the job tree', () => {
     expect(hirePrompt).toMatch(/SERVICE REQUEST/i);
     expect(hirePrompt).toMatch(/can someone fix my computer/i);
+  });
+});
+
+/**
+ * WHO: Dale, 2026-09-09 — "Don't use owner. Always use Dale instead. Owner sounds cold."
+ * WHAT: every caller-facing mention of the person resolves to their NAME when the
+ *       tenant roster gives one, and the prompt carries an explicit rule that
+ *       outranks a tree question worded "the owner".
+ * WHEN: every call on a tenant with staff configured.
+ * WHERE: ownerReference() + the naming rule in buildChecklistPrompt.
+ * WHY: the 2026-09-09 prod call asked "What else would you like the owner to know
+ *      or do about this role?" — the wording came from the question NODE, and a
+ *      provisioned tenant runs its nodes from tenant_question_nodes rows, so
+ *      editing trees.ts would not have changed a single real call. The prompt is
+ *      code; it ships, and it is allowed to override the node's phrasing.
+ */
+describe('the person has a name, not a role', () => {
+  const withStaff = (staffFirstNames: string[]) =>
+    buildChecklistPrompt({
+      persona: 'You are Piper.',
+      runtime: {
+        currentDate: 'Wednesday, September 9, 2026',
+        currentTime: '3:00 PM',
+        timezone: 'America/Chicago',
+        businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+        bookableThrough: 'Friday, October 9, 2026',
+      },
+      library: PLATFORM_TREE_LIBRARY,
+      staffFirstNames,
+    });
+
+  it('one staff member → that name is what the prompt tells it to say', () => {
+    const p = withStaff(['Dale']);
+    expect(p).toContain('CALL DALE BY NAME, NEVER "THE OWNER"');
+    expect(p).toContain('what would you like Dale to know?');
+    expect(p).toContain('take a message for Dale');
+  });
+
+  it('several staff → "someone on the team", because guessing a name would be worse', () => {
+    const p = withStaff(['Ana', 'Bella', 'Cleo']);
+    expect(p).toContain('take a message for someone on the team');
+    expect(p).not.toContain('take a message for Ana');
+  });
+
+  it('no roster → the role word survives, and the prompt says why', () => {
+    // Cold but true. This is the only case where "the owner" is still correct.
+    expect(withStaff([])).toContain('No staff roster is configured');
+  });
+
+  it('ownerReference trims and ignores blank roster entries', () => {
+    expect(ownerReference(['  Dale  '])).toBe('Dale');
+    expect(ownerReference(['', '   '])).toBe('the owner');
+    expect(ownerReference(['Dale', ''])).toBe('Dale');
+  });
+});
+
+/**
+ * The 2026-09-09 four-call sweep (SCL_e8AzxA5vM3ZN, SCL_n79MyVHh9TVe,
+ * SCL_HQNeyh5cVKd9, SCL_A9GtJeZF7EwF). Each case below is a sentence the agent
+ * actually said to a caller that was false, unhelpful, or a promise it could not
+ * keep. The prompt is the only lever that reaches a tenant whose questions live in
+ * DATABASE rows, so these assertions guard the prompt.
+ */
+describe('the 2026-09-09 call sweep', () => {
+  const build = (over: Record<string, unknown> = {}) =>
+    buildChecklistPrompt({
+      persona: 'You are Piper.',
+      runtime: {
+        currentDate: 'Wednesday, September 9, 2026',
+        currentTime: '6:08 PM',
+        timezone: 'America/Chicago',
+        businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+        bookableThrough: 'Friday, October 9, 2026',
+      },
+      library: PLATFORM_TREE_LIBRARY,
+      staffFirstNames: ['Dale'],
+      ...over,
+    } as Parameters<typeof buildChecklistPrompt>[0]);
+
+  it('carries the actual CLOCK, not just the date', () => {
+    // It told a caller "it's currently 3 PM here" at 6:08 PM, twice, and then
+    // argued when she corrected it. It had been given the date and no time.
+    const p = build();
+    expect(p).toContain('6:08 PM');
+    expect(p).toContain('Wednesday, September 9, 2026');
+    expect(p).toMatch(/ONLY source for the current time/i);
+  });
+
+  it('after hours: today is over, and the closure is paired with the next real time', () => {
+    // Same call: "We have availability today from 1 to 5 PM" — said at 6:08 PM,
+    // three hours after closing. The runtime is built at 6:08 PM here.
+    const p = build();
+    expect(p).toMatch(/once the closing hour has passed today is over/i);
+    // Both halves together: a bare "we're closed" reads as a refusal and ends the
+    // call, which is a lost booking for a caller who would happily take tomorrow.
+    expect(p).toMatch(/SAY BOTH HALVES IN ONE BREATH/i);
+    expect(p).toContain("we're closed for the evening, but I can get you in tomorrow at 1:30");
+  });
+
+  it('states plainly that it cannot text, when SMS is off', () => {
+    // It ran an invented consent flow on two callers and told both a reminder was
+    // noted. Nothing was noted; no text can leave the platform.
+    const p = build({ smsEnabled: false });
+    expect(p).toContain('YOU CANNOT SEND A TEXT MESSAGE');
+    expect(p).toMatch(/never ask permission for one/i);
+  });
+
+  it('says nothing about texting being impossible when SMS is actually on', () => {
+    expect(build({ smsEnabled: true })).not.toContain('YOU CANNOT SEND A TEXT MESSAGE');
+  });
+
+  it('requires a plain confirmation sentence after a successful write', () => {
+    // A message was saved and the caller heard only "You're all set, Camille."
+    const p = build();
+    expect(p).toMatch(/SAY SO IN ONE PLAIN SENTENCE BEFORE YOU CLOSE/i);
+    expect(p).toContain("I've saved your message for Dale");
+  });
+
+  it('treats a company named in the opener as answered, not as a question to re-ask', () => {
+    // "There's a job opening at US Bank" → asked which company twice.
+    const p = build();
+    expect(p).toContain('A COMPANY NAMED IN THE OPENER IS THE COMPANY');
+    expect(p).toMatch(/If you are unsure which slot the name belongs in, ASK THAT/i);
   });
 });

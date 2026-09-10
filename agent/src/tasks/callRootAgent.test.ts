@@ -40,6 +40,7 @@ function makeAgent(): voice.Agent {
     persona: 'You are Chris, the AI receptionist for Thinking Hammer.',
     runtime: {
       currentDate: 'Wednesday, July 16, 2026',
+      currentTime: '3:00 PM',
       timezone: 'America/Chicago',
       businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
       bookableThrough: '2027-01-08',

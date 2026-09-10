@@ -51,6 +51,20 @@ export interface ChecklistAgentOptions {
   /** The tenant's display name, so the agent can say WHO the caller reached. */
   businessName?: string | null;
   /**
+   * Can this deployment send a text? Defaults to FALSE — the honest default,
+   * because SMS has never once reached a handset on this platform (10DLC).
+   *
+   * 2026-09-09, two calls in six minutes: with nothing in this prompt about
+   * texting, the model read the booking tool's `reminder_lead_minutes` parameter
+   * ("...to text a reminder"), concluded texting existed, and ran a consent flow
+   * it invented — "You haven't given consent for text reminders yet... would you
+   * want a text reminder?" Both callers said yes. Both were told "I'll note that
+   * you want a text reminder." No text can leave this platform, and
+   * `consent_records` is empty. Silence in a prompt is not a prohibition: the
+   * model fills it from whatever else it can see.
+   */
+  smsEnabled?: boolean;
+  /**
    * What this business actually does, in the owner's words (`tenants.greeting_menu`).
    *
    * WHY THIS EXISTS: the persona line is one sentence — "You are Clara, the AI
@@ -183,18 +197,48 @@ function renderKnownCaller(known: KnownCustomer | null, timezone: string): strin
   return `\n# Known caller\n${lines.join('\n')}\n`;
 }
 
-function renderCallPolicy(config?: TenantRuntimeConfig): string {
+/**
+ * HOW THE AGENT REFERS TO THE PERSON THE CALLER WANTS.
+ *
+ * "The owner" is a ROLE, and roles are cold — Dale, 2026-09-09: a caller ringing a
+ * one-person business hears "what would you like the owner to know?" and is being
+ * talked to by a filing cabinet. The person has a name and the tenant config
+ * carries it, so use it.
+ *
+ * Never a hardcoded name: this is one prompt serving every tenant, and the name
+ * comes from the live staff roster (`tenants` → active employees → first names).
+ * One name means one person to name. Several means the caller has not told us
+ * which, and guessing at "Dale" for a salon with six stylists would be worse than
+ * the role word. No roster at all falls back to the role word, which is cold but
+ * true — and it is the ONLY case where it appears.
+ *
+ * The reason this needs a prompt rule and not just string edits: the question
+ * WORDING lives in the question trees, and a provisioned tenant runs its trees
+ * from DATABASE ROWS (`tenant_question_nodes`), not from `trees.ts`. Editing the
+ * TypeScript library would change nothing for the tenants that matter. The prompt
+ * is code, ships with a deploy, and outranks whatever phrasing a tree node uses.
+ */
+export function ownerReference(staffFirstNames: string[]): string {
+  const staff = staffFirstNames
+    .map((n) => (typeof n === 'string' ? n.trim() : ''))
+    .filter((n) => n.length > 0);
+  if (staff.length === 1) return staff[0];
+  if (staff.length > 1) return 'someone on the team';
+  return 'the owner';
+}
+
+function renderCallPolicy(config: TenantRuntimeConfig | undefined, ownerRef: string): string {
   const overrides = config?.overrides ?? {};
   const booking =
     overrides.booking_mode === 'never'
-      ? 'Do NOT offer or book a time. If they ask for an appointment, take a message for the owner.'
+      ? `Do NOT offer or book a time. If they ask for an appointment, take a message for ${ownerRef}.`
       : overrides.booking_mode === 'prefer'
         ? 'Prefer booking a real time whenever the caller has a goal that could use one. Offer the nearest open slots; do not wait to be asked.'
         : 'Offer a time once when it fits. If they pass, take a message instead of pushing another slot.';
   const message =
     overrides.message_mode === 'fallback_only'
       ? 'Do not open with a message. Take a message only when nothing else fits or they refuse a time.'
-      : 'A message is always available if they want the owner to call back.';
+      : `A message is always available if they want ${ownerRef} to call back.`;
   return `\n# Call policy\n- Booking: ${booking}\n- Messages: ${message}\n`;
 }
 
@@ -210,6 +254,9 @@ export function buildChecklistPrompt(opts: {
   staffFirstNames?: string[];
   businessName?: string | null;
   businessBlurb?: string | null;
+  /** False (the default) = this line cannot text at all. See the option's doc on
+   *  ChecklistAgentOptions; the honest default is the safe one. */
+  smsEnabled?: boolean;
   runtimeConfig?: TenantRuntimeConfig;
 }): string {
   const selectable = new Set(opts.selectableTreeIds ?? opts.library.map((tree) => tree.tree_id));
@@ -230,8 +277,7 @@ export function buildChecklistPrompt(opts: {
   // need a concrete "what I can do" list immediately — not a silent wait for a
   // purpose. Owner name comes from the tenant roster (never a hardcoded person).
   // Service detail lives in greeting_menu / the business section when present.
-  const ownerRef =
-    staff.length === 1 ? staff[0] : staff.length > 1 ? 'someone on the team' : 'the owner';
+  const ownerRef = ownerReference(staff);
   const serviceFactLine = blurb
     ? `When a caller asks what you offer, use only the facts in "# What this business is" ` +
       `(never invent services). `
@@ -280,7 +326,7 @@ export function buildChecklistPrompt(opts: {
   return `${opts.persona}
 
 ${runtimePreamble(opts.runtime)}
-${businessSection}${knownSection}${renderCallPolicy(opts.runtimeConfig)}
+${businessSection}${knownSection}${renderCallPolicy(opts.runtimeConfig, ownerRef)}
 # How this call works
 There is ONE conversation and a CHECKLIST the system keeps for you — you never track
 progress yourself. Your three jobs:
@@ -363,7 +409,15 @@ ${menu}
    OPENING sentence is already full of answers — the topic they named, the person, the
    company: record them the moment you call set_purpose, and NEVER ask a question the
    opener already answered ("What would you like to discuss?" after "I want to talk to
-   the owner about a job" tells the caller you weren't listening — 2026-07-21 live call).
+   ${ownerRef} about a job" tells the caller you weren't listening — 2026-07-21 live call).
+   A COMPANY NAMED IN THE OPENER IS THE COMPANY. "There's a job opening at US Bank" has
+   already answered which company is calling AND where the work is — record both and
+   CONFIRM rather than re-ask ("US Bank — and is that your own company, or a client?").
+   On 2026-09-09 (SCL_A9GtJeZF7EwF) the caller opened with "there's a job opening at US
+   Bank" and was asked "which company are you calling from?" — "I just told you, US
+   Bank" — and then, forty seconds later, "which company would the work be for?" —
+   "She already told you, US Bank." Two questions she had answered before either was
+   asked. If you are unsure which slot the name belongs in, ASK THAT, not the name again.
    Record only
    their words, never your inference ("downtown" is color, not an address). Then ask the
    next [ASK] item from the checklist — ONE question at a time, conversationally. Items
@@ -374,9 +428,16 @@ ${menu}
 3. DO THE WRITES. When the checklist shows [ACTION NOW], call that tool. The words
    "booked", "saved", "passed along", "all set" are earned ONLY by the tool's success
    result — never say them before it, and never re-do an action the checklist shows done.
+   AND ONCE IT SUCCEEDS, SAY SO IN ONE PLAIN SENTENCE BEFORE YOU CLOSE. Name the thing
+   that now exists — "I've saved your message for ${ownerRef}", "you're booked for 2:30
+   Thursday" — because the caller cannot see the tool result and has no other way to know
+   it worked. "You're all set" alone does not tell them WHAT is set: on 2026-09-09
+   (SCL_n79MyVHh9TVe) a message was written and the caller heard only "You're all set,
+   Camille. Thanks for calling" — she hung up with no idea whether anything had been
+   recorded.
    NAME THE ARTIFACT THE TOOL ACTUALLY WRITES — never promise one that won't exist. On a
-   job call the write is a RECORDED JOB INQUIRY that goes straight to the owner: say "I'll
-   record the position details for the owner", NEVER "I'll leave a message" or "voicemail"
+   job call the write is a RECORDED JOB INQUIRY that goes straight to ${ownerRef}: say "I'll
+   record the position details for ${ownerRef}", NEVER "I'll leave a message" or "voicemail"
    — no message exists unless take_message itself runs, and a caller who repeatedly says
    "message" does not change what the tool writes (2026-07-27 live call: the agent
    promised a message twice, captured a job inquiry instead, and the owner's Messages
@@ -543,7 +604,21 @@ urgent." On 2026-07-27 a caller said she needed to speak to him urgently and was
 anyone through mid-call, so never imply you can — flagging the message IS the honest
 escalation, and offering it is better than offering a calendar.
 
-TIMES ARE IN ${opts.runtime.timezone} — AND THE CALLER MAY NOT BE. Every time you offer,
+${
+  opts.smsEnabled
+    ? ''
+    : `YOU CANNOT SEND A TEXT MESSAGE. NOT A REMINDER, NOT A CONFIRMATION, NOT A LINK.
+This line has no texting at all — the number is not registered with the carriers, so a
+"sent" text is silently dropped and NOTHING reaches the caller's phone. So: never offer a
+text, never ask permission for one, and never invent a consent step (on 2026-09-09 you
+asked two callers "you haven't given consent for text reminders yet — would you like
+one?", they both said yes, and you told them it was noted; nothing was noted and nothing
+was sent). If the caller ASKS for a text, tell them plainly you cannot text, and say what
+IS true: the time is on the calendar and they will not get a text about it. An honest "I
+can't text you" costs one sentence; a promised text that never arrives costs the booking.
+
+`
+}TIMES ARE IN ${opts.runtime.timezone} — AND THE CALLER MAY NOT BE. Every time you offer,
 book, or confirm is this business's LOCAL time. If the caller names a zone ("2:30
 Eastern", "I'm on the west coast"), do NOT book the number they said: convert it, say
 BOTH out loud, and get a yes before booking — "2:30 Eastern is 1:30 our time; shall I
@@ -583,12 +658,23 @@ goodbye yourself, and do not ask anything further.
 - This is a PHONE CALL. Speak naturally — no markdown, no bullet points, no lists, no
   "as an AI" disclaimers. Keep replies SHORT — one or two sentences.
 - ${callerIdLine}
-${rosterLine ? `${rosterLine}\n` : ''}- A booking tool that returns \`what_happens_next\` has told you what ACTUALLY happens at
+${rosterLine ? `${rosterLine}\n` : ''}- CALL ${ownerRef.toUpperCase()} BY NAME, NEVER "THE OWNER". Say "${ownerRef}" wherever you
+  would otherwise say the owner, the business owner, or the manager — including when a
+  question you are working from is WORDED that way ("what would you like the owner to
+  know?" becomes "what would you like ${ownerRef} to know?"). A role is what an
+  organisation calls a person; a name is what a person is called, and a caller who rang a
+  small business is talking to people, not to a role chart.${
+    ownerRef === 'the owner'
+      ? ' (No staff roster is configured for this tenant, so the role word is all there is'
+        + ' — use it, but do not embellish it.)'
+      : ''
+  }
+- A booking tool that returns \`what_happens_next\` has told you what ACTUALLY happens at
   the appointment (who calls whom, or where to come). Say it, in those words, right after
   you confirm the time. If it does not say, do NOT invent an answer: a caller asked "so I
   call him at two thirty?" and the agent agreed and told her to use "the same number" —
   the AI's own line — which cost that caller four more failed calls. If you genuinely do
-  not know, say you will note it for the owner and take it from there.
+  not know, say you will note it for ${ownerRef} and take it from there.
 - Write numbers the way they must be HEARD. A spoken phone number is ALWAYS digit by
   digit, three groups (3-3-4), no "+1": "2 6 2, 4 9 7, 9 0 3 9". A number the caller
   DICTATES gets read back exactly once — never skipped (2026-07-21 live call: a dictated
@@ -700,6 +786,7 @@ export class ChecklistAgent extends voice.Agent {
         staffFirstNames: opts.staffFirstNames,
         businessName: opts.businessName,
         businessBlurb: opts.businessBlurb,
+        smsEnabled: opts.smsEnabled,
         runtimeConfig: opts.runtimeConfig,
       }),
       tools: toolkit.selectedTools(),
