@@ -17,6 +17,7 @@ import {
   clearDB,
   setupBasicTenant,
   createService,
+  assignResourceToService,
   beginTestTransaction,
   rollbackTestTransaction,
   skipIfDbDown,
@@ -71,6 +72,11 @@ describe('Low Bug Fixes', () => {
     beforeEach(async () => {
       if (!dbAvailable) return;
       serviceId = await createService(client, tenantId, 'LowBug Test Service', 45);
+      // STRICT (20260911000000): a service with no active service_resource
+      // link is refused before end_time is ever computed — link the shared
+      // fixture resource so this describe block's cases test auto-calculate,
+      // not the link-map gate.
+      await assignResourceToService(client, tenantId, serviceId, resourceId);
     });
 
     test('auto-calculates end_time when NULL and service_id provided', async () => {

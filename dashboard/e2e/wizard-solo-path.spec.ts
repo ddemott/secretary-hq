@@ -324,34 +324,31 @@ test('solo finalize: every service in the catalog is immediately bookable', asyn
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// SAD — service with required_skills + employee lacking those skills → NO_SKILLED_EMPLOYEE
+// SAD — service with no service_employee link → refused, STRICT
 // ────────────────────────────────────────────────────────────────────────────
 
-test('solo finalize: service requiring an unmet skill rejects with NO_SKILLED_EMPLOYEE', async ({
+test('solo finalize: service with no service_employee link rejects the owner-employee', async ({
   request,
 }) => {
-  // WHO: a tenant whose service has explicit required_skills (e.g., a salon
-  //      service that requires the 'color-specialist' certification) but
-  //      whose only employee — the owner — lacks that skill in their
-  //      `employees.skills` array.
-  // WHAT: booking that service returns failure with NO_SKILLED_EMPLOYEE.
-  // WHEN: regression check for book_appointment_atomic's service-aware
-  //       skill enforcement. The RPC's fallback logic (CLAUDE.md "service-aware
-  //       skill+resource enforcement"): when service_employee is empty for
-  //       the service, fall back to required_skills array check against
-  //       employees.skills. We deliberately leave service_employee empty AND
-  //       declare a required skill the employee doesn't have, to force the
-  //       fallback to refuse.
-  // WHERE: book_appointment_atomic's required_skills check (post-fallback arm).
-  //        services.required_skills is set via direct UPDATE (the public
-  //        services routes don't expose this on create; it's set via the
-  //        skill-matrix view in the multi-employee wizard).
-  // WHY: documents the actual NO_SKILLED_EMPLOYEE behavior. A previous draft
-  //      of this test assumed "skip service_employee mapping" was enough to
-  //      force NO_SKILLED_EMPLOYEE — but the fallback to required_skills
-  //      passes silently when required_skills is empty (the common case for
-  //      solo-wizard services, which never declare skill requirements). The
-  //      real failure mode is mismatched skill arrays; pin THAT.
+  // WHO: a tenant whose service has no service_employee row for the
+  //      owner-employee — e.g., a service added or re-edited after the solo
+  //      wizard ran, before anyone linked it to the owner.
+  // WHAT: booking that service returns failure — refused outright, no
+  //       fallback.
+  // WHEN: regression check for book_appointment_atomic's STRICT link-map
+  //       enforcement (migration 20260911000000, aligning with the phone
+  //       path's book_with_scheduling_atomic / 20260909210000: "the skill
+  //       map decides who and where"). services.required_skills /
+  //       employees.skills are no longer consulted at all once p_service_id
+  //       is passed — only service_employee / service_resource links do.
+  //       This test used to set required_skills on the service and lean on
+  //       a since-removed array-fallback branch to force the rejection; the
+  //       missing service_employee link is now sufficient on its own.
+  // WHERE: book_appointment_atomic's STRICT employee-link check.
+  // WHY: documents the actual, current refusal — a previous draft of this
+  //      test assumed "skip service_employee mapping" alone forced a
+  //      rejection, which only became true once the array-tag fallback was
+  //      retired.
   let tenant: RegisteredTenant | null = null;
   try {
     tenant = await registerSoloTenant(request);
@@ -365,13 +362,12 @@ test('solo finalize: service requiring an unmet skill rejects with NO_SKILLED_EM
       tenant.ownerName
     );
 
-    // Declare a skill requirement the owner-employee doesn't have. Solo
-    // wizard never sets per-skill arrays on its auto-created employee, so
-    // this scenario is reachable in practice if a service is later edited
-    // to require a skill the owner doesn't list.
+    // The resource IS linked (STRICT checks the resource leg first) so this
+    // test isolates the employee-side refusal; the owner-employee is
+    // deliberately left unlinked to the service.
     await pool.query(
-      "UPDATE services SET required_skills = ARRAY['color-specialist'] WHERE service_id = $1",
-      [svcId]
+      'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+      [tenant.tenantId, svcId, resourceId]
     );
 
     await expandWeekly(request, tenant.token, tenant.tenantId, employeeId);
@@ -389,25 +385,26 @@ test('solo finalize: service requiring an unmet skill rejects with NO_SKILLED_EM
         employee_id: employeeId,
         start_time: `${bookDate}T10:00:00.000Z`,
         end_time: `${bookDate}T10:30:00.000Z`,
-        description: 'booking a service whose required_skills the employee lacks',
+        description: 'booking a service the employee is not linked to',
       },
     });
     const body = await res.json();
-    expect(res.status(), 'booking must reject when employee lacks required skill').toBe(400);
+    expect(res.status(), 'booking must reject when employee has no service_employee link').toBe(
+      400
+    );
     expect(body.success).toBe(false);
     // Pin the failure shape. /appointments/create uses book_appointment_atomic
     // (the simpler RPC), which returns human-readable error messages — not
     // the NO_SKILLED_EMPLOYEE error_code that book_with_scheduling_atomic
-    // exposes. A regression that consolidates this error into a generic
-    // "booking failed" message would still fail this assertion, since we
-    // anchor on the word "skill" — the load-bearing semantic, not the
-    // specific wording. (Voice-agent code path uses book_with_scheduling_atomic
-    // and gets the structured NO_SKILLED_EMPLOYEE code; that path is
-    // covered by agent unit tests, not this E2E.)
+    // exposes. STRICT (20260911000000) refuses with the exact same wording
+    // the phone path uses for an unlinked service. (Voice-agent code path
+    // uses book_with_scheduling_atomic and gets the structured
+    // NO_SKILLED_EMPLOYEE code; that path is covered by agent unit tests,
+    // not this E2E.)
     expect(
       String(body.error ?? '').toLowerCase(),
-      'error must indicate the employee lacks required skills'
-    ).toContain('skill');
+      'error must indicate no one is assigned to take this appointment'
+    ).toContain('no one is assigned');
   } finally {
     if (tenant) await cleanupTenant(tenant.tenantId);
   }

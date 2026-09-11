@@ -107,17 +107,25 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       hand the model the ids it CAN record (or the nearest one), so a wrong id costs a silent
       retry, not the caller's patience. The grader must also fail a "nothing re-asked" scenario
       that re-asks.
-- [ ] **(code)** **The dashboard booking form and the phone disagree on an UNLINKED service.** Since
-      `20260909210000`, the phone path (`book_with_scheduling_atomic` + `availabilitySearch.ts`)
-      treats the skill map's `service_employee` / `service_resource` links as the whole rule and
-      REFUSES a service with no linked person or room (Dale, 2026-09-11: Person → Role →
-      Resource). The dashboard form's `book_appointment_atomic` still FALLS BACK to the
-      `required_skills` / `required_resources` tags when a service has no links. Same business,
-      same service, two answers depending on who books it. Align it the same way, and then decide
-      whether the tag columns (`employees.skills`, `services.required_skills`) should be retired —
-      they are now consulted only by callers that do not pass a service id. The skill map's fix
-      panel already flags a service missing people or rooms (`missingEmployees` /
-      `missingResources`), which is what an owner needs to see once strict is live.
+- [x] ~~**The dashboard booking form and the phone disagree on an UNLINKED service.**~~ — **FIXED
+      2026-09-11**, migration `20260911000000_book_appointment_atomic_strict_links.sql`.
+      `book_appointment_atomic` (dashboard path) now applies the identical STRICT rule
+      `book_with_scheduling_atomic` got in `20260909210000`: when `p_service_id` is passed, only
+      ACTIVE `service_employee` / `service_resource` links decide who and where —
+      `required_skills` / `required_resources` tag arrays are never read — and a service with no
+      active linked resource (or, when an employee is being assigned, no active linked employee)
+      is refused before any other check, same wording the phone path already speaks ("No room or
+      line is set up for this kind of appointment" / "No one is assigned to take this kind of
+      appointment"). Retired the fall-open "configure-as-you-go" contract the mapping model
+      shipped with. Test coverage rewritten: `tests/routes/book-appointment-mapping.test.ts`
+      (UNLINKED-SERVICE + LEGACY-TAGS-IGNORED cases replacing the old OPEN-SERVICE/LEGACY-FALLBACK
+      pair), `tests/regression/high-bugs.test.ts` BUG-009 (both directions — reject-on-unlinked,
+      allow-on-linked-regardless-of-tags), `tests/regression/low-bugs.test.ts` BUG-040 (link the
+      fixture resource so the auto-calculate-end-time cases don't trip the new gate), and
+      `dashboard/e2e/wizard-solo-path.spec.ts` (rewritten to the STRICT refusal message). Baseline
+      regenerated (`npm run db:baseline`). Tag columns (`employees.skills`,
+      `services.required_skills`) NOT dropped — `book_with_scheduling_atomic` still reads them for
+      callers that omit `p_service_id`; retiring them is still open, not part of this fix.
 
 ## 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
 
