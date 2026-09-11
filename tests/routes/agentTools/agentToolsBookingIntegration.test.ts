@@ -43,6 +43,7 @@ import {
   createResource,
   createScheduleEntry,
   assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../../utils';
 import { createWithTenantClient } from '../../../src/database';
@@ -156,8 +157,11 @@ beforeAll(async () => {
       [serviceId]
     );
     employeeId = await createEmployee(setup, tenantId, 'Test Stylist', ['haircut']);
-    await createResource(setup, tenantId, 'Chair 1');
+    const chairId = await createResource(setup, tenantId, 'Chair 1');
     await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+    // The room half of the skill map: haircuts happen in Chair 1. Strict since
+    // migration 20260909210000 — a service linked to no room cannot be booked.
+    await assignResourceToService(setup, tenantId, serviceId, chairId);
     // default_service_id makes serviceResolver's branch-2 (JOIN tenants —
     // the ambiguous-"name" bug site) reachable for unknown service types.
     await setup.query(`UPDATE tenants SET default_service_id = $1 WHERE tenant_id = $2`, [
@@ -171,7 +175,6 @@ beforeAll(async () => {
 
     dbAvailable = true;
   } catch (err) {
-     
     console.warn('[agentToolsBookingIntegration.test] DB not available, skipping', err);
   }
 });

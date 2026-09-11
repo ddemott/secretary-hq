@@ -86,7 +86,7 @@ describe('book_with_scheduling_atomic: concurrent-booking race', () => {
     await setup.query('DELETE FROM appointments WHERE tenant_id = $1', [tenantId]);
     await setup.query('DELETE FROM customers WHERE tenant_id = $1', [tenantId]);
     await setup.query('DELETE FROM employee_schedule WHERE tenant_id = $1', [tenantId]);
-    await createScheduleEntry(setup, tenantId, employeeId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(setup, tenantId, employeeId, '2030-06-26', '08:00', '17:00');
   });
 
   it(
@@ -94,7 +94,7 @@ describe('book_with_scheduling_atomic: concurrent-booking race', () => {
     { timeout: 30_000 },
     async (ctx) => {
       // WHO: 20 separate voice-agent sessions, each with a unique caller phone
-      // WHAT: All call book_with_scheduling_atomic for 2026-07-01 10:00–10:30 CDT
+      // WHAT: All call book_with_scheduling_atomic for 2030-06-26 10:00–10:30 CDT
       // WHEN: fired within the same JS tick across N pool connections
       // WHERE: Inside the RPC, between the find-pair NOT EXISTS check and the INSERT
       // WHY: We promise the user "exactly one wins; everyone else hears it's taken."
@@ -103,8 +103,8 @@ describe('book_with_scheduling_atomic: concurrent-booking race', () => {
         return;
       }
 
-      const startISO = '2026-07-01T10:00:00-05:00';
-      const endISO = '2026-07-01T10:30:00-05:00';
+      const startISO = '2030-06-26T10:00:00-05:00';
+      const endISO = '2030-06-26T10:30:00-05:00';
 
       const calls = Array.from({ length: N }, (_, i) =>
         pool.query(
@@ -198,8 +198,8 @@ describe('book_with_scheduling_atomic: concurrent-booking race', () => {
       // employee constraint should still force exactly one winner.
       const resource2Id = await createResource(setup, tenantId, 'Bay 2');
 
-      const startISO = '2026-07-01T11:00:00-05:00';
-      const endISO = '2026-07-01T11:30:00-05:00';
+      const startISO = '2030-06-26T11:00:00-05:00';
+      const endISO = '2030-06-26T11:30:00-05:00';
 
       const calls = Array.from({ length: N }, (_, i) =>
         pool.query(

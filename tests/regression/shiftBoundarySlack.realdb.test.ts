@@ -127,9 +127,20 @@ describe('shift coverage has exactly one definition', () => {
     );
     expect(src.rows).toHaveLength(1);
     const def = src.rows[0].def;
-    // Three shift joins inside the RPC (skills path, skill-less path, resource
-    // path) — all three must go through the shared function.
-    expect(def.split('shift_covers_booking').length - 1).toBe(3);
+    // FIVE call sites inside the RPC now: the three original coverage joins
+    // (skills path, skill-less shift guard — which checks it twice, EXISTS and
+    // NOT EXISTS — and the resource path) plus the employee-SELECTION loop added
+    // 2026-09-09, which is what stopped the skill-less path from writing an
+    // appointment with a room and no person on it. SIX since 2026-09-11: the
+    // skill-map rule's refusal diagnostic ("is any LINKED person working then?"),
+    // which picks EMPLOYEE_NOT_SCHEDULED over TIMESLOT_OCCUPIED — and it, too,
+    // goes through the shared function. Every one must; the moment one spells the
+    // comparison out by hand, suggest and enforce can drift again (the 2026-07-17
+    // midnight-wrap call).
+    //
+    // The exact number matters less than the ZERO below it — but pinning it means
+    // a new coverage site cannot be added silently without a human reading this.
+    expect(def.split('shift_covers_booking').length - 1).toBe(6);
     expect(def).not.toContain('es.end_time >= v_end_time_of_day');
   });
 

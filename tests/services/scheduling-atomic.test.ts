@@ -86,25 +86,32 @@ describe('book_with_scheduling_atomic()', () => {
     return res.rows[0];
   }
 
-  describe('Solo operator (1 resource, no employees)', () => {
+  // RULE CHANGE (migration 20260909210000): these used to be "1 resource, NO
+  // employees", and the RPC booked the truck with nobody on it. An appointment is
+  // with somebody now, so the solo operator is ON the roster and on shift all day
+  // — the solo-operator shape (one person, one resource) is what these pin.
+  describe('Solo operator (1 resource, 1 person on shift)', () => {
     it('books on the only resource when available', async () => {
       if (!dbAvailable) return;
       const tenantId = await createTenant(root, 'Solo Tire Guy', 'mobile-tire');
       const resourceId = await createResource(root, tenantId, 'My Truck');
+      const ownerId = await createEmployee(root, tenantId, 'Solo Owner');
+      await createScheduleEntry(root, tenantId, ownerId, '2030-03-27', '00:00', '23:59');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999001',
         customer_name: 'Alice',
-        start_time: '2026-04-01T10:00:00Z',
-        end_time: '2026-04-01T10:30:00Z',
+        start_time: '2030-03-27T10:00:00Z',
+        end_time: '2030-03-27T10:30:00Z',
       });
 
       expect(result.success).toBe(true);
       expect(result.appointment_id).toBeTruthy();
       expect(result.resource_id).toBe(resourceId);
       expect(result.resource_name).toBe('My Truck');
-      expect(result.employee_id).toBeNull();
+      // Was toBeNull() — the appointment-with-nobody the rule change retired.
+      expect(result.employee_id).toBe(ownerId);
       expect(result.customer_id).toBeTruthy();
     });
 
@@ -112,13 +119,15 @@ describe('book_with_scheduling_atomic()', () => {
       if (!dbAvailable) return;
       const tenantId = await createTenant(root, 'Solo Shop', 'auto-shop');
       await createResource(root, tenantId, 'Bay 1');
+      const ownerId = await createEmployee(root, tenantId, 'Solo Owner');
+      await createScheduleEntry(root, tenantId, ownerId, '2030-03-27', '00:00', '23:59');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999002',
         customer_name: 'New Person',
-        start_time: '2026-04-01T14:00:00Z',
-        end_time: '2026-04-01T14:30:00Z',
+        start_time: '2030-03-27T14:00:00Z',
+        end_time: '2030-03-27T14:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -134,13 +143,15 @@ describe('book_with_scheduling_atomic()', () => {
       if (!dbAvailable) return;
       const tenantId = await createTenant(root, 'Solo Shop', 'auto-shop');
       await createResource(root, tenantId, 'Bay 1');
+      const ownerId = await createEmployee(root, tenantId, 'Solo Owner');
+      await createScheduleEntry(root, tenantId, ownerId, '2030-03-27', '00:00', '23:59');
       const custId = await createCustomerFull(root, tenantId, '+15559999003', 'Existing Joe');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999003',
-        start_time: '2026-04-01T09:00:00Z',
-        end_time: '2026-04-01T09:30:00Z',
+        start_time: '2030-03-27T09:00:00Z',
+        end_time: '2030-03-27T09:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -160,16 +171,16 @@ describe('book_with_scheduling_atomic()', () => {
         tenantId,
         resourceId,
         custId,
-        '2026-04-01T10:00:00Z',
-        '2026-04-01T11:00:00Z',
+        '2030-03-27T10:00:00Z',
+        '2030-03-27T11:00:00Z',
         'Existing booking'
       );
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999005',
-        start_time: '2026-04-01T10:30:00Z',
-        end_time: '2026-04-01T11:00:00Z',
+        start_time: '2030-03-27T10:30:00Z',
+        end_time: '2030-03-27T11:00:00Z',
       });
 
       expect(result.success).toBe(false);
@@ -189,16 +200,16 @@ describe('book_with_scheduling_atomic()', () => {
       await root.query('DELETE FROM resources WHERE tenant_id = $1', [tenantId]);
       const _bayId = await createResource(root, tenantId, 'Bay 1');
       const empId = await createEmployee(root, tenantId, 'Alice', ['oil-change']);
-      // 2026-04-06 is a Monday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, empId, '2026-04-06', '08:00', '17:00');
+      // 2030-04-01 is a Monday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, empId, '2030-04-01', '08:00', '17:00');
 
-      // 2026-04-06 is a Monday
+      // 2030-04-01 is a Monday
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999010',
         required_skills: '{oil-change}',
-        start_time: '2026-04-06T14:00:00Z',
-        end_time: '2026-04-06T14:30:00Z',
+        start_time: '2030-04-01T14:00:00Z',
+        end_time: '2030-04-01T14:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -211,15 +222,15 @@ describe('book_with_scheduling_atomic()', () => {
       const tenantId = await createTenant(root, 'Auto Pro', 'auto-shop');
       await createResource(root, tenantId, 'Bay 1');
       const emp1 = await createEmployee(root, tenantId, 'Bob', ['brakes']);
-      // Bob is scheduled on 2026-04-06 but lacks the required skill.
-      await createScheduleEntry(root, tenantId, emp1, '2026-04-06', '08:00', '17:00');
+      // Bob is scheduled on 2030-04-01 but lacks the required skill.
+      await createScheduleEntry(root, tenantId, emp1, '2030-04-01', '08:00', '17:00');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999011',
         required_skills: '{oil-change}',
-        start_time: '2026-04-06T10:00:00Z',
-        end_time: '2026-04-06T10:30:00Z',
+        start_time: '2030-04-01T10:00:00Z',
+        end_time: '2030-04-01T10:30:00Z',
       });
 
       expect(result.success).toBe(false);
@@ -231,16 +242,16 @@ describe('book_with_scheduling_atomic()', () => {
       const tenantId = await createTenant(root, 'Auto Pro', 'auto-shop');
       await createResource(root, tenantId, 'Bay 1');
       const empId = await createEmployee(root, tenantId, 'Alice', ['oil-change']);
-      // Only works Tuesday (2026-04-07), not Monday (2026-04-06).
-      await createScheduleEntry(root, tenantId, empId, '2026-04-07', '08:00', '17:00');
+      // Only works Tuesday (2030-04-02), not Monday (2030-04-01).
+      await createScheduleEntry(root, tenantId, empId, '2030-04-02', '08:00', '17:00');
 
       // Try Monday (DOW=1)
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999012',
         required_skills: '{oil-change}',
-        start_time: '2026-04-06T10:00:00Z',
-        end_time: '2026-04-06T10:30:00Z',
+        start_time: '2030-04-01T10:00:00Z',
+        end_time: '2030-04-01T10:30:00Z',
       });
 
       expect(result.success).toBe(false);
@@ -254,15 +265,15 @@ describe('book_with_scheduling_atomic()', () => {
       await createResource(root, tenantId, 'Bay 2');
       const emp1 = await createEmployee(root, tenantId, 'Alice', ['oil-change']);
       const emp2 = await createEmployee(root, tenantId, 'Bob', ['oil-change']);
-      await createScheduleEntry(root, tenantId, emp1, '2026-04-06', '08:00', '17:00');
-      await createScheduleEntry(root, tenantId, emp2, '2026-04-06', '08:00', '17:00');
+      await createScheduleEntry(root, tenantId, emp1, '2030-04-01', '08:00', '17:00');
+      await createScheduleEntry(root, tenantId, emp2, '2030-04-01', '08:00', '17:00');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999013',
         required_skills: '{oil-change}',
-        start_time: '2026-04-06T10:00:00Z',
-        end_time: '2026-04-06T10:30:00Z',
+        start_time: '2030-04-01T10:00:00Z',
+        end_time: '2030-04-01T10:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -276,16 +287,16 @@ describe('book_with_scheduling_atomic()', () => {
       await createResource(root, tenantId, 'Bay 1');
       const emp1 = await createEmployee(root, tenantId, 'Alice', ['oil-change']);
       const emp2 = await createEmployee(root, tenantId, 'Bob', ['oil-change']);
-      await createScheduleEntry(root, tenantId, emp1, '2026-04-06', '08:00', '17:00');
-      await createScheduleEntry(root, tenantId, emp2, '2026-04-06', '08:00', '17:00');
+      await createScheduleEntry(root, tenantId, emp1, '2030-04-01', '08:00', '17:00');
+      await createScheduleEntry(root, tenantId, emp2, '2030-04-01', '08:00', '17:00');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999014',
         required_skills: '{oil-change}',
         preferred_employee_id: emp2,
-        start_time: '2026-04-06T10:00:00Z',
-        end_time: '2026-04-06T10:30:00Z',
+        start_time: '2030-04-01T10:00:00Z',
+        end_time: '2030-04-01T10:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -308,13 +319,17 @@ describe('book_with_scheduling_atomic()', () => {
         '{basic}',
         bay2,
       ]);
+      // Somebody to take it — an appointment is with somebody (20260909210000).
+      // The capability match, not the person, is what this test pins.
+      const techId = await createEmployee(root, tenantId, 'Bay Tech');
+      await createScheduleEntry(root, tenantId, techId, '2030-03-27', '00:00', '23:59');
 
       const result = await bookWithScheduling({
         tenant_id: tenantId,
         phone: '+15559999020',
         required_capabilities: '{lift}',
-        start_time: '2026-04-01T10:00:00Z',
-        end_time: '2026-04-01T10:30:00Z',
+        start_time: '2030-03-27T10:00:00Z',
+        end_time: '2030-03-27T10:30:00Z',
       });
 
       expect(result.success).toBe(true);
@@ -342,10 +357,10 @@ describe('book_with_scheduling_atomic()', () => {
       const emp3 = await createEmployee(root, tenantId, 'Carol', ['tires', 'alignment']);
       const emp4 = await createEmployee(root, tenantId, 'Dave', ['oil-change', 'brakes', 'tires']);
 
-      // 2026-04-06 (Monday) schedule for all four — booking RPCs
+      // 2030-04-01 (Monday) schedule for all four — booking RPCs
       // read employee_schedule, not weekly patterns.
       for (const empId of [emp1, emp2, emp3, emp4]) {
-        await createScheduleEntry(root, tenantId, empId, '2026-04-06', '08:00', '17:00');
+        await createScheduleEntry(root, tenantId, empId, '2030-04-01', '08:00', '17:00');
       }
 
       // Add some existing appointments to make it realistic
@@ -355,8 +370,8 @@ describe('book_with_scheduling_atomic()', () => {
         tenantId,
         bay1,
         cust1,
-        '2026-04-06T09:00:00Z',
-        '2026-04-06T09:30:00Z',
+        '2030-04-01T09:00:00Z',
+        '2030-04-01T09:30:00Z',
         'Oil change',
         'scheduled',
         emp1
@@ -366,8 +381,8 @@ describe('book_with_scheduling_atomic()', () => {
         tenantId,
         bay2,
         cust1,
-        '2026-04-06T10:00:00Z',
-        '2026-04-06T10:30:00Z',
+        '2030-04-01T10:00:00Z',
+        '2030-04-01T10:30:00Z',
         'Brakes',
         'scheduled',
         emp2
@@ -390,8 +405,8 @@ describe('book_with_scheduling_atomic()', () => {
             'Oil change perf test',
             `perf-call-${i}`,
             null,
-            '2026-04-06T11:00:00Z',
-            '2026-04-06T11:30:00Z',
+            '2030-04-01T11:00:00Z',
+            '2030-04-01T11:30:00Z',
             null,
             null,
             '{oil-change}',
@@ -453,7 +468,7 @@ describe('book_with_scheduling_atomic()', () => {
         bay1,
       ]);
       const emp1 = await createEmployee(root, tenantId, 'Alice', ['oil-change']);
-      await createScheduleEntry(root, tenantId, emp1, '2026-04-06', '08:00', '17:00');
+      await createScheduleEntry(root, tenantId, emp1, '2030-04-01', '08:00', '17:00');
 
       const runs = 5;
       const oldTimes: number[] = [];
@@ -494,8 +509,8 @@ describe('book_with_scheduling_atomic()', () => {
             'Timing test',
             `compare-${i}`,
             null,
-            '2026-04-06T14:00:00Z',
-            '2026-04-06T14:30:00Z',
+            '2030-04-01T14:00:00Z',
+            '2030-04-01T14:30:00Z',
             null,
             null,
             '{oil-change}',
@@ -568,8 +583,8 @@ describe('book_with_scheduling_atomic()', () => {
         tenant_id: tenantId,
         phone: '+15559999031',
         customer_name: 'Sad Customer',
-        start_time: '2026-04-01T10:00:00Z',
-        end_time: '2026-04-01T10:30:00Z',
+        start_time: '2030-03-27T10:00:00Z',
+        end_time: '2030-03-27T10:30:00Z',
       });
 
       expect(result.success).toBe(false);

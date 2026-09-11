@@ -127,6 +127,28 @@ test.beforeAll(async () => {
   });
   expect(svcRes.status(), 'Tire Rotation service create must succeed').toBe(200);
 
+  // THE SKILL MAP (migration 20260909210000). The booking route passes the
+  // resolved service id, and with one the RPC books ONLY people and bays the
+  // map links to that service — an unlinked service is refused
+  // NO_SKILLED_EMPLOYEE. So the shape these tests always assumed ("either tech,
+  // either bay") is stated as links: every service here → both techs, both bays.
+  await pool.query(
+    `INSERT INTO service_employee (service_id, employee_id, tenant_id)
+     SELECT s.service_id, e.employee_id, s.tenant_id
+       FROM services s CROSS JOIN unnest($2::uuid[]) AS e(employee_id)
+      WHERE s.tenant_id = $1
+     ON CONFLICT DO NOTHING`,
+    [freshTenant.tenantId, seededScenario.employeeIds]
+  );
+  await pool.query(
+    `INSERT INTO service_resource (service_id, resource_id, tenant_id)
+     SELECT s.service_id, r.resource_id, s.tenant_id
+       FROM services s CROSS JOIN unnest($2::uuid[]) AS r(resource_id)
+      WHERE s.tenant_id = $1
+     ON CONFLICT DO NOTHING`,
+    [freshTenant.tenantId, seededScenario.resourceIds]
+  );
+
   await ctx.dispose();
 });
 
@@ -246,7 +268,11 @@ test('conversation: tire-rotation request books successfully via book_with_sched
   try {
     // Set up shifts on a far-future date so the booking has somewhere
     // to land without colliding with existing appointments.
-    const FUTURE = '2026-07-13'; // Monday, well past the 14-day seeded window
+    // Monday, well past the 14-day seeded window. Was '2026-07-13' — it went
+    // stale, and once book_with_scheduling_atomic began refusing the past
+    // (migration 20260909210000) it came back PAST_TIME. Moved 208 weeks forward:
+    // same weekday, same CDT offset, so every UTC time below means the same thing.
+    const FUTURE = '2030-07-08';
     const [alexId, samId] = seededScenario.employeeIds;
     for (const empId of [alexId, samId]) {
       await pool.query(
@@ -278,8 +304,11 @@ test('conversation: tire-rotation request books successfully via book_with_sched
     expect(res.body.success).toBe(true);
     const result = res.body.result as Record<string, unknown>;
     expect(result.appointment_id, 'appointment_id present in result').toBeTruthy();
-    // MODE B (empty skills) — RPC picks a resource but leaves employee unassigned
-    expect(result.employee_name).toBeNull();
+    // RULE CHANGE (migration 20260909210000): MODE B (empty skills) used to pick
+    // a resource and leave the employee UNASSIGNED — a booking nobody would
+    // attend. An appointment is with somebody now: the RPC names a scheduled,
+    // linked tech. This asserted toBeNull() before the rule changed.
+    expect(['Alex Smith', 'Sam Jones']).toContain(result.employee_name);
     expect(result.resource_name).toBeTruthy();
     apptIdsToCleanup.push(result.appointment_id as string);
 
@@ -338,7 +367,9 @@ test('conversation: full-busy slot returns next_available alternatives the agent
   const shiftsToCleanup: Array<{ employeeId: string; shiftDate: string }> = [];
 
   try {
-    const FUTURE = '2026-07-14'; // Tuesday
+    // Tuesday. Was '2026-07-14', stale → PAST_TIME; 208 weeks forward, same
+    // weekday and offset (see the Monday case above).
+    const FUTURE = '2030-07-09';
     const [alexId, samId] = seededScenario.employeeIds;
     const [bay1Id, bay2Id] = seededScenario.resourceIds;
 

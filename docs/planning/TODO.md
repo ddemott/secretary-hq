@@ -60,6 +60,64 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
   - **Confirm recovery** after step 3: no new `errors_total{event="reminder_batch_failed"}`, `reminder_schedules` rows moving past `'scheduled'`, and nothing accumulating in `'sending'`.
   - **The general lesson:** "migrations before merge" assumes the migration is inert until new code uses it. When the RUNNING code already emits the value a constraint blocks, the constraint is a live behavioural gate and relaxing it deploys a change by itself. Ask which side is already emitting the value before choosing the order.
 - Fill real TELNYX_PUBLIC_KEY in .env
+- [ ] **(code)** **The morning half of a night shift can never be booked.** Found 2026-09-11 while
+      testing `20260909210000`, and it is already on `main` — reproduced against HEAD's
+      `book_with_scheduling_atomic` in a rolled-back transaction: an employee scheduled
+      22:00→06:00 every day, a 02:00 slot the next morning → `EMPLOYEE_NOT_SCHEDULED`; 23:00 the
+      same day books fine. Coverage is matched on the SLOT's local date, so a shift that started
+      the previous evening is never consulted for anything after midnight. No live tenant runs
+      night shifts today (Thinking Hammer is day-only), which is why no call has hit it. When
+      fixed, `availabilitySearch.ts` must change in the same commit — suggest and enforce must
+      read the calendar the same way (the 2026-07-17 midnight-wrap lesson).
+- [ ] **(code)** **A caller who declines the meeting can leave the call unable to END.** Found
+      2026-09-11 in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no grader
+      saw it), and on `main`. The opener "talk to someone about a job opportunity for Dale"
+      selected `identity + job + booking`; the caller then answered the meeting offer "just
+      pass the details along" (`details_only`). Booking stayed selected with nothing left to do,
+      so the goodbye gate refused `finish_call` ("Not yet — the checklist is not complete"),
+      while the agent itself told the caller "there's no appointment to book". One run ended in
+      a goodbye loop ("You're welcome! … Take care!" / "Thanks, Mike. If you need anything
+      else…") with no `finish_call` at all. `checklistTools.ts:1406` turns `wants_meeting` into
+      `select(['booking'])`; nothing does the inverse. Fix in host code: `details_only` (the
+      caller's own "no meeting") deselects `booking` when booking was selected only for the
+      meeting — the same shape as the `meeting_offer → booking` escalation, and the same rule
+      as the goodbye gate: a structural guarantee, not a prompt sentence. The gate must never
+      hold a caller who has said no.
+- [ ] **(code)** **An urgent message can be saved as ordinary while the caller is told "urgent".**
+      Found 2026-09-11 in `sim-questiontree` URGENT CALLER (graded FAIL, correctly), and on
+      `main`: the caller said "urgently" in her opener and "It's really urgent" again; the model
+      tried `record_answer("is_urgent")`, was refused (not a checklist node — same unhelpful
+      refusal as the item below), then called `take_message` WITHOUT `is_urgent: true` — and told
+      her "I've saved your urgent message for Dale". The question-tree path has NO urgency
+      handling at all: no node in any tree, no `ACTION_ARG_BACKFILL` entry, no host detection.
+      Migration 20260801020000 says the flag "is set from the caller's own words", but only the
+      model is asked to do it — a prompt request, not a guarantee. Fix in host code: set
+      `is_urgent` from the caller's own urgency words ("urgent", "emergency", "as soon as
+      possible", "right away") when `take_message` fires, raise-only like the DB column.
+- [ ] **(code)** **A wrong node id makes the agent RE-ASK the caller instead of retrying.** Found
+      2026-09-11 reading `sim-questiontree` transcripts, and on `main`. ONE-BREATH ("everything
+      volunteered in the opener, nothing re-asked") was graded PASS while the transcript shows
+      the opposite: the caller gave company, full-time, senior QA, $120–140k, hybrid and the
+      address in her first sentence; the model recorded them under invented ids (`role_type`,
+      `role_title`, `role_salary_range`, `role_location`), `tracker.ts:328` refused each with
+      `"<id>" is not on this call's checklist. Record only the ids the checklist shows.` — which
+      names no valid id — and the model then asked her for all of it again ("Like I said…",
+      twice). `role_description` was saved as DECLINED although "senior QA" was said in the
+      opener. Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the refusal must
+      hand the model the ids it CAN record (or the nearest one), so a wrong id costs a silent
+      retry, not the caller's patience. The grader must also fail a "nothing re-asked" scenario
+      that re-asks.
+- [ ] **(code)** **The dashboard booking form and the phone disagree on an UNLINKED service.** Since
+      `20260909210000`, the phone path (`book_with_scheduling_atomic` + `availabilitySearch.ts`)
+      treats the skill map's `service_employee` / `service_resource` links as the whole rule and
+      REFUSES a service with no linked person or room (Dale, 2026-09-11: Person → Role →
+      Resource). The dashboard form's `book_appointment_atomic` still FALLS BACK to the
+      `required_skills` / `required_resources` tags when a service has no links. Same business,
+      same service, two answers depending on who books it. Align it the same way, and then decide
+      whether the tag columns (`employees.skills`, `services.required_skills`) should be retired —
+      they are now consulted only by callers that do not pass a service id. The skill map's fix
+      panel already flags a service missing people or rooms (`missingEmployees` /
+      `missingResources`), which is what an owner needs to see once strict is live.
 
 ## 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
 

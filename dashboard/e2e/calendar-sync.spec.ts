@@ -554,11 +554,16 @@ test('fire-and-forget: HTTP response does not wait for sync provider work', asyn
         resource_id: bayId,
         customer_id: customerId,
         employee_id: techId,
-        // 17:00 UTC = 12:00 CDT — squarely inside the tech's 09:00-17:00 local
-        // shift on the FUTURE_DATE, doesn't collide with the 14:00 UTC
-        // (09:00 CDT) used by appointment-create earlier in this file.
-        start_time: `${FUTURE_DATE}T17:00:00.000Z`,
-        end_time: `${FUTURE_DATE}T17:30:00.000Z`,
+        // 15:00-15:30 UTC — inside the tech's 09:00-17:00 shift whatever the
+        // tenant's zone: a freshly registered tenant defaults to UTC (15:00
+        // local), and a Chicago one would read it as 10:00 CDT. This was 17:00
+        // UTC under a comment assuming CDT; on the real default (UTC) 17:00 IS
+        // the shift end, the booking was refused EMPLOYEE_NOT_SCHEDULED, and it
+        // went unseen because this spec needs SYNC_TEST_RECORDER, which CI does
+        // not set (found 2026-09-11). Clear of the 14:00 UTC appointment-create
+        // slot earlier in this file, which is cleaned up anyway.
+        start_time: `${FUTURE_DATE}T15:00:00.000Z`,
+        end_time: `${FUTURE_DATE}T15:30:00.000Z`,
         description: tag,
       },
     });
@@ -574,10 +579,19 @@ test('fire-and-forget: HTTP response does not wait for sync provider work', asyn
     expect(elapsed, `HTTP must return in <3s; took ${elapsed}ms`).toBeLessThan(3000);
 
     // And the orchestrator did fire — proving the speed isn't because
-    // the dispatch was skipped.
+    // the dispatch was skipped. The providers are calendar + square: this said
+    // ">= 5" from the era of five sync providers, and went stale when the dormant
+    // CRM adapters were deleted (2026-06-12; the provider CHECK narrowed in
+    // 20260821020000). It went unseen because this spec needs SYNC_TEST_RECORDER,
+    // which CI does not set (found 2026-09-11). Now pinned exactly, the same way
+    // the appointment-create test above pins it.
     await new Promise((r) => setTimeout(r, 500));
     const events = await getSyncEvents(request);
-    expect(events.filter((e) => e.entity === 'appointment').length).toBeGreaterThanOrEqual(5);
+    const fired = events.filter(
+      (e) =>
+        e.entity === 'appointment' && e.action === 'create' && e.entityId === body.appointment_id
+    );
+    expect(fired.map((e) => e.provider).sort()).toEqual(['calendar', 'square']);
   } finally {
     for (const id of apptIdsToCleanup)
       await pool.query('DELETE FROM appointments WHERE appointment_id = $1', [id]);

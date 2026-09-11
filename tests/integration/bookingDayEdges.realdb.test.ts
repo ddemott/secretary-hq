@@ -36,6 +36,8 @@ import {
   createEmployee,
   createResource,
   createScheduleEntry,
+  assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../utils';
 import { createWithTenantClient } from '../../src/database';
@@ -71,7 +73,12 @@ let tenantId: string;
 const tenantsToClean: string[] = [];
 
 function post(path: string, payload: unknown) {
-  return app.inject({ method: 'POST', url: path, headers: { 'x-agent-secret': AGENT_SECRET }, payload });
+  return app.inject({
+    method: 'POST',
+    url: path,
+    headers: { 'x-agent-secret': AGENT_SECRET },
+    payload,
+  });
 }
 
 let bookSeq = 0;
@@ -115,13 +122,16 @@ beforeAll(async () => {
       tenantId,
     ]);
     const employeeId = await createEmployee(setup, tenantId, 'Sam Edge');
-    await createResource(setup, tenantId, 'Room 1');
+    const roomId = await createResource(setup, tenantId, 'Room 1');
+    // The skill map: Sam takes consultations, in Room 1. The route passes the
+    // resolved service id, so the RPC books only linked people and rooms.
+    await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+    await assignResourceToService(setup, tenantId, serviceId, roomId);
     // THE BUSINESS DAY: 1:00 PM – 5:00 PM, tenant-local.
     await createScheduleEntry(setup, tenantId, employeeId, DATE, '13:00', '17:00');
 
     dbAvailable = true;
   } catch (err) {
-     
     console.warn('[bookingDayEdges.realdb.test] DB not available, skipping', err);
   }
 });

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict sP7mCEa4KIF3arYx4o0VTG9gjPro0wet8xZpdZHEgs1sPS3FE4bKQI1Z9vJgrBB
+\restrict B6QNULoukJTjA3e5w4XP1caMfXmnKfNJt3AupocoYj8be7dWWryxU9tOQ6tdXZT
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -465,8 +465,15 @@ DECLARE
     v_employee_occupied BOOLEAN;
     v_resource_occupied BOOLEAN;
     v_buffer INTERVAL;
+    -- Rule 3: when the service is known, the skill map's links decide and the
+    -- tag arrays are emptied so no branch below consults them.
+    v_by_links BOOLEAN := p_service_id IS NOT NULL;
+    v_skills TEXT[];
+    v_caps TEXT[];
 BEGIN
     v_buffer := (GREATEST(COALESCE(p_buffer_minutes, 0), 0) || ' minutes')::INTERVAL;
+    v_skills := CASE WHEN v_by_links THEN '{}'::TEXT[] ELSE COALESCE(p_required_skills, '{}'::TEXT[]) END;
+    v_caps := CASE WHEN v_by_links THEN '{}'::TEXT[] ELSE COALESCE(p_required_capabilities, '{}'::TEXT[]) END;
 
     SELECT COALESCE(t.timezone, 'UTC') INTO v_tenant_tz
     FROM tenants t WHERE t.tenant_id = p_tenant_id;
@@ -552,7 +559,60 @@ BEGIN
     v_end_wraps := (v_end AT TIME ZONE v_tenant_tz)::DATE > v_shift_date;
     v_end_time_of_day := (v_end AT TIME ZONE v_tenant_tz)::TIME;
 
-    IF array_length(p_required_skills, 1) IS NOT NULL AND array_length(p_required_skills, 1) > 0 THEN
+    -- RULE: YOU CANNOT BOOK IN THE PAST. Dale, 2026-09-09: "that should be a
+    -- given and a rule that we abide by."
+    --
+    -- It was not a given. Demonstrated against PRODUCTION at 6:52 PM by booking
+    -- 1:00 PM the same day: success, appointment_id returned, row written. The
+    -- check existed only in book_appointment_atomic, which production does not
+    -- use; THIS is the function every phone booking goes through, and it had
+    -- nothing. Shift coverage cannot catch it either — 1:00 PM sits squarely
+    -- inside a 1-5 PM shift, it is merely six hours gone.
+    --
+    -- One minute of grace, matching the shift-boundary slack: a caller who says
+    -- "one o'clock" at 12:59:40 means the slot that is about to start, and
+    -- refusing them on a rounding edge would be its own defect.
+    IF v_start < (now() - INTERVAL '1 minute') THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+            NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::UUID,
+            'That time has already passed'::TEXT, 'PAST_TIME'::TEXT;
+        RETURN;
+    END IF;
+
+    -- RULE 3, STRICT: a service nobody is linked to — or that is linked to no
+    -- room or line — cannot be booked. Checked before any search so the caller
+    -- hears the true reason, not a generic "nothing available". Only ACTIVE,
+    -- undeleted people and rooms count: a link to someone who has left is not
+    -- somebody to meet the customer.
+    IF v_by_links AND NOT EXISTS (
+        SELECT 1 FROM service_employee se
+          JOIN employees emp ON emp.employee_id = se.employee_id
+         WHERE se.service_id = p_service_id
+           AND se.tenant_id = p_tenant_id
+           AND emp.is_active = true
+           AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+    ) THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+            NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, v_customer_id,
+            'No one is assigned to take this kind of appointment'::TEXT,
+            'NO_SKILLED_EMPLOYEE'::TEXT;
+        RETURN;
+    END IF;
+    IF v_by_links AND NOT EXISTS (
+        SELECT 1 FROM service_resource sr
+          JOIN resources res ON res.resource_id = sr.resource_id
+         WHERE sr.service_id = p_service_id
+           AND sr.tenant_id = p_tenant_id
+           AND res.is_active = true
+    ) THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+            NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, v_customer_id,
+            'No room or line is set up for this kind of appointment'::TEXT,
+            'NO_AVAILABILITY'::TEXT;
+        RETURN;
+    END IF;
+
+    IF array_length(v_skills, 1) IS NOT NULL AND array_length(v_skills, 1) > 0 THEN
         FOR r IN
             SELECT
                 res.resource_id AS rid,
@@ -574,9 +634,9 @@ BEGIN
                 AND emp.tenant_id = p_tenant_id
                 AND emp.is_active = true
                 AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
-                AND (array_length(p_required_capabilities, 1) IS NULL
-                     OR res.capabilities @> p_required_capabilities)
-                AND emp.skills @> p_required_skills
+                AND (array_length(v_caps, 1) IS NULL
+                     OR res.capabilities @> v_caps)
+                AND emp.skills @> v_skills
                 AND NOT EXISTS (
                     SELECT 1 FROM appointments a
                     WHERE a.resource_id = res.resource_id
@@ -611,8 +671,14 @@ BEGIN
             FROM resources res
             WHERE res.tenant_id = p_tenant_id
                 AND res.is_active = true
-                AND (array_length(p_required_capabilities, 1) IS NULL
-                     OR res.capabilities @> p_required_capabilities)
+                AND (array_length(v_caps, 1) IS NULL
+                     OR res.capabilities @> v_caps)
+                -- Rule 3: only a room or line the skill map links to this service.
+                AND (NOT v_by_links OR EXISTS (
+                    SELECT 1 FROM service_resource sr
+                     WHERE sr.service_id = p_service_id
+                       AND sr.resource_id = res.resource_id
+                ))
                 AND NOT EXISTS (
                     SELECT 1 FROM appointments a
                     WHERE a.resource_id = res.resource_id
@@ -630,6 +696,63 @@ BEGIN
             v_resource_name := r.rname;
             v_found := TRUE;
         END LOOP;
+
+        -- AND NOW NAME THE PERSON. Dale, 2026-09-09: "the person needs to be
+        -- checked against the calendar... you can't book an appointment with
+        -- someone who is not in the resources list."
+        --
+        -- This branch used to select a RESOURCE and stop. The shift guard below
+        -- then proved that SOMEBODY was scheduled and covering — without ever
+        -- recording who — so `v_employee_id` stayed NULL and the appointment was
+        -- written with a room and no person. Production never showed it only
+        -- because its services carry required_skills and take the other branch;
+        -- any service without skills booked nobody.
+        --
+        -- Same three tests the skills branch applies, minus the skill filter: the
+        -- employee is ACTIVE, their shift COVERS the window (wrap-aware, via the
+        -- shared shift_covers_booking), and they are not already booked across it.
+        -- p_preferred_employee_id — the person the caller asked for by name — wins
+        -- when supplied, so "book me with Dale" binds to Dale or fails honestly.
+        -- Rule 3: and, when the service is known, the skill map links them to it.
+        IF v_found THEN
+            FOR r IN
+                SELECT emp.employee_id AS eid, emp.name AS ename
+                FROM employees emp
+                JOIN employee_schedule es
+                  ON es.employee_id = emp.employee_id
+                 AND es.tenant_id = p_tenant_id
+                 AND es.shift_date = v_shift_date
+                 AND es.is_off = false
+                 AND public.shift_covers_booking(
+                         es.start_time, es.end_time,
+                         v_start_time_of_day, v_end_time_of_day, v_end_wraps)
+                WHERE emp.tenant_id = p_tenant_id
+                  AND emp.is_active = true
+                  AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+                  AND (NOT v_by_links OR EXISTS (
+                      SELECT 1 FROM service_employee se
+                       WHERE se.service_id = p_service_id
+                         AND se.employee_id = emp.employee_id
+                  ))
+                  AND (p_preferred_employee_id IS NULL
+                       OR emp.employee_id = p_preferred_employee_id::UUID)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM appointments a
+                      WHERE a.employee_id = emp.employee_id
+                        AND a.status = 'scheduled'
+                        AND (a.is_deleted IS NULL OR a.is_deleted = false)
+                        AND a.start_time < v_end + v_buffer
+                        AND a.end_time > v_start - v_buffer
+                  )
+                ORDER BY
+                    CASE WHEN emp.employee_id = p_preferred_employee_id::UUID THEN 0 ELSE 1 END,
+                    emp.name
+                LIMIT 1
+            LOOP
+                v_employee_id := r.eid;
+                v_employee_name := r.ename;
+            END LOOP;
+        END IF;
     END IF;
 
     -- NARROW SHIFT GUARD for the skill-less path (review on #285). The ELSE
@@ -641,7 +764,7 @@ BEGIN
     -- the skills branch), the building is closed at that time and the booking
     -- is refused.
     IF v_found
-       AND (array_length(p_required_skills, 1) IS NULL OR array_length(p_required_skills, 1) = 0)
+       AND (array_length(v_skills, 1) IS NULL OR array_length(v_skills, 1) = 0)
        AND EXISTS (
             SELECT 1 FROM employee_schedule es
              WHERE es.tenant_id = p_tenant_id
@@ -670,13 +793,23 @@ BEGIN
     END IF;
 
     IF NOT v_found THEN
-        IF array_length(p_required_skills, 1) IS NOT NULL AND array_length(p_required_skills, 1) > 0 THEN
+        -- Rule 3: the service has active linked rooms (checked above), so no free
+        -- one means every room for this kind of appointment is taken then.
+        IF v_by_links THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+                NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, v_customer_id,
+                'Requested time slot is already booked'::TEXT,
+                'TIMESLOT_OCCUPIED'::TEXT;
+            RETURN;
+        END IF;
+
+        IF array_length(v_skills, 1) IS NOT NULL AND array_length(v_skills, 1) > 0 THEN
             SELECT EXISTS(
                 SELECT 1 FROM employees
                 WHERE tenant_id = p_tenant_id
                 AND is_active = true
                 AND (is_deleted IS NULL OR is_deleted = false)
-                AND skills @> p_required_skills
+                AND skills @> v_skills
             ) INTO v_employee_exists;
 
             IF NOT v_employee_exists THEN
@@ -700,7 +833,7 @@ BEGIN
                 WHERE emp.tenant_id = p_tenant_id
                 AND emp.is_active = true
                 AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
-                AND emp.skills @> p_required_skills
+                AND emp.skills @> v_skills
             ) INTO v_employee_scheduled;
 
             IF NOT v_employee_scheduled THEN
@@ -727,7 +860,7 @@ BEGIN
                 WHERE emp.tenant_id = p_tenant_id
                 AND emp.is_active = true
                 AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
-                AND emp.skills @> p_required_skills
+                AND emp.skills @> v_skills
                 AND a.status = 'scheduled'
                 AND (a.is_deleted IS NULL OR a.is_deleted = false)
                 AND a.start_time < v_end + v_buffer AND a.end_time > v_start - v_buffer
@@ -750,6 +883,60 @@ BEGIN
     END IF;
 
     BEGIN
+        -- Rule 3: a room was found but no linked person was. Say which of the two
+        -- true things it is — nobody linked is working then, or they are all
+        -- already booked — rather than the generic line below.
+        IF v_employee_id IS NULL AND v_by_links THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM service_employee se
+                  JOIN employees emp ON emp.employee_id = se.employee_id
+                  JOIN employee_schedule es
+                    ON es.employee_id = emp.employee_id
+                   AND es.tenant_id = p_tenant_id
+                   AND es.shift_date = v_shift_date
+                   AND es.is_off = false
+                   AND public.shift_covers_booking(
+                           es.start_time, es.end_time,
+                           v_start_time_of_day, v_end_time_of_day, v_end_wraps)
+                 WHERE se.service_id = p_service_id
+                   AND emp.is_active = true
+                   AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+                   AND (p_preferred_employee_id IS NULL
+                        OR emp.employee_id = p_preferred_employee_id::UUID)
+            ) THEN
+                RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+                    NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, v_customer_id,
+                    'No one who takes this kind of appointment is working then'::TEXT,
+                    'EMPLOYEE_NOT_SCHEDULED'::TEXT;
+                RETURN;
+            END IF;
+            RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+                NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, v_customer_id,
+                'Requested time slot is already booked'::TEXT,
+                'TIMESLOT_OCCUPIED'::TEXT;
+            RETURN;
+        END IF;
+
+        -- RULE: AN APPOINTMENT IS WITH SOMEBODY. Dale, 2026-09-09: "you can't
+        -- book an appointment with a resource that doesn't exist."
+        --
+        -- appointments.employee_id is NULLABLE and v_employee_id starts NULL, so
+        -- a tenant that reaches the fall-open path (no schedule data at all)
+        -- could be booked with NO PERSON attached — the owner opens the calendar
+        -- and finds a customer, a time, a room, and nobody to meet them. Two live
+        -- tenants sat in exactly that state when this was written (Bella's Hair
+        -- Studio: 0 active staff; AI Sec Platform: staff but no schedule rows).
+        --
+        -- Refusing is the honest answer for an unconfigured business, and it
+        -- reuses the code the agent already knows how to speak. Demo tenants are
+        -- unaffected: demoSeed.ts seeds employees, schedules and resources.
+        IF v_employee_id IS NULL THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID, NULL::UUID, NULL::TEXT, NULL::UUID, NULL::TEXT,
+                NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::UUID,
+                'No one is scheduled to take this appointment'::TEXT, 'NO_SKILLED_EMPLOYEE'::TEXT;
+            RETURN;
+        END IF;
+
         INSERT INTO appointments (
             tenant_id, resource_id, customer_id, start_time, end_time,
             description, call_id, location, employee_id, service_id
@@ -6684,5 +6871,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict sP7mCEa4KIF3arYx4o0VTG9gjPro0wet8xZpdZHEgs1sPS3FE4bKQI1Z9vJgrBB
+\unrestrict B6QNULoukJTjA3e5w4XP1caMfXmnKfNJt3AupocoYj8be7dWWryxU9tOQ6tdXZT
 

@@ -49,6 +49,8 @@ import {
   createEmployee,
   createResource,
   createScheduleEntry,
+  assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../utils';
 import { createWithTenantClient } from '../../src/database';
@@ -182,13 +184,29 @@ beforeAll(async () => {
     caraId = await createEmployee(setup, tenantId, 'Cara Nails', ['nails']);
     danaId = await createEmployee(setup, tenantId, 'Dana Nails', ['nails']);
 
-    await createResource(setup, tenantId, 'Chair 1');
-    await createResource(setup, tenantId, 'Chair 2');
+    const chair1Id = await createResource(setup, tenantId, 'Chair 1');
+    const chair2Id = await createResource(setup, tenantId, 'Chair 2');
     nailStationId = await createResource(setup, tenantId, 'Nail Station');
     await setup.query(
       `UPDATE resources SET capabilities = ARRAY['nail_station'] WHERE resource_id = $1`,
       [nailStationId]
     );
+
+    // THE SKILL MAP (migration 20260909210000). The route passes the resolved
+    // service id, and with one the RPC books ONLY linked people in linked rooms —
+    // the tags above are no longer consulted. So the same business shape is
+    // stated here as links, one-for-one with the tags: Haircut → Alice + Bob in
+    // the chairs; Color → Alice in the chairs; Manicure → Cara + Dana at the
+    // Nail Station only. Perm stays linked to NOBODY — still NO_SKILLED_EMPLOYEE.
+    for (const e of [aliceId, bobId]) await assignEmployeeToService(setup, tenantId, haircutId, e);
+    await assignEmployeeToService(setup, tenantId, colorId, aliceId);
+    for (const e of [caraId, danaId]) await assignEmployeeToService(setup, tenantId, manicureId, e);
+    for (const svc of [haircutId, colorId]) {
+      await assignResourceToService(setup, tenantId, svc, chair1Id);
+      await assignResourceToService(setup, tenantId, svc, chair2Id);
+    }
+    await assignResourceToService(setup, tenantId, manicureId, nailStationId);
+    await assignResourceToService(setup, tenantId, permId, chair1Id);
 
     shiftDate = tenantLocalDatePlus(7);
     await createScheduleEntry(setup, tenantId, aliceId, shiftDate, '09:00', '17:00');
@@ -199,7 +217,6 @@ beforeAll(async () => {
 
     dbAvailable = true;
   } catch (err) {
-     
     console.warn('[multiEmployeeScheduling.realdb.test] DB not available, skipping', err);
   }
 });

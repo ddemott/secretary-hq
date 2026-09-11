@@ -4,6 +4,48 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-11 — "The owner" is said as Dale everywhere, and the booking RPC stops booking the past, nobody, or the wrong room
+
+**"The owner" in the PROMPT was a request; the voice path is now a guarantee.** Dale:
+_"I am the owner but do not refer to statements like 'I will pass this on to the
+owner'. People don't know what that means."_ The 2026-09-09 prompt rule did not reach
+the phrase's other sources — `tenant_question_nodes` wording ("a meeting on the owner's
+calendar"), backend tool results relayed nearly verbatim ("Message saved — the owner
+has been alerted."), and the model's habit. `speechSanitizer.ts` now rewrites "the
+owner" / "the business owner" to the one active staff member's first name in
+`ttsNode`, and `transcriptionNode` applies the same rewrite so the call record matches
+what the caller heard. Deliberately narrow: never "the owner of …", never after "are
+you / is / I'm …", never "the owners" / "homeowners"; with several staff (or none) the
+phrase is left alone. Verified: 19 of 19 occurrences across three sets of
+`sim-questiontree` transcripts came out as "Dale".
+
+**Migration `20260909210000` — three rules `book_with_scheduling_atomic` did not
+enforce.** (1) No booking in the past (`PAST_TIME`, one minute of grace) — the item
+closed above as "still open". (2) Never an appointment with no person. (3) When the
+service is known, the skill map's `service_employee` / `service_resource` links are the
+whole rule, and an unlinked service is refused — Dale: _"Person → Role → Resource."_
+`availabilitySearch.ts`, the available-slots date path, and the appointments conflict
+suggestions read the same map. Guarded by `bookingRulesPastAndPerson.realdb.test.ts`
+and `skillMapLinks.realdb.test.ts`. Prod precondition checked read-only before apply:
+every Thinking Hammer service has a linked person and room; the only unlinked services
+belong to the platform super-admin tenant, which has no shifts and has never taken a
+call.
+
+**Also fixed:** three `console.error('DEBUG …')` lines in `checklistTools.ts` that had
+printed on every live call since August; e2e fixtures for the new rules; two
+calendar-sync spec bugs hidden because that spec does not run in CI; and the simulator
+itself, which told the model the wrong weekday, spoke "right now it is undefined", gave
+every caller a phantom Thursday 2 PM booking, and booked a day the caller was never
+offered. `sim-questiontree` can now move the CALLER off OpenAI too
+(`SIM_CALLER_BASE_URL` / `SIM_CALLER_API_KEY`).
+
+**Found and logged, not fixed** (all on `main`, see `TODO.md`): an urgent message saved
+as ordinary, a declined meeting that leaves the goodbye gate shut, a wrong node id that
+makes the agent re-ask, the morning half of a night shift unbookable, and the dashboard
+path still falling back to skill tags on an unlinked service.
+
+---
+
 ## 2026-09-09 (evening) — Four calls, eight things the agent said that were not true
 
 Four prod calls between 18:02 and 18:18 CT on Thinking Hammer. Every booking landed

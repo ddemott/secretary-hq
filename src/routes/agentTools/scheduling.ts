@@ -171,10 +171,13 @@ async function findSoonestSlots(
     requiredSkills?: string[];
     requiredCapabilities?: string[];
     bufferMinutes: number;
+    /** The service being booked — the skill map's links decide (see findNextAvailableSlots). */
+    serviceId?: string | null;
   }
 ): Promise<AvailableSlot[]> {
   return findNextAvailableSlots(client, {
     tenantId: params.tenantId,
+    serviceId: params.serviceId ?? null,
     // From NOW. The whole point.
     fromTime: new Date().toISOString(),
     durationMinutes: params.durationMinutes,
@@ -622,6 +625,7 @@ export function registerSchedulingRoutes({
         // the very defect this closes — a confident sentence about the wrong
         // person.
         let preferredEmployeeId: string | null = null;
+        let preferredEmployeeName: string | null = null;
         if (args.with_person) {
           const wanted = args.with_person.trim().toLowerCase();
           const roster = await client.query<{ employee_id: string; name: string }>(
@@ -650,6 +654,14 @@ export function registerSchedulingRoutes({
             };
           }
           preferredEmployeeId = matches[0].employee_id;
+          // Keep the name for the REFUSAL. When a requested person is off shift or
+          // already booked, the RPC answers with its generic codes — "No employee
+          // available during requested time" / "No available resource/employee
+          // combination found" — and the agent reads that out. Neither sentence is
+          // the true one, and the true one is only sayable if we still know who
+          // was asked for (2026-09-09: same wrong-reason class as telling a caller
+          // we were "fully booked" when the day had simply ended).
+          preferredEmployeeName = (matches[0].name || '').trim().split(/\s+/)[0];
         }
 
         // Resolve the service (falls through to the tenant default when the
@@ -798,6 +810,9 @@ export function registerSchedulingRoutes({
         }
         return {
           kind: 'booked' as const,
+          // Non-null only when the caller named someone; used to say WHY a
+          // refusal happened in terms of that person.
+          requestedPerson: preferredEmployeeName,
           row,
           mechanics,
           // Carried OUT of this callback on purpose: the failure branch below
@@ -808,6 +823,9 @@ export function registerSchedulingRoutes({
           // durationMinutes entirely.
           serviceDurationMinutes: resolved?.duration_minutes ?? null,
           serviceRequiredSkills: resolved?.required_skills ?? null,
+          // And the service itself: the RPC decided by its skill-map links, so the
+          // alternatives must too, or every one offered is a slot it will refuse.
+          serviceId: resolved?.service_id ?? null,
         };
       });
 
@@ -931,6 +949,7 @@ export function registerSchedulingRoutes({
                 : args.requirements.requiredEmployeeSkills) || [],
             requiredCapabilities: args.requirements.requiredResourceCapabilities || [],
             bufferMinutes,
+            serviceId: outcomeOfBooking.serviceId,
           };
 
           // STAGE 1 — look NEAR the time they asked for. Someone who wanted 2pm
@@ -963,10 +982,36 @@ export function registerSchedulingRoutes({
         // error_code + next_available; mirror the success-flag for the
         // tool-call counter so the validation-error branch isn't double-bumped.
         (reply as unknown as { _toolOutcome?: string })._toolOutcome = 'error';
+        // NAME THE PERSON IN THE REFUSAL WHEN THE CALLER NAMED THEM.
+        //
+        // The RPC's codes are about the SYSTEM's search ("No employee available
+        // during requested time", "No available resource/employee combination
+        // found"). Read out to someone who asked for a specific person, both are
+        // false-sounding and useless: the caller asked for Ada, and the honest
+        // answers are "Ada isn't working then" or "Ada's already booked at 2".
+        // Measured 2026-09-09: off-shift → EMPLOYEE_NOT_SCHEDULED, already-booked
+        // → NO_AVAILABILITY, and the agent relayed both verbatim.
+        //
+        // The refusal itself was already correct — a requested person is never
+        // swapped for someone else — so this changes only the sentence, which is
+        // the part the caller hears.
+        const who = outcomeOfBooking.requestedPerson;
+        const spokenReason =
+          who && result?.error_code === 'EMPLOYEE_NOT_SCHEDULED'
+            ? `${who} is not working at that time, so nothing was booked. Say that plainly, then ` +
+              `offer a time from next_available (those ARE open) or another day.`
+            : who &&
+                (result?.error_code === 'NO_AVAILABILITY' ||
+                  result?.error_code === 'TIMESLOT_OCCUPIED')
+              ? `${who} is already booked at that time, so nothing was booked. Say that plainly — ` +
+                `not "no availability", which sounds like the business is full — then offer a time ` +
+                `from next_available.`
+              : null;
         return reply.status(200).send({
           success: false,
-          error: result?.error_message || 'No available scheduling options',
+          error: spokenReason || result?.error_message || 'No available scheduling options',
           error_code: result?.error_code || 'NO_AVAILABILITY',
+          requested_person: who ?? undefined,
           next_available: nextAvailable,
         });
       }
@@ -1107,6 +1152,8 @@ export function registerSchedulingRoutes({
               count: 12,
               searchHorizonHours: 168,
               bufferMinutes,
+              // The soonest openings FOR THIS SERVICE — its linked people and rooms.
+              serviceId: service.service_id,
             }),
           };
         });
@@ -1201,9 +1248,17 @@ export function registerSchedulingRoutes({
           is_caller: boolean | null;
         }>(
           `WITH active_employees AS (
-             SELECT employee_id FROM employees
-              WHERE tenant_id = $1 AND is_active = true
-                AND (is_deleted IS NULL OR is_deleted = false)
+             -- Only people the skill map links to THIS service (2026-09-11) —
+             -- the booking RPC books no one else, so a shift belonging to
+             -- anyone else is not an opening for this caller. Rooms are not
+             -- modelled on this path (it never read resources); the RPC still
+             -- enforces the room links, and its failure branch offers times.
+             SELECT e.employee_id FROM employees e
+              WHERE e.tenant_id = $1 AND e.is_active = true
+                AND (e.is_deleted IS NULL OR e.is_deleted = false)
+                AND EXISTS (SELECT 1 FROM service_employee se
+                             WHERE se.service_id = $4::uuid
+                               AND se.employee_id = e.employee_id)
            ),
            effective_shifts AS (
              SELECT DISTINCT es.start_time::text AS start_time, es.end_time::text AS end_time
@@ -1246,7 +1301,7 @@ export function registerSchedulingRoutes({
            UNION ALL
            SELECT 'appointment'::text, start_time, end_time, is_caller FROM day_appointments
            ORDER BY source, start_time`,
-          [args.tenant_id, args.date, callerPhoneNormalized]
+          [args.tenant_id, args.date, callerPhoneNormalized, service.service_id]
         );
         const shifts: Array<{ start_time: string; end_time: string }> = [];
         const appointments: Array<{ start_time: string; end_time: string; is_caller: boolean }> =
@@ -1305,6 +1360,7 @@ export function registerSchedulingRoutes({
               tenantId: args.tenant_id,
               durationMinutes: duration_minutes,
               bufferMinutes,
+              serviceId: service.service_id,
             }),
           };
         });

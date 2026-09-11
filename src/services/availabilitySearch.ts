@@ -68,6 +68,13 @@ export interface FindNextAvailableSlotsParams {
    *  of a booking is treated as unavailable, so suggestions match what the
    *  booking RPC will accept under the same buffer. Default 0 (no buffer). */
   bufferMinutes?: number;
+  /** The service being booked. When given, the skill map decides — only people
+   *  linked to it (`service_employee`) and rooms/lines linked to it
+   *  (`service_resource`) count, and requiredSkills/requiredCapabilities are
+   *  ignored — exactly as book_with_scheduling_atomic enforces (migration
+   *  20260909210000). A service with no links therefore has no slots. Omit for
+   *  the legacy tag-based search. */
+  serviceId?: string | null;
 }
 
 export async function findNextAvailableSlots(
@@ -174,7 +181,14 @@ export async function findNextAvailableSlots(
          WHERE r.tenant_id = $4
            AND r.is_active = true
            AND (r.is_deleted IS NULL OR r.is_deleted = false)
-           AND (array_length($6::text[], 1) IS NULL OR r.capabilities @> $6::text[])
+           -- THE SKILL MAP DECIDES (2026-09-11): with a service, only a room or
+           -- line linked to it, and the capability tags are not consulted — the
+           -- same rule the booking RPC enforces.
+           AND ($10::uuid IS NOT NULL OR array_length($6::text[], 1) IS NULL OR r.capabilities @> $6::text[])
+           AND ($10::uuid IS NULL OR EXISTS (
+             SELECT 1 FROM service_resource sr
+              WHERE sr.service_id = $10::uuid AND sr.resource_id = r.resource_id
+           ))
            AND NOT EXISTS (
              SELECT 1 FROM appointments a
               WHERE a.resource_id = r.resource_id
@@ -229,7 +243,9 @@ export async function findNextAvailableSlots(
         AND (
           res.resource_id IS NOT NULL
           OR (
-            array_length($6::text[], 1) IS NULL
+            -- Never for a known service: it must have a linked room (strict).
+            $10::uuid IS NULL
+            AND array_length($6::text[], 1) IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM resources r0
                WHERE r0.tenant_id = $4
@@ -238,7 +254,12 @@ export async function findNextAvailableSlots(
             )
           )
         )
-        AND (array_length($7::text[], 1) IS NULL OR emp.skills @> $7::text[])
+        AND ($10::uuid IS NOT NULL OR array_length($7::text[], 1) IS NULL OR emp.skills @> $7::text[])
+        -- With a service, only people the skill map links to it.
+        AND ($10::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM service_employee se
+           WHERE se.service_id = $10::uuid AND se.employee_id = emp.employee_id
+        ))
         AND NOT EXISTS (
           SELECT 1 FROM appointments a
            WHERE a.employee_id = emp.employee_id
@@ -268,6 +289,7 @@ export async function findNextAvailableSlots(
     requiredSkills.length === 0 ? [] : requiredSkills,
     String(count),
     String(bufferMinutes),
+    params.serviceId ?? null,
   ]);
 
   return res.rows.map(
