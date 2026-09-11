@@ -251,6 +251,79 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     // future "just add the fallback back" change surfaces here first
   });
 
+  it('DEACTIVATED-LINK: a service_employee row surviving a deactivated employee is refused (Copilot review, PR #411)', async () => {
+    if (!dbAvailable) return;
+    const tenantId = await createTenant(root, 'Deactivated Link', 'auto-repair', 'America/Chicago');
+    const resourceId = await createResource(root, tenantId, 'Bay 1');
+    const empId = await createEmployee(root, tenantId, 'Former Mike');
+    const svcId = await createService(root, tenantId, 'Tire Mount', 60);
+    const customerId = await createCustomerFull(root, tenantId, '+15555550106', 'Gia');
+    await assignEmployeeToService(root, tenantId, svcId, empId);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
+    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    // The link row is untouched — only the employee is deactivated, the way
+    // an owner removes someone who left without remembering to clean up
+    // every service they were ever linked to.
+    await root.query('UPDATE employees SET is_active = false WHERE employee_id = $1', [empId]);
+
+    const result = await bookAppointment({
+      tenant_id: tenantId,
+      resource_id: resourceId,
+      customer_id: customerId,
+      employee_id: empId,
+      service_id: svcId,
+      start_time: '2026-07-01T14:00:00-05:00',
+      end_time: '2026-07-01T15:00:00-05:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    // WHO: an owner who deactivated a departed employee but never went back
+    // to unlink every service they used to perform | WHAT: the STRICT
+    // specific-employee check must re-verify active + not-deleted, not just
+    // that the link ROW exists | WHERE: book_appointment_atomic STRICT
+    // employee branch (20260911000000, fixed post-review) | WHY: the
+    // earlier version's specific-match check only tested for the row's
+    // existence — a stale link to a deactivated employee still passed, and
+    // the appointment would have been booked with someone no longer working
+    // there
+  });
+
+  it('DELETED-LINK: a service_resource row surviving a soft-deleted resource is refused (Copilot review, PR #411)', async () => {
+    if (!dbAvailable) return;
+    const tenantId = await createTenant(root, 'Deleted Link', 'auto-repair', 'America/Chicago');
+    const resourceId = await createResource(root, tenantId, 'Old Bay');
+    const empId = await createEmployee(root, tenantId, 'Mike');
+    const svcId = await createService(root, tenantId, 'Tire Mount', 60);
+    const customerId = await createCustomerFull(root, tenantId, '+15555550107', 'Hank');
+    await assignEmployeeToService(root, tenantId, svcId, empId);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
+    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    // Soft-deleted, not deactivated — the other half of "active + not
+    // deleted" the STRICT check must enforce.
+    await root.query('UPDATE resources SET is_deleted = true WHERE resource_id = $1', [
+      resourceId,
+    ]);
+
+    const result = await bookAppointment({
+      tenant_id: tenantId,
+      resource_id: resourceId,
+      customer_id: customerId,
+      employee_id: empId,
+      service_id: svcId,
+      start_time: '2026-07-01T14:00:00-05:00',
+      end_time: '2026-07-01T15:00:00-05:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    // WHY: symmetric with DEACTIVATED-LINK above but on the resource side —
+    // the earlier version's "any active link exists" probe AND its
+    // specific-resource-match check both tested res.is_active only, never
+    // res.is_deleted, so a soft-deleted bay with a surviving service_resource
+    // row could still be booked
+  });
+
   it('NO-SERVICE-ID: legacy callers without p_service_id work unchanged (no skill check)', async () => {
     if (!dbAvailable) return;
     const tenantId = await createTenant(root, 'No Service Id', 'auto-repair', 'America/Chicago');

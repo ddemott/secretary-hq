@@ -125,17 +125,26 @@ BEGIN
              WHERE sr.service_id = p_service_id
                AND sr.tenant_id = p_tenant_id
                AND res.is_active = true
+               AND (res.is_deleted IS NULL OR res.is_deleted = false)
         ) INTO v_has_active_links;
         IF NOT v_has_active_links THEN
             RETURN QUERY SELECT FALSE, NULL::UUID,
                 'No room or line is set up for this kind of appointment'::TEXT;
             RETURN;
         END IF;
+        -- Same ACTIVE + not-deleted contract as the probe above: a link row
+        -- surviving after the resource was deactivated or soft-deleted must
+        -- not pass this specific-resource check either (Copilot review,
+        -- PR #411) — the earlier version only verified the row is_active,
+        -- silently ignoring the resource being deleted.
         IF NOT EXISTS (
-            SELECT 1 FROM service_resource
-            WHERE service_id = p_service_id
-              AND resource_id = p_resource_id
-              AND tenant_id = p_tenant_id
+            SELECT 1 FROM service_resource sr
+              JOIN resources res ON res.resource_id = sr.resource_id
+             WHERE sr.service_id = p_service_id
+               AND sr.resource_id = p_resource_id
+               AND sr.tenant_id = p_tenant_id
+               AND res.is_active = true
+               AND (res.is_deleted IS NULL OR res.is_deleted = false)
         ) THEN
             RETURN QUERY SELECT FALSE, NULL::UUID,
                 'Resource is not assigned to perform this service'::TEXT;
@@ -156,11 +165,18 @@ BEGIN
                     'No one is assigned to take this kind of appointment'::TEXT;
                 RETURN;
             END IF;
+            -- Same ACTIVE + not-deleted contract as the probe above (Copilot
+            -- review, PR #411) — a link row surviving after the employee was
+            -- deactivated or soft-deleted must not pass this specific-employee
+            -- check either.
             IF NOT EXISTS (
-                SELECT 1 FROM service_employee
-                WHERE service_id = p_service_id
-                  AND employee_id = v_employee_id
-                  AND tenant_id = p_tenant_id
+                SELECT 1 FROM service_employee se
+                  JOIN employees emp ON emp.employee_id = se.employee_id
+                 WHERE se.service_id = p_service_id
+                   AND se.employee_id = v_employee_id
+                   AND se.tenant_id = p_tenant_id
+                   AND emp.is_active = true
+                   AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
             ) THEN
                 RETURN QUERY SELECT FALSE, NULL::UUID,
                     'Employee is not assigned to perform this service'::TEXT;
