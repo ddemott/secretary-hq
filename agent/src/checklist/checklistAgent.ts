@@ -15,7 +15,7 @@
  * recovery, summary) is shared and unchanged.
  */
 import { type llm, voice } from '@livekit/agents';
-import { sanitizeStream } from '../speechSanitizer.js';
+import { nameTheOwnerStream, sanitizeStream, spokenOwnerName } from '../speechSanitizer.js';
 import type { KnownCustomer } from '../customerContext.js';
 import { runtimePreamble, type CallRuntime } from '../tasks/callPlan.js';
 import { ChecklistTracker } from './tracker.js';
@@ -665,8 +665,8 @@ ${rosterLine ? `${rosterLine}\n` : ''}- CALL ${ownerRef.toUpperCase()} BY NAME, 
   organisation calls a person; a name is what a person is called, and a caller who rang a
   small business is talking to people, not to a role chart.${
     ownerRef === 'the owner'
-      ? ' (No staff roster is configured for this tenant, so the role word is all there is'
-        + ' — use it, but do not embellish it.)'
+      ? ' (No staff roster is configured for this tenant, so the role word is all there is' +
+        ' — use it, but do not embellish it.)'
       : ''
   }
 - A booking tool that returns \`what_happens_next\` has told you what ACTUALLY happens at
@@ -793,6 +793,7 @@ export class ChecklistAgent extends voice.Agent {
     });
     this.#toolkit = toolkit;
     this.#tracker = tracker;
+    this.#spokenOwner = spokenOwnerName(opts.staffFirstNames);
   }
 
   /** Exposed for tests and diagnostics. */
@@ -911,11 +912,39 @@ export class ChecklistAgent extends voice.Agent {
     return Promise.resolve();
   }
 
+  /** The name "the owner" is spoken as, or null — see spokenOwnerName. */
+  #spokenOwner: string | null = null;
+
+  /** Exposed for tests: the name this call says instead of "the owner". */
+  spokenOwner(): string | null {
+    return this.#spokenOwner;
+  }
+
   // Markdown must never reach the voice — same guarantee every agent path gives.
+  // And "the owner" is said as the owner's name, whatever produced the words.
   override async ttsNode(
     text: ReadableStream<string>,
     modelSettings: Parameters<typeof voice.Agent.default.ttsNode>[2]
   ): ReturnType<typeof voice.Agent.default.ttsNode> {
-    return voice.Agent.default.ttsNode(this, sanitizeStream(text), modelSettings);
+    return voice.Agent.default.ttsNode(
+      this,
+      sanitizeStream(text, { ownerName: this.#spokenOwner }),
+      modelSettings
+    );
+  }
+
+  // The transcript is a SEPARATE branch of the same text — LiveKit tees it before
+  // ttsNode — so without this the call record would say "the owner" while the
+  // caller heard "Dale". The record must match what was said. Markdown is left
+  // as-is here, exactly as before; only the owner rewrite is shared.
+  override async transcriptionNode(
+    text: ReadableStream<string | voice.TimedString>,
+    modelSettings: Parameters<typeof voice.Agent.default.transcriptionNode>[2]
+  ): ReturnType<typeof voice.Agent.default.transcriptionNode> {
+    return voice.Agent.default.transcriptionNode(
+      this,
+      nameTheOwnerStream(text, this.#spokenOwner),
+      modelSettings
+    );
   }
 }

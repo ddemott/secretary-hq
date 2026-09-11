@@ -69,6 +69,9 @@ const SYSTEM = buildChecklistPrompt({
   persona: `You are Piper, the AI receptionist for ${BUSINESS}.`,
   runtime: {
     currentDate: 'Tuesday, August 4, 2026',
+    // Required on CallRuntime since the clock fix (a9816df); without it the
+    // prompt read "RIGHT NOW it is undefined" (scripts/ is not typechecked).
+    currentTime: '10:00 AM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: 'Friday, August 21, 2026',

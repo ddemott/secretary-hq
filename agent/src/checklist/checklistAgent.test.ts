@@ -74,6 +74,56 @@ describe('buildChecklistPrompt — wrap-up is one question, not a 12s stack', ()
   });
 });
 
+describe('ChecklistAgent speaks "the owner" as the name (Dale, 2026-09-11)', () => {
+  // WHO: every caller to a one-person business. WHAT: the live agent's ttsNode is
+  // handed the roster's one name, so "I'll pass this on to the owner" is spoken as
+  // "…to Dale" — whether the phrase came from the model, a DB question row, or a
+  // backend tool result. WHY: "People don't know what that means even if I am the
+  // owner." The rewrite itself is pinned in speechSanitizer.test.ts; this pins
+  // that the production agent actually passes it a name.
+  const runtime = {
+    currentDate: 'Thursday, July 30, 2026',
+    currentTime: '3:00 PM',
+    timezone: 'America/Chicago',
+    businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+    bookableThrough: 'Friday, August 28, 2026',
+  };
+  const make = (staffFirstNames?: string[]) =>
+    new ChecklistAgent({ tools: {}, persona: 'You are Piper.', runtime, staffFirstNames });
+
+  it('SAD: a one-person roster gives the spoken path that person’s name', () => {
+    expect(make(['Dale']).spokenOwner()).toBe('Dale');
+  });
+
+  it('HAPPY: several staff or no roster leave the words alone', () => {
+    expect(make(['Dale', 'Maria']).spokenOwner()).toBeNull();
+    expect(make([]).spokenOwner()).toBeNull();
+    expect(make().spokenOwner()).toBeNull();
+  });
+
+  it('SAD: the TRANSCRIPT branch is rewritten too — the call record matches the voice', async () => {
+    // WHY: LiveKit tees the text BEFORE ttsNode; voice_sessions.transcript is built
+    // from transcriptionNode's output. Without the override the record said "the
+    // owner" while the caller heard "Dale".
+    const input = new ReadableStream<string>({
+      start(c) {
+        for (const s of ['I will tell', ' the', ' owner', '.']) c.enqueue(s);
+        c.close();
+      },
+    });
+    const out = await make(['Dale']).transcriptionNode(input, {});
+    expect(out).not.toBeNull();
+    const reader = out!.getReader();
+    const parts: string[] = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(typeof value === 'string' ? value : value.text);
+    }
+    expect(parts.join('')).toBe('I will tell Dale.');
+  });
+});
+
 describe('the stall detector (SCL_nRKo3KEVw8Yh — five minutes of bot-mirror)', () => {
   // WHO: an AI recruiter bot mirroring "would you like me to leave a message?"
   //      at the agent for 5 minutes, the checklist frozen the whole time.
@@ -1027,7 +1077,7 @@ describe('the 2026-09-09 call sweep', () => {
       library: PLATFORM_TREE_LIBRARY,
       staffFirstNames: ['Dale'],
       ...over,
-    } as Parameters<typeof buildChecklistPrompt>[0]);
+    });
 
   it('carries the actual CLOCK, not just the date', () => {
     // It told a caller "it's currently 3 PM here" at 6:08 PM, twice, and then

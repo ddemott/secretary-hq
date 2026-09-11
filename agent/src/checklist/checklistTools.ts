@@ -1325,17 +1325,9 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
     // A one-shot close at the moment of booking can miss an offer node that
     // was not yet 'open'/'latent' (blocked behind other job-tree questions);
     // this keeps trying on every subsequent answer until it lands.
-    console.error('DEBUG retry check', bookingMadeThisCall);
     if (bookingMadeThisCall) {
       for (const [nodeId, value] of Object.entries(BOOKING_CLOSES_OFFER)) {
-        console.error('DEBUG recordIfOpen', nodeId, value, tracker.status(nodeId));
         recordIfOpen(nodeId, value);
-        console.error(
-          'DEBUG after recordIfOpen',
-          nodeId,
-          tracker.status(nodeId),
-          tracker.value(nodeId)
-        );
       }
     }
     // If this answer CORRECTS something a completed write already consumed,

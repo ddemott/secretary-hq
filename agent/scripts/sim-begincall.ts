@@ -76,6 +76,10 @@ const agent: voice.Agent = new CallRootAgent({
   persona,
   runtime: {
     currentDate: 'Wednesday, July 16, 2026',
+    // Required on CallRuntime since the clock fix (a9816df); scripts/ is outside
+    // tsconfig's include, so its absence was never a type error — only "undefined"
+    // in the prompt the model reads.
+    currentTime: '10:00 AM',
     timezone: 'America/Chicago',
     businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
     bookableThrough: '2027-01-08',
@@ -136,7 +140,8 @@ const CASES: Case[] = [
     // The other direction must not regress: a recruiter pitching a role IS a job
     // inquiry even though the word "job" never appears.
     name: 'recruiter pitch stays a job inquiry (guard the other direction)',
-    opener: "I'm calling from a staffing agency — we have a contract position we'd like Dale to consider.",
+    opener:
+      "I'm calling from a staffing agency — we have a contract position we'd like Dale to consider.",
     expectFlags: { has_job_inquiry: true },
   },
   {
@@ -159,7 +164,8 @@ const CASES: Case[] = [
     // THE HARD ONE: the caller literally says "a job" about a repair. The new
     // definition names this exact trap ('even if they call it "a job"').
     name: 'a repair the caller CALLS "a job" is still a service call',
-    opener: "I've got a job for Dale — my printer's been acting up and I need him to come sort it out.",
+    opener:
+      "I've got a job for Dale — my printer's been acting up and I need him to come sort it out.",
     expectFlags: { wants_meeting: true, has_job_inquiry: false },
   },
   {
@@ -226,7 +232,12 @@ for (const c of CASES) {
           : `${k}=${String(args[k])} (want ${v})`
       );
     const argMisses = Object.entries(c.expectArgSubstr ?? {})
-      .filter(([k, sub]) => !String(args[k] ?? '').toLowerCase().includes(sub.toLowerCase()))
+      .filter(
+        ([k, sub]) =>
+          !String(args[k] ?? '')
+            .toLowerCase()
+            .includes(sub.toLowerCase())
+      )
       .map(([k, sub]) => `${k}="${String(args[k] ?? '')}" (want substring "${sub}")`);
     flagMisses.push(...argMisses);
     if (called && flagMisses.length === 0) {
