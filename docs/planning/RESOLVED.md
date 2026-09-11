@@ -85,9 +85,11 @@ to 5 and `open_times` held everything through 4:30. The response's own `note` al
 said, in plain words, that a time in `open_times` must never be refused. It refused
 anyway — which is the whole lesson: **an instruction it can skim loses to a sentence
 it must read aloud.** `offerBreadthClause()` now appends the rest of the day to the
-SPOKEN string ("Those are just the soonest — any open quarter hour through 4:30 PM
-works too"), and returns empty when the offers really are the whole day, because
+SPOKEN string, and returns empty when the offers really are the whole day, because
 inviting a caller to name a time that does not exist trades one wrong answer for another.
+(It first shipped as "any open quarter hour through 4:30 PM works too"; the PR #410 review
+caught that this is heard as EVERY quarter hour up to 4:30 when `open_times` has gaps, so
+since 2026-09-11 it reads "I have other openings too, as late as 4:30 PM.")
 
 **IT PROMISED TEXTS, TWICE, ON A PLATFORM THAT HAS NEVER SENT ONE.** It ran an
 invented consent flow — "you haven't given consent for text reminders yet… would you

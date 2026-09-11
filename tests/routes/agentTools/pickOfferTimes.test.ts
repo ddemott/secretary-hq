@@ -83,7 +83,17 @@ describe('offerBreadthClause — the offers are a sample, and the sentence says 
     const offers = ['1:30 PM', '2:00 PM', '3:00 PM'];
     const clause = offerBreadthClause(open, offers);
     expect(clause).toContain('just the soonest');
-    expect(clause).toContain('through 4:30 PM');
+    expect(clause).toContain('as late as 4:30 PM');
+  });
+
+  it('never claims every quarter hour up to the latest is open — open_times has gaps', () => {
+    // WHO: PR #410 review | WHAT: "any open quarter hour through 4:30 works" is heard
+    // as continuous availability, but 1:45→3:00 and 3:00→4:30 below are GAPS. A caller
+    // who names 2:15 on that promise is then refused. Name the latest start only.
+    const open = ['1:30 PM', '1:45 PM', '2:00 PM', '3:00 PM', '4:30 PM'];
+    const clause = offerBreadthClause(open, ['1:30 PM', '2:00 PM', '3:00 PM']);
+    expect(clause).not.toMatch(/\bany\b/i);
+    expect(clause).not.toMatch(/\bthrough\b/i);
   });
 
   it('says NOTHING when the offers are the whole day', () => {
@@ -102,6 +112,6 @@ describe('offerBreadthClause — the offers are a sample, and the sentence says 
     // and unoffered; a length check alone would be a coincidence that happens to work.
     const open = ['1:00 PM', '1:15 PM', '1:30 PM', '4:00 PM'];
     const offers = ['1:00 PM', '1:15 PM', '1:30 PM'];
-    expect(offerBreadthClause(open, offers)).toContain('through 4:00 PM');
+    expect(offerBreadthClause(open, offers)).toContain('as late as 4:00 PM');
   });
 });
