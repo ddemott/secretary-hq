@@ -10,14 +10,18 @@
  * from the dashboard would have caused the array check to falsely
  * reject every booking.
  *
- * The new RPC behavior (migration 20260507000000):
- * - When p_service_id is provided AND service_employee has rows for
- *   that service, the mapping IS the constraint. Mapping miss →
- *   "Employee is not assigned to perform this service".
- * - When the mapping is empty for that service, fall back to the
- *   legacy services.required_skills <@ employees.skills array check.
- * - Same logic for service_resource ↔ services.required_resources.
- * - When p_service_id is NULL, no skill check fires (legacy path,
+ * STRICT since migration 20260911000000 (aligning with the phone path's
+ * book_with_scheduling_atomic / 20260909210000 — "the skill map decides
+ * who and where"):
+ * - When p_service_id is provided, the mapping IS the constraint, full
+ *   stop. Mapping miss (a picked employee/resource not in the mapping) →
+ *   "not assigned to perform this service".
+ * - A service with NO active service_employee/service_resource rows at
+ *   all is refused outright — no fall-open, no fallback to the legacy
+ *   services.required_skills / employees.skills array check. Two lists
+ *   that must agree is a bug this schema has already paid for three
+ *   times; the array columns are simply never read here anymore.
+ * - When p_service_id is NULL, no check fires at all (legacy path,
  *   unchanged from prior commits).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
@@ -107,6 +111,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const svcId = await createService(root, tenantId, 'Tire Mount', 60);
     const customerId = await createCustomerFull(root, tenantId, '+15555550101', 'Alice');
     await assignEmployeeToService(root, tenantId, svcId, empId);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
     await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
@@ -140,6 +145,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const customerId = await createCustomerFull(root, tenantId, '+15555550102', 'Bob');
     // Only Mike is mapped — Dana is not.
     await assignEmployeeToService(root, tenantId, svcId, mike);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
     await createScheduleEntry(root, tenantId, dana, '2026-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
@@ -164,16 +170,17 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     // WHO: a determined caller hitting /appointments/create directly with Dana + Tire Mount, OR a misconfigured dashboard | WHAT: RPC rejects with a clear message, no row created | WHEN: the operator's UI dropdown was bypassed (curl, Postman, future client app, or simply a stale form state) | WHERE: book_appointment_atomic mapping miss branch | WHY: this is the defense-in-depth that the prior commit (UI filter) couldn't provide — the UI filter prevents the easy path to invalid bookings, but the RPC is the only place that can stop a determined-or-misbehaving caller; without this check the operator's "did Mike get to it before me" support question becomes "did the API get tricked into accepting a Dana-can't-do-tire-mount booking"
   });
 
-  it('OPEN-SERVICE: booking accepted when service has NO service_employee rows AND no required_skills', async () => {
+  it('UNLINKED-SERVICE: booking refused when service has NO active service_employee rows at all', async () => {
     if (!dbAvailable) return;
-    const tenantId = await createTenant(root, 'Open Service', 'auto-repair', 'America/Chicago');
+    const tenantId = await createTenant(root, 'Unlinked Service', 'auto-repair', 'America/Chicago');
     const resourceId = await createResource(root, tenantId, 'Bay 1');
     const empId = await createEmployee(root, tenantId, 'Anyone');
     const svcId = await createService(root, tenantId, 'Inspection', 30);
     const customerId = await createCustomerFull(root, tenantId, '+15555550103', 'Cara');
+    await assignResourceToService(root, tenantId, svcId, resourceId);
     await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
-    // No assignEmployeeToService — service has zero mapping rows. Service was
-    // created via createService which leaves required_skills NULL/empty.
+    // No assignEmployeeToService — service has zero mapping rows. STRICT
+    // (20260911000000): no active link means refused, not fall-open.
 
     const result = await bookAppointment({
       tenant_id: tenantId,
@@ -185,24 +192,36 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       end_time: '2026-07-01T14:30:00-05:00',
     });
 
-    expect(result.success).toBe(true);
-    expect(result.error_message).toBeNull();
-    // WHO: a tenant whose service config is partial — service exists but no skill assignments yet | WHAT: RPC accepts any employee, matching the UI helper's filterEmployeesByService fall-open branch | WHEN: brand-new service that the owner hasn't yet assigned to anyone | WHERE: book_appointment_atomic open-service branch | WHY: tightening this would force every new service to be skill-mapped before the first booking, which doesn't match how shops onboard (configure-as-you-go); the UI helper falls open in this case too, so backend symmetry matters — pin the contract so both layers stay aligned
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    expect(result.error_message).toMatch(/no one is assigned to take this kind of appointment/i);
+    // WHO: a tenant whose service config is partial — service exists but no
+    // one is linked to it yet | WHAT: RPC refuses rather than falling open to
+    // any active employee | WHEN: brand-new service the owner hasn't yet
+    // assigned to anyone | WHERE: book_appointment_atomic STRICT branch,
+    // aligned with book_with_scheduling_atomic (20260909210000) | WHY: the
+    // phone path already refuses this exact shape ("no one is assigned to
+    // take this kind of appointment") — the dashboard silently booking
+    // whoever happened to be free was the two-answers-for-one-service bug
+    // this migration closes. The skill map's fix panel is what tells the
+    // owner to add the link, not a silent fall-open booking.
   });
 
-  it('LEGACY-FALLBACK: when mapping is empty but services.required_skills is set, the array check still runs', async () => {
+  it('LEGACY-TAGS-IGNORED: services.required_skills no longer matters once p_service_id is passed', async () => {
     if (!dbAvailable) return;
-    const tenantId = await createTenant(root, 'Legacy Fallback', 'auto-repair', 'America/Chicago');
+    const tenantId = await createTenant(root, 'Legacy Tags Ignored', 'auto-repair', 'America/Chicago');
     const resourceId = await createResource(root, tenantId, 'Bay 1');
-    const empId = await createEmployee(root, tenantId, 'Mike', ['oil-change']); // skill set
+    const empId = await createEmployee(root, tenantId, 'Mike', ['oil-change']); // skill set, does NOT include brake-cert
     const svcId = await createService(root, tenantId, 'Brake Job', 60);
     const customerId = await createCustomerFull(root, tenantId, '+15555550104', 'Dee');
-    // Configure required_skills on the service, do NOT create service_employee row.
-    // This is the legacy model from when secretary-hq used array-based skill matching.
+    // required_skills on the service would have failed Mike under the old
+    // array-based check — it must now be ignored entirely once p_service_id
+    // is passed, because there is still no service_employee link for Mike.
     await root.query(
       `UPDATE services SET required_skills = ARRAY['brake-cert'] WHERE service_id = $1`,
       [svcId]
     );
+    await assignResourceToService(root, tenantId, svcId, resourceId);
     await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
@@ -215,18 +234,94 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       end_time: '2026-07-01T15:00:00-05:00',
     });
 
+    // Refused, but on the STRICT "no active link" reason — never on the
+    // (now-dead) required_skills mismatch. Mike having the "wrong" skill tag
+    // is irrelevant; the missing service_employee row is the only fact that
+    // matters.
     expect(result.success).toBe(false);
-    expect(result.error_message).toMatch(/required skills/i);
-    // WHO: a tenant on the older array-based skill model (e.g. one that
-    // configured required_skills/employees.skills before the
-    // service_employee mapping table arrived) | WHAT: legacy fallback still
-    // protects them — array check fires when mapping is empty | WHEN: a
-    // tenant that never migrated to the mapping model | WHERE:
-    // book_appointment_atomic ELSIF branch | WHY: the new mapping model is
-    // additive; deprecating the array check immediately would silently
-    // dismantle skill enforcement for tenants relying on it. Pin the
-    // fallback so a "we'll just delete the array check later" refactor
-    // surfaces here first
+    expect(result.error_message).toMatch(/no one is assigned to take this kind of appointment/i);
+    expect(result.error_message).not.toMatch(/required skills/i);
+    // WHO: a tenant on the older array-based skill model | WHAT: the array
+    // check is dead code once p_service_id is passed — pin that the refusal
+    // reason is the STRICT link-map message, never the legacy skills message
+    // | WHEN: a tenant that configured required_skills but never migrated to
+    // service_employee links | WHERE: book_appointment_atomic STRICT branch |
+    // WHY: this is the inverse of the old LEGACY-FALLBACK test — it used to
+    // pin that the array check fires; now it pins that it never does, so a
+    // future "just add the fallback back" change surfaces here first
+  });
+
+  it('DEACTIVATED-LINK: a service_employee row surviving a deactivated employee is refused (Copilot review, PR #411)', async () => {
+    if (!dbAvailable) return;
+    const tenantId = await createTenant(root, 'Deactivated Link', 'auto-repair', 'America/Chicago');
+    const resourceId = await createResource(root, tenantId, 'Bay 1');
+    const empId = await createEmployee(root, tenantId, 'Former Mike');
+    const svcId = await createService(root, tenantId, 'Tire Mount', 60);
+    const customerId = await createCustomerFull(root, tenantId, '+15555550106', 'Gia');
+    await assignEmployeeToService(root, tenantId, svcId, empId);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
+    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    // The link row is untouched — only the employee is deactivated, the way
+    // an owner removes someone who left without remembering to clean up
+    // every service they were ever linked to.
+    await root.query('UPDATE employees SET is_active = false WHERE employee_id = $1', [empId]);
+
+    const result = await bookAppointment({
+      tenant_id: tenantId,
+      resource_id: resourceId,
+      customer_id: customerId,
+      employee_id: empId,
+      service_id: svcId,
+      start_time: '2026-07-01T14:00:00-05:00',
+      end_time: '2026-07-01T15:00:00-05:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    // WHO: an owner who deactivated a departed employee but never went back
+    // to unlink every service they used to perform | WHAT: the STRICT
+    // specific-employee check must re-verify active + not-deleted, not just
+    // that the link ROW exists | WHERE: book_appointment_atomic STRICT
+    // employee branch (20260911000000, fixed post-review) | WHY: the
+    // earlier version's specific-match check only tested for the row's
+    // existence — a stale link to a deactivated employee still passed, and
+    // the appointment would have been booked with someone no longer working
+    // there
+  });
+
+  it('DELETED-LINK: a service_resource row surviving a soft-deleted resource is refused (Copilot review, PR #411)', async () => {
+    if (!dbAvailable) return;
+    const tenantId = await createTenant(root, 'Deleted Link', 'auto-repair', 'America/Chicago');
+    const resourceId = await createResource(root, tenantId, 'Old Bay');
+    const empId = await createEmployee(root, tenantId, 'Mike');
+    const svcId = await createService(root, tenantId, 'Tire Mount', 60);
+    const customerId = await createCustomerFull(root, tenantId, '+15555550107', 'Hank');
+    await assignEmployeeToService(root, tenantId, svcId, empId);
+    await assignResourceToService(root, tenantId, svcId, resourceId);
+    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    // Soft-deleted, not deactivated — the other half of "active + not
+    // deleted" the STRICT check must enforce.
+    await root.query('UPDATE resources SET is_deleted = true WHERE resource_id = $1', [
+      resourceId,
+    ]);
+
+    const result = await bookAppointment({
+      tenant_id: tenantId,
+      resource_id: resourceId,
+      customer_id: customerId,
+      employee_id: empId,
+      service_id: svcId,
+      start_time: '2026-07-01T14:00:00-05:00',
+      end_time: '2026-07-01T15:00:00-05:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    // WHY: symmetric with DEACTIVATED-LINK above but on the resource side —
+    // the earlier version's "any active link exists" probe AND its
+    // specific-resource-match check both tested res.is_active only, never
+    // res.is_deleted, so a soft-deleted bay with a surviving service_resource
+    // row could still be booked
   });
 
   it('NO-SERVICE-ID: legacy callers without p_service_id work unchanged (no skill check)', async () => {
@@ -284,5 +379,32 @@ describe('book_appointment_atomic — service_resource mapping enforcement', () 
     expect(result.success).toBe(false);
     expect(result.error_message).toMatch(/not assigned to perform this service/i);
     // WHO: a determined caller picking Bay 3 for a service that only runs in Bay 1 (e.g., the alignment rack vs. a regular tire bay) | WHAT: RPC rejects with the same shape as the employee mapping miss | WHEN: dashboard caller bypassed the resource-narrowing dropdown OR an API caller submitted directly | WHERE: book_appointment_atomic resource mapping check | WHY: equipment-required services (alignment, balancing, brake lathe) only work on specific bays; without this gate the booking succeeds, the customer arrives, the right bay is occupied, and the shop scrambles. Symmetric with the employee mapping check
+  });
+
+  it('UNLINKED-SERVICE: booking refused when service has NO active service_resource rows at all', async () => {
+    if (!dbAvailable) return;
+    const tenantId = await createTenant(root, 'Resource Unlinked', 'auto-repair', 'America/Chicago');
+    const bay1 = await createResource(root, tenantId, 'Bay 1');
+    const svcId = await createService(root, tenantId, 'Alignment', 60);
+    const customerId = await createCustomerFull(root, tenantId, '+15555550202', 'Grace');
+    // No assignResourceToService — service has zero mapping rows.
+
+    const result = await bookAppointment({
+      tenant_id: tenantId,
+      resource_id: bay1,
+      customer_id: customerId,
+      service_id: svcId,
+      start_time: '2026-07-01T14:00:00-05:00',
+      end_time: '2026-07-01T15:00:00-05:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.appointment_id).toBeNull();
+    expect(result.error_message).toMatch(/no room or line is set up for this kind of appointment/i);
+    // WHO: a brand-new service nobody has linked to a bay or line yet | WHAT:
+    // refused before the resource-specific mapping check even runs, same
+    // shape as the phone path's NO_AVAILABILITY refusal | WHERE:
+    // book_appointment_atomic STRICT branch, resource leg | WHY: symmetric
+    // with the employee-side UNLINKED-SERVICE case above
   });
 });

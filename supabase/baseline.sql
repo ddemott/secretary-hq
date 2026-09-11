@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict B6QNULoukJTjA3e5w4XP1caMfXmnKfNJt3AupocoYj8be7dWWryxU9tOQ6tdXZT
+\restrict vNOVTf4jh41EkF1120hLaVFgwq2ZJZoFMRvli9ItxHW5bEZA3PkYZ6CsePuAiMW
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -228,16 +228,12 @@ DECLARE
     v_user_id UUID := NULL;
     v_tenant_tz TEXT;
     v_actual_customer_id UUID;
-    v_required_skills TEXT[];
-    v_required_resources TEXT[];
-    v_resource_caps TEXT[];
-    v_employee_skills TEXT[];
     v_start_local TIMESTAMP;
     v_end_local TIMESTAMP;
     v_effective_end TIMESTAMPTZ;
     v_service_duration INTEGER;
     v_on_shift BOOLEAN;
-    v_mapping_has_rows BOOLEAN;
+    v_has_active_links BOOLEAN;
     v_buffer INTERVAL;
 BEGIN
     v_buffer := (GREATEST(COALESCE(p_buffer_minutes, 0), 0) || ' minutes')::INTERVAL;
@@ -297,59 +293,76 @@ BEGIN
         END IF;
     END IF;
 
+    -- STRICT (2026-09-11): the skill map's links decide who and where,
+    -- mirroring book_with_scheduling_atomic / 20260909210000. required_skills
+    -- / required_resources tags are never consulted when p_service_id is
+    -- given — two lists that must agree is the failure this schema has
+    -- already paid for three times. A service with no active linked
+    -- resource, or (when an employee is being assigned) no active linked
+    -- employee, is refused outright rather than falling open.
     IF p_service_id IS NOT NULL THEN
-        SELECT s.required_skills, s.required_resources INTO v_required_skills, v_required_resources
-        FROM services s WHERE s.service_id = p_service_id AND s.tenant_id = p_tenant_id;
-
         SELECT EXISTS (
-            SELECT 1 FROM service_resource
-            WHERE service_id = p_service_id AND tenant_id = p_tenant_id
-        ) INTO v_mapping_has_rows;
-        IF v_mapping_has_rows THEN
-            IF NOT EXISTS (
-                SELECT 1 FROM service_resource
-                WHERE service_id = p_service_id
-                  AND resource_id = p_resource_id
-                  AND tenant_id = p_tenant_id
-            ) THEN
-                RETURN QUERY SELECT FALSE, NULL::UUID,
-                    'Resource is not assigned to perform this service'::TEXT;
-                RETURN;
-            END IF;
-        ELSIF v_required_resources IS NOT NULL AND array_length(v_required_resources, 1) > 0 THEN
-            SELECT COALESCE(r.capabilities, '{}') INTO v_resource_caps
-            FROM resources r WHERE r.resource_id = p_resource_id;
-            IF NOT v_required_resources <@ v_resource_caps THEN
-                RETURN QUERY SELECT FALSE, NULL::UUID,
-                    'Resource does not have required capabilities for this service'::TEXT;
-                RETURN;
-            END IF;
+            SELECT 1 FROM service_resource sr
+              JOIN resources res ON res.resource_id = sr.resource_id
+             WHERE sr.service_id = p_service_id
+               AND sr.tenant_id = p_tenant_id
+               AND res.is_active = true
+               AND (res.is_deleted IS NULL OR res.is_deleted = false)
+        ) INTO v_has_active_links;
+        IF NOT v_has_active_links THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'No room or line is set up for this kind of appointment'::TEXT;
+            RETURN;
+        END IF;
+        -- Same ACTIVE + not-deleted contract as the probe above: a link row
+        -- surviving after the resource was deactivated or soft-deleted must
+        -- not pass this specific-resource check either (Copilot review,
+        -- PR #411) — the earlier version only verified the row is_active,
+        -- silently ignoring the resource being deleted.
+        IF NOT EXISTS (
+            SELECT 1 FROM service_resource sr
+              JOIN resources res ON res.resource_id = sr.resource_id
+             WHERE sr.service_id = p_service_id
+               AND sr.resource_id = p_resource_id
+               AND sr.tenant_id = p_tenant_id
+               AND res.is_active = true
+               AND (res.is_deleted IS NULL OR res.is_deleted = false)
+        ) THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'Resource is not assigned to perform this service'::TEXT;
+            RETURN;
         END IF;
 
         IF v_employee_id IS NOT NULL THEN
             SELECT EXISTS (
-                SELECT 1 FROM service_employee
-                WHERE service_id = p_service_id AND tenant_id = p_tenant_id
-            ) INTO v_mapping_has_rows;
-            IF v_mapping_has_rows THEN
-                IF NOT EXISTS (
-                    SELECT 1 FROM service_employee
-                    WHERE service_id = p_service_id
-                      AND employee_id = v_employee_id
-                      AND tenant_id = p_tenant_id
-                ) THEN
-                    RETURN QUERY SELECT FALSE, NULL::UUID,
-                        'Employee is not assigned to perform this service'::TEXT;
-                    RETURN;
-                END IF;
-            ELSIF v_required_skills IS NOT NULL AND array_length(v_required_skills, 1) > 0 THEN
-                SELECT COALESCE(e.skills, '{}') INTO v_employee_skills
-                FROM employees e WHERE e.employee_id = v_employee_id AND e.tenant_id = p_tenant_id;
-                IF NOT v_required_skills <@ v_employee_skills THEN
-                    RETURN QUERY SELECT FALSE, NULL::UUID,
-                        'Employee does not have required skills for this service'::TEXT;
-                    RETURN;
-                END IF;
+                SELECT 1 FROM service_employee se
+                  JOIN employees emp ON emp.employee_id = se.employee_id
+                 WHERE se.service_id = p_service_id
+                   AND se.tenant_id = p_tenant_id
+                   AND emp.is_active = true
+                   AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+            ) INTO v_has_active_links;
+            IF NOT v_has_active_links THEN
+                RETURN QUERY SELECT FALSE, NULL::UUID,
+                    'No one is assigned to take this kind of appointment'::TEXT;
+                RETURN;
+            END IF;
+            -- Same ACTIVE + not-deleted contract as the probe above (Copilot
+            -- review, PR #411) — a link row surviving after the employee was
+            -- deactivated or soft-deleted must not pass this specific-employee
+            -- check either.
+            IF NOT EXISTS (
+                SELECT 1 FROM service_employee se
+                  JOIN employees emp ON emp.employee_id = se.employee_id
+                 WHERE se.service_id = p_service_id
+                   AND se.employee_id = v_employee_id
+                   AND se.tenant_id = p_tenant_id
+                   AND emp.is_active = true
+                   AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+            ) THEN
+                RETURN QUERY SELECT FALSE, NULL::UUID,
+                    'Employee is not assigned to perform this service'::TEXT;
+                RETURN;
             END IF;
         END IF;
     END IF;
@@ -434,6 +447,21 @@ BEGIN
     RETURN QUERY SELECT TRUE, v_new_appointment_id, NULL::TEXT;
 END;
 $$;
+
+
+--
+-- Name: FUNCTION book_appointment_atomic(p_tenant_id uuid, p_resource_id uuid, p_customer_id uuid, p_start_time timestamp with time zone, p_end_time timestamp with time zone, p_description text, p_call_id text, p_location text, p_assignment_id text, p_service_id uuid, p_customer_phone text, p_customer_name text, p_buffer_minutes integer); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.book_appointment_atomic(p_tenant_id uuid, p_resource_id uuid, p_customer_id uuid, p_start_time timestamp with time zone, p_end_time timestamp with time zone, p_description text, p_call_id text, p_location text, p_assignment_id text, p_service_id uuid, p_customer_phone text, p_customer_name text, p_buffer_minutes integer) IS 'Atomic booking, dashboard path. p_buffer_minutes (default 0) pads appointment-overlap
+checks to enforce a minimum gap between back-to-back bookings.
+STRICT service links (2026-09-11): when p_service_id is given, only ACTIVE
+service_employee / service_resource links decide who and where — the
+required_skills / required_resources tag arrays are never consulted, and a
+service with no active linked resource (or, when an employee is being
+assigned, no active linked employee) is refused before any other check.
+Matches book_with_scheduling_atomic (20260909210000). p_service_id = NULL
+skips the whole block, unchanged.';
 
 
 --
@@ -6871,5 +6899,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict B6QNULoukJTjA3e5w4XP1caMfXmnKfNJt3AupocoYj8be7dWWryxU9tOQ6tdXZT
+\unrestrict vNOVTf4jh41EkF1120hLaVFgwq2ZJZoFMRvli9ItxHW5bEZA3PkYZ6CsePuAiMW
 

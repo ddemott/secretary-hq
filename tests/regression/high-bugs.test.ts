@@ -111,9 +111,15 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
   // =========================================================
   // BUG-009: Service requirements enforced at booking time
+  //
+  // STRICT since migration 20260911000000: service_resource /
+  // service_employee links are the whole rule once p_service_id is passed
+  // — required_resources / required_skills tag arrays are never consulted,
+  // and a service with no active link is refused outright. Aligns with the
+  // phone path's book_with_scheduling_atomic (20260909210000).
   // =========================================================
   describe('BUG-009: Service requirement validation', () => {
-    it('should reject booking when resource lacks required capabilities', async () => {
+    it('should reject booking when service has no active service_resource link (tags ignored)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Cap Shop', 'auto-shop');
@@ -133,6 +139,10 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           [tenantId]
         )
       ).rows[0].service_id;
+      // No service_resource row. Under the old tag fallback the mismatched
+      // 'tire-lift' capability would have rejected this too, for the wrong
+      // reason — STRICT rejects it for the real one (no link at all) before
+      // capabilities are ever read.
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -152,18 +162,18 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
       expect(result.rows[0].success).toBe(false);
       expect(result.rows[0].error_message).toContain(
-        'Resource does not have required capabilities'
+        'No room or line is set up for this kind of appointment'
       );
     });
 
-    it('should allow booking when resource has required capabilities', async () => {
+    it('should allow booking when the resource is linked via service_resource, regardless of capability tags', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Cap Shop', 'auto-shop');
 
       const resourceId = (
         await root.query(
-          "INSERT INTO resources (tenant_id, name, capabilities) VALUES ($1, 'Full Bay', ARRAY['tire-lift', 'oil-drain']) RETURNING resource_id",
+          "INSERT INTO resources (tenant_id, name, capabilities) VALUES ($1, 'Full Bay', '{}') RETURNING resource_id",
           [tenantId]
         )
       ).rows[0].resource_id;
@@ -172,10 +182,17 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
       const serviceId = (
         await root.query(
+          // required_resources set to something the resource's (empty)
+          // capabilities would fail, proving the tag is never read once
+          // the link-map has a row.
           "INSERT INTO services (tenant_id, name, duration_minutes, required_resources) VALUES ($1, 'Tire Install', 60, ARRAY['tire-lift']) RETURNING service_id",
           [tenantId]
         )
       ).rows[0].service_id;
+      await root.query(
+        'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, resourceId]
+      );
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -196,7 +213,7 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       expect(result.rows[0].success).toBe(true);
     });
 
-    it('should reject booking when employee lacks required skills', async () => {
+    it('should reject booking when service has no active service_employee link (tags ignored)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Skill Shop', 'auto-shop');
@@ -212,6 +229,13 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           [tenantId]
         )
       ).rows[0].service_id;
+      await root.query(
+        'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, resourceId]
+      );
+      // No service_employee row for Bob. Under the old tag fallback his
+      // missing 'tire-install' skill would have rejected this too, for the
+      // wrong reason — STRICT rejects for the real one (no link at all).
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -230,7 +254,9 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       );
 
       expect(result.rows[0].success).toBe(false);
-      expect(result.rows[0].error_message).toContain('Employee does not have required skills');
+      expect(result.rows[0].error_message).toContain(
+        'No one is assigned to take this kind of appointment'
+      );
     });
   });
 
@@ -444,10 +470,10 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
   });
 
   // =========================================================
-  // BUG-009 (additional): Employee skills success path
+  // BUG-009 (additional): success paths, STRICT link-map (20260911000000)
   // =========================================================
   describe('BUG-009: Service requirement validation (success paths)', () => {
-    it('should allow booking when employee has required skills', async () => {
+    it('should allow booking when employee and resource are both linked to the service (skills tag irrelevant)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Skill Shop', 'auto-shop');
@@ -466,6 +492,14 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           [tenantId]
         )
       ).rows[0].service_id;
+      await root.query(
+        'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, resourceId]
+      );
+      await root.query(
+        'INSERT INTO service_employee (tenant_id, service_id, employee_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, employeeId]
+      );
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -487,14 +521,14 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       expect(result.rows[0].appointment_id).not.toBeNull();
     });
 
-    it('should allow booking with service_id but no employee (skills check skipped)', async () => {
+    it('should allow booking with service_id but no employee, as long as the resource is linked (employee check skipped, resource check still STRICT)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Skill Shop', 'auto-shop');
 
       const resourceId = (
         await root.query(
-          "INSERT INTO resources (tenant_id, name, capabilities) VALUES ($1, 'Full Bay', ARRAY['tire-lift']) RETURNING resource_id",
+          "INSERT INTO resources (tenant_id, name, capabilities) VALUES ($1, 'Full Bay', '{}') RETURNING resource_id",
           [tenantId]
         )
       ).rows[0].resource_id;
@@ -503,10 +537,14 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
       const serviceId = (
         await root.query(
-          "INSERT INTO services (tenant_id, name, duration_minutes, required_skills, required_resources) VALUES ($1, 'Tire Install', 60, ARRAY['tire-install'], ARRAY['tire-lift']) RETURNING service_id",
+          "INSERT INTO services (tenant_id, name, duration_minutes) VALUES ($1, 'Tire Install', 60) RETURNING service_id",
           [tenantId]
         )
       ).rows[0].service_id;
+      await root.query(
+        'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, resourceId]
+      );
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -633,7 +671,7 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
   // Error diagnostics — verify error responses contain context
   // =========================================================
   describe('Error diagnostics — contextual error messages', () => {
-    it('booking RPC error_message identifies WHY it failed (missing capabilities)', async () => {
+    it('booking RPC error_message identifies WHY it failed (unlinked resource, STRICT)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Diag Shop', 'auto-shop');
@@ -646,10 +684,12 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       const customerId = await createCustomerFull(root, tenantId, '+15550009876', 'Diag Customer');
       const serviceId = (
         await root.query(
-          "INSERT INTO services (tenant_id, name, duration_minutes, required_resources) VALUES ($1, 'Special Service', 60, ARRAY['hydraulic-lift']) RETURNING service_id",
+          "INSERT INTO services (tenant_id, name, duration_minutes) VALUES ($1, 'Special Service', 60) RETURNING service_id",
           [tenantId]
         )
       ).rows[0].service_id;
+      // No service_resource row for Empty Bay — STRICT (20260911000000)
+      // refuses before any capability tag is ever read.
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -672,12 +712,12 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       // Error should be specific — not "booking failed" but WHY
       expect(msg).toBeDefined();
       expect(msg.length).toBeGreaterThan(10);
-      expect(msg).toContain('capabilities');
+      expect(msg).toContain('No room or line is set up for this kind of appointment');
       // Should NOT be a generic message
       expect(msg).not.toMatch(/^(error|failed|something went wrong)$/i);
     });
 
-    it('booking RPC error_message identifies WHY it failed (missing skills)', async () => {
+    it('booking RPC error_message identifies WHY it failed (unlinked employee, STRICT)', async () => {
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(root, 'Skill Diag', 'auto-shop');
@@ -689,10 +729,16 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
       const serviceId = (
         await root.query(
-          "INSERT INTO services (tenant_id, name, duration_minutes, required_skills) VALUES ($1, 'Expert Service', 60, ARRAY['advanced-repair']) RETURNING service_id",
+          "INSERT INTO services (tenant_id, name, duration_minutes) VALUES ($1, 'Expert Service', 60) RETURNING service_id",
           [tenantId]
         )
       ).rows[0].service_id;
+      await root.query(
+        'INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES ($1, $2, $3)',
+        [tenantId, serviceId, resourceId]
+      );
+      // No service_employee row for Junior — STRICT (20260911000000)
+      // refuses before any skill tag is ever read.
 
       const result = await root.query(
         'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -713,7 +759,7 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       expect(result.rows[0].success).toBe(false);
       const msg = result.rows[0].error_message;
       expect(msg).toBeDefined();
-      expect(msg).toContain('skills');
+      expect(msg).toContain('No one is assigned to take this kind of appointment');
       expect(msg).not.toMatch(/^(error|failed|something went wrong)$/i);
     });
 
