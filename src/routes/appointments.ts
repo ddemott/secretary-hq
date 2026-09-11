@@ -198,6 +198,9 @@ export function registerAppointmentRoutes(
             requiredSkills,
             requiredCapabilities: requiredCaps,
             count: 5,
+            // Suggestions follow the skill map for the chosen service, the same
+            // links book_appointment_atomic already enforces on this path.
+            serviceId: body.service_id ?? null,
           });
         }
         return { result, conflict, nextAvailable };

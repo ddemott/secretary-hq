@@ -68,6 +68,19 @@ export interface CallerGoals {
 export interface CallRuntime {
   /** e.g. "Wednesday, July 15, 2026" — same format buildSystemPrompt uses. */
   currentDate: string;
+  /**
+   * THE CLOCK. e.g. "6:08 PM" — local to `timezone`, and load-bearing.
+   *
+   * It did not exist until 2026-09-09, and its absence cost a whole call. On
+   * SCL_HQNeyh5cVKd9 (18:08 CT) the model was handed the DATE and no time, so it
+   * invented one: it told the caller "It's currently 3 PM here", twice, and when
+   * she answered "it is not 3PM, it is 6PM" it replied "thanks for clarifying
+   * that it's 6 PM there in Chicago time" while still holding its own 3 PM — and
+   * had already offered "availability today from 1 to 5 PM" three hours after the
+   * business closed. A model with no clock will not decline to answer a question
+   * about the time; it will guess, and then defend the guess.
+   */
+  currentTime: string;
   timezone: string;
   /** e.g. "Monday to Friday, 1:00 PM to 5:00 PM", or null if nobody is scheduled. */
   businessHours: string | null;
@@ -88,7 +101,18 @@ export function runtimePreamble(rt: CallRuntime): string {
   const hours = rt.businessHours
     ? `We are open ${rt.businessHours}.${rt.bookableThrough ? ` You can book through ${rt.bookableThrough}.` : ''}`
     : `No one is currently scheduled, so do not claim to be open.`;
-  return `Today is ${rt.currentDate} (${rt.timezone}). ${hours} When the caller names a day like "tomorrow" or "Friday", resolve it against TODAY'S date above — never guess a month or year.`;
+  return (
+    `RIGHT NOW it is ${rt.currentTime} on ${rt.currentDate} (${rt.timezone}). That clock is ` +
+    `the ONLY source for the current time: state it if asked, and NEVER name a different ` +
+    `one — a caller who is told the wrong time will correct you, and arguing with them ` +
+    `about it is worse than the original error. ${hours} A slot EARLIER TODAY than the ` +
+    `time above is gone, and once the closing hour has passed today is over — do not ` +
+    `offer it at all. SAY BOTH HALVES IN ONE BREATH: that you are closed now, and the ` +
+    `next time you CAN see them — "we're closed for the evening, but I can get you in ` +
+    `tomorrow at 1:30" — never the closure on its own, which sounds like a refusal and ` +
+    `ends the call. When the caller names a day like "tomorrow" or "Friday", resolve it ` +
+    `against TODAY'S date above — never guess a month or year.`
+  );
 }
 
 /**

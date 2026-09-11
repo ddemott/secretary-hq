@@ -31,6 +31,8 @@ import {
   createResource,
   createService,
   createScheduleEntry,
+  assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../utils';
 import { createWithTenantClient } from '../../src/database';
@@ -107,8 +109,12 @@ beforeAll(async () => {
     tenantId = await createTenant(setup, 'Blackout Barbers', 'barbershop', 'Etc/UTC');
     tenantsToClean.push(tenantId);
     employeeId = await createEmployee(setup, tenantId, 'Sam Cutter');
-    await createResource(setup, tenantId, 'Chair 1');
+    const chairId = await createResource(setup, tenantId, 'Chair 1');
     serviceId = await createService(setup, tenantId, 'Haircut', 30, 40);
+    // The skill map: Sam takes haircuts, in Chair 1. With a service id the booking
+    // RPC books only linked people in linked rooms (migration 20260909210000).
+    await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+    await assignResourceToService(setup, tenantId, serviceId, chairId);
 
     const days = await setup.query<{ open_day: string; closed_day: string }>(
       `SELECT (CURRENT_DATE + 30)::text AS open_day, (CURRENT_DATE + 31)::text AS closed_day`

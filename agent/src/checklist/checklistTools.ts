@@ -897,6 +897,19 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
     caller_name?: string;
     caller_phone?: string;
   }): string {
+    // `trees` is "required" only in a plain JSON schema, and LiveKit validates
+    // Zod schemas alone — so a model that omits it reaches this function anyway
+    // (2026-09-11 sim JOB-DIRECT: `.includes` on undefined threw, the model got
+    // an opaque tool error, and the purpose was never set). A wrong_trees-only
+    // call is a legitimate removal; neither field is a refusal that names the fix.
+    const { trees: requestedTrees, wrong_trees: wrongTrees } = args;
+    const trees = Array.isArray(requestedTrees) ? requestedTrees : [];
+    if (trees.length === 0 && !(Array.isArray(wrongTrees) && wrongTrees.length > 0)) {
+      return (
+        'NOT SET: set_purpose needs `trees` — the tree ids from the menu that match what ' +
+        'the caller wants. Call it again with them.'
+      );
+    }
     {
       // THE WORK-DIRECTION GATE (2026-07-28 sim: a buyer opening with "a business
       // opportunity" got the JOB tree alongside buy_service, whose blocked capture
@@ -909,13 +922,13 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       // Deliberately narrow — only the pair that actually failed; a full
       // intent-tree compatibility matrix is speculation until a call pays for it.
       const dir = args.work_direction;
-      const picksJob = args.trees.includes('job');
-      const picksBuy = args.trees.includes('buy_service');
+      const picksJob = trees.includes('job');
+      const picksBuy = trees.includes('buy_service');
       // Contract-driven, not pair-driven: any two blocks that declare each
       // other in `conflicts_with` bounce here. `blockContract.test.ts` enforces
       // that the declaration is symmetric, so it does not matter which of the
       // two the model listed first.
-      const clash = conflictingTreePair(args.trees);
+      const clash = conflictingTreePair(trees);
       if (clash) return conflictRefusal(clash[0], clash[1]);
       if (dir === 'caller_pays_us' && picksJob) {
         return (
@@ -951,7 +964,7 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         );
       }
       for (const id of args.wrong_trees ?? []) tracker.deselect(id);
-      const unavailable = args.trees.filter((id) => !selectableTreeSet.has(id));
+      const unavailable = trees.filter((id) => !selectableTreeSet.has(id));
       if (unavailable.length > 0) {
         const blocked = unavailable[0];
         // TWO DIFFERENT FAILURES WORE THE SAME SENTENCE (2026-08-13,
@@ -969,7 +982,7 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
             {
               event: 'checklist_tree_not_enabled',
               tree_id: blocked,
-              requested: args.trees,
+              requested: trees,
               enabled: treeIds,
             },
             `set_purpose asked for the "${blocked}" tree, which exists but is not enabled for this business`
@@ -991,7 +1004,7 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         return `No tree called "${blocked}". Available: ${treeIds.join(', ')}.`;
       }
       try {
-        tracker.select(args.trees);
+        tracker.select(trees);
       } catch (err) {
         if (err instanceof UnknownTreeError) return err.message;
         throw err;
@@ -1007,7 +1020,7 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       ) {
         tracker.select(['identity']);
         getLogger().info(
-          { event: 'checklist_identity_auto_selected', requested: args.trees },
+          { event: 'checklist_identity_auto_selected', requested: trees },
           'identity added by the host — a goal-bearing call needs a way to reach the caller'
         );
       }
@@ -1325,17 +1338,9 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
     // A one-shot close at the moment of booking can miss an offer node that
     // was not yet 'open'/'latent' (blocked behind other job-tree questions);
     // this keeps trying on every subsequent answer until it lands.
-    console.error('DEBUG retry check', bookingMadeThisCall);
     if (bookingMadeThisCall) {
       for (const [nodeId, value] of Object.entries(BOOKING_CLOSES_OFFER)) {
-        console.error('DEBUG recordIfOpen', nodeId, value, tracker.status(nodeId));
         recordIfOpen(nodeId, value);
-        console.error(
-          'DEBUG after recordIfOpen',
-          nodeId,
-          tracker.status(nodeId),
-          tracker.value(nodeId)
-        );
       }
     }
     // If this answer CORRECTS something a completed write already consumed,

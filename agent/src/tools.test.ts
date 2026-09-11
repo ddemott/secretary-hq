@@ -1808,3 +1808,99 @@ describe('get_company_policy_answer — the gap row is attributable to its call'
     expect(calls[0].body.call_id).toBeUndefined();
   });
 });
+
+/**
+ * WHO: two callers on 2026-09-09 (SCL_HQNeyh5cVKd9, SCL_A9GtJeZF7EwF).
+ * WHAT: with SMS off, the booking tool's reminder parameter must describe itself as
+ *       impossible rather than as a thing to collect consent for.
+ * WHEN: every session while ENABLE_SMS is false — which is every session today.
+ * WHERE: reminder_lead_minutes' description in tools/scheduling.ts, fed by
+ *        smsEnabled off the same capability list that decides the toolset.
+ * WHY: the model reads parameter descriptions. With nothing else in the prompt
+ *      about texting, that one description ("...to text a reminder... after the
+ *      SMS-consent disclosures") was enough for it to invent a consent flow, ask
+ *      two callers for permission, and tell both a reminder was noted. No text can
+ *      leave this platform until 10DLC lands and consent_records is empty.
+ */
+describe('the reminder parameter tells the truth about texting', () => {
+  const paramDescription = (caps?: readonly string[]) => {
+    const tools = buildTools(
+      makeCtx(),
+      makeClient([]).client,
+      undefined,
+      undefined,
+      undefined,
+      caps ? ({ capabilities: caps } as never) : undefined
+    );
+    const tool = tools.book_with_scheduling as unknown as {
+      parameters: { properties: { reminder_lead_minutes: { description: string } } };
+    };
+    return tool.parameters.properties.reminder_lead_minutes.description;
+  };
+
+  it('SMS off → the parameter forbids itself and forbids mentioning texts', () => {
+    const d = paramDescription(['identity', 'scheduling', 'messaging']);
+    expect(d).toContain('DO NOT SET THIS AND DO NOT MENTION TEXT REMINDERS');
+    expect(d).toContain('cannot send a text message at all');
+    expect(d).not.toContain('SMS-consent disclosures');
+  });
+
+  it('SMS on → the original consent-aware description is used', () => {
+    const d = paramDescription(['identity', 'scheduling', 'messaging', 'sms']);
+    expect(d).toContain('SMS-consent disclosures');
+  });
+});
+
+/**
+ * WHO: Dale, 2026-09-09 — "when setting up a meeting make sure the person works at
+ *      the company."
+ * WHAT: book_with_scheduling forwards the person the caller named, so the backend
+ *       can check it against the live roster; and get_my_appointments describes
+ *       whose appointments it returns.
+ * WHEN: every booking where the caller asks for someone by name.
+ * WHERE: tools/scheduling.ts.
+ * WHY: the tool had NO person parameter — it sent null for the preferred employee —
+ *      so a caller could ask for "Jane", hear "booked with Jane", and be assigned
+ *      whoever was free. A parameter the model cannot pass is a check that can
+ *      never run.
+ */
+describe('the person a caller names travels to the backend', () => {
+  it('forwards with_person exactly as the caller said it', async () => {
+    const { client, calls } = makeClient([{ ok: true as const, result: 'booked' }]);
+    const tools = buildTools(makeCtx(), client);
+    await exec(tools.book_with_scheduling, {
+      service_type: 'a meeting',
+      window_from: '2026-09-11T15:00:00',
+      window_to: '2026-09-11T15:30:00',
+      phone: '+12624979039',
+      with_person: 'Jane',
+    });
+    expect(calls[0].body.with_person).toBe('Jane');
+  });
+
+  it('SAD: omits with_person when the caller named nobody', async () => {
+    // An empty string would be a name the roster check has to reject, turning a
+    // plain booking into a refusal. Absent means "no preference", which is the
+    // overwhelmingly common case.
+    const { client, calls } = makeClient([{ ok: true as const, result: 'booked' }]);
+    const tools = buildTools(makeCtx(), client);
+    await exec(tools.book_with_scheduling, {
+      service_type: 'a meeting',
+      window_from: '2026-09-11T15:00:00',
+      window_to: '2026-09-11T15:30:00',
+      phone: '+12624979039',
+    });
+    expect(calls[0].body.with_person).toBeUndefined();
+  });
+
+  it("get_my_appointments says whose appointments these are, and that they don't close the day", () => {
+    // SCL_A9GtJeZF7EwF: the result held the caller's OWN 2:30 booking from six
+    // minutes earlier and was relayed as "Dale already has an appointment", then
+    // used to push her onto another day while four slots sat open.
+    const tools = buildTools(makeCtx(), makeClient([]).client);
+    const d = (tools.get_my_appointments as unknown as { description: string }).description;
+    expect(d).toContain("THE CALLER'S OWN");
+    expect(d).toMatch(/Never describe one as the owner's/i);
+    expect(d).toMatch(/does NOT close the day/i);
+  });
+});

@@ -63,15 +63,15 @@ describe('Fix #30: Night shifts (cross-midnight)', () => {
     // WHY: Night shifts cross midnight — time comparison must handle start > end
     if (!dbAvailable) return;
 
-    // Schedule a night shift for 2026-06-01. Booking RPCs read
+    // Schedule a night shift for 2030-05-27. Booking RPCs read
     // employee_schedule directly.
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '23:00', '06:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '23:00', '06:00');
 
     // Book at 1am Tuesday (but shift started Monday night)
     // Use Monday 23:30 to be within the shift
     const result = await client.query(
       "SELECT * FROM book_with_scheduling_atomic($1, '+15551110001', 'Night Test', 'Night repair', NULL, NULL, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, NULL, NULL, '{repair}', '{}', NULL, NULL, NULL, 30)",
-      [tenantId, '2026-06-01T23:30:00-05:00', '2026-06-02T00:00:00-05:00']
+      [tenantId, '2030-05-27T23:30:00-05:00', '2030-05-28T00:00:00-05:00']
     );
 
     expect(result.rows[0].success).toBe(true);
@@ -90,11 +90,11 @@ describe('Fix #30: Night shifts (cross-midnight)', () => {
     // WHY: Night shift logic must not break normal shifts
     if (!dbAvailable) return;
 
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '08:00', '17:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
 
     const result = await client.query(
       "SELECT * FROM book_with_scheduling_atomic($1, '+15551110002', 'Day Test', 'Day repair', NULL, NULL, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, NULL, NULL, '{repair}', '{}', NULL, NULL, NULL, 30)",
-      [tenantId, '2026-06-01T10:00:00-05:00', '2026-06-01T10:30:00-05:00']
+      [tenantId, '2030-05-27T10:00:00-05:00', '2030-05-27T10:30:00-05:00']
     );
 
     expect(result.rows[0].success).toBe(true);
@@ -112,13 +112,13 @@ describe('Fix #30: Night shifts (cross-midnight)', () => {
     // WHY: Night shift employees are only available during their shift
     if (!dbAvailable) return;
 
-    // Schedule the night shift for 2026-06-01 (Monday). Booking at 2pm
+    // Schedule the night shift for 2030-05-27 (Monday). Booking at 2pm
     // local should still fail because 2pm is outside 22:00-06:00.
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '22:00', '06:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '22:00', '06:00');
 
     const result = await client.query(
       "SELECT * FROM book_with_scheduling_atomic($1, '+15551110003', 'Out of range', 'Fail test', NULL, NULL, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, NULL, NULL, '{repair}', '{}', NULL, $4, NULL, 30)",
-      [tenantId, '2026-06-01T14:00:00-05:00', '2026-06-01T14:30:00-05:00', employeeId]
+      [tenantId, '2030-05-27T14:00:00-05:00', '2030-05-27T14:30:00-05:00', employeeId]
     );
 
     expect(result.rows[0].success).toBe(false);
@@ -169,10 +169,10 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     // WHY: Both conditions met — slot is bookable
     if (!dbAvailable) return;
 
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '08:00', '17:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-05-27T10:00:00-05:00'::TIMESTAMPTZ, '2030-05-27T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 
@@ -185,20 +185,20 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     // WHY: Resource conflict
     if (!dbAvailable) return;
 
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '08:00', '17:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
     const custId = await createCustomer(client, tenantId, 'Existing', '+15559990001');
     await createAppointment(
       client,
       tenantId,
       resourceId,
       custId,
-      '2026-06-01T10:00:00-05:00',
-      '2026-06-01T11:00:00-05:00',
+      '2030-05-27T10:00:00-05:00',
+      '2030-05-27T11:00:00-05:00',
       'Existing booking'
     );
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-05-27T10:00:00-05:00'::TIMESTAMPTZ, '2030-05-27T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 
@@ -212,10 +212,10 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     if (!dbAvailable) return;
 
     // Seed a Monday-only schedule and check Saturday — no Saturday row.
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '08:00', '17:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-06T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-06T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2030-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 
@@ -229,12 +229,12 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     if (!dbAvailable) return;
 
     await client.query(
-      "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, is_off) VALUES ($1, $2, '2026-06-01', true)",
+      "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, is_off) VALUES ($1, $2, '2030-05-27', true)",
       [tenantId, employeeId]
     );
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-05-27T10:00:00-05:00'::TIMESTAMPTZ, '2030-05-27T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 
@@ -248,12 +248,12 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     if (!dbAvailable) return;
 
     await client.query(
-      "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, start_time, end_time) VALUES ($1, $2, '2026-06-06', '09:00', '13:00')",
+      "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, start_time, end_time) VALUES ($1, $2, '2030-06-01', '09:00', '13:00')",
       [tenantId, employeeId]
     );
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-06T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-06T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2030-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 
@@ -266,10 +266,10 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     // WHY: Caller needs timezone for display
     if (!dbAvailable) return;
 
-    await createScheduleEntry(client, tenantId, employeeId, '2026-06-01', '08:00', '17:00');
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
 
     const result = await client.query(
-      "SELECT * FROM check_availability_with_tz($1, $2, '2026-06-01T10:00:00-05:00'::TIMESTAMPTZ, '2026-06-01T10:30:00-05:00'::TIMESTAMPTZ)",
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-05-27T10:00:00-05:00'::TIMESTAMPTZ, '2030-05-27T10:30:00-05:00'::TIMESTAMPTZ)",
       [tenantId, resourceId]
     );
 

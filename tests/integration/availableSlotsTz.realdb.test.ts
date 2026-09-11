@@ -40,6 +40,8 @@ import {
   createScheduleEntry,
   createService,
   createCustomerFull,
+  assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../utils';
 import { createWithTenantClient } from '../../src/database';
@@ -102,6 +104,10 @@ beforeAll(async () => {
     const employeeId = await createEmployee(setup, tenantId, 'Dale Test');
     await createScheduleEntry(setup, tenantId, employeeId, DATE, '13:00', '17:00');
     const resourceId = await createResource(setup, tenantId, 'Office Line');
+    // The skill map: Dale takes this service, on the Office Line. The date path
+    // counts only linked people's shifts (2026-09-11).
+    await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+    await assignResourceToService(setup, tenantId, serviceId, resourceId);
     const customerId = await createCustomerFull(setup, tenantId, '+15559990101', 'Jack Taken');
 
     // THE APPOINTMENT AT 1:00 PM LOCAL. Postgres converts the tenant-local
@@ -119,7 +125,6 @@ beforeAll(async () => {
 
     dbAvailable = true;
   } catch (err) {
-     
     console.warn('[availableSlotsTz.realdb.test] DB not available, skipping', err);
   }
 });
@@ -264,7 +269,14 @@ describe('available-slots → real DB, non-UTC tenant, UTC session', () => {
     );
     // A LATE shift (5–9 PM) so "now" can sit mid-shift while the UTC date has
     // already rolled over — the exact shape that disabled the old filter.
-    await createScheduleEntry(setup, tenantId, empRes.rows[0].employee_id, EVENING_DATE, '17:00', '21:00');
+    await createScheduleEntry(
+      setup,
+      tenantId,
+      empRes.rows[0].employee_id,
+      EVENING_DATE,
+      '17:00',
+      '21:00'
+    );
 
     // Date-only fake: `new Date()` is frozen, but setTimeout/setInterval (which
     // pg relies on) stay real. 01:30 UTC = 19:30 the PREVIOUS day in CST.

@@ -4,12 +4,13 @@
  * test, but we do want regressions on critical behavior to get caught.
  */
 import { describe, it, expect } from 'vitest';
-import { buildSystemPrompt, formatDateForPrompt } from './prompt.js';
+import { buildSystemPrompt, formatDateForPrompt, formatTimeForPrompt } from './prompt.js';
 
 const BASE_CTX = {
   tenantName: 'DynaTire',
   callerPhone: '+15551234567',
   currentDate: 'Friday, April 24, 2026',
+  currentTime: '3:00 PM',
   timezone: 'America/Chicago',
 };
 
@@ -909,6 +910,38 @@ describe('buildSystemPrompt — voice style injection', () => {
     expect(prompt).toContain('# Voice style');
     // Both sections exist and are distinct.
     expect(prompt.indexOf('# Customer preferences')).not.toBe(prompt.indexOf('# Voice style'));
+  });
+});
+
+describe('formatTimeForPrompt', () => {
+  // WHO: Camille, prod call SCL_HQNeyh5cVKd9, 2026-09-09 18:08 CT.
+  // WHAT: the prompt carried the DATE and no time, so the model invented one —
+  //       "It's currently 3 PM here", twice, then argued when she corrected it.
+  // WHEN: any call where the caller mentions the time or asks if we are open.
+  // WHERE: this helper feeds CallRuntime.currentTime.
+  // WHY: a model with no clock does not decline to answer; it guesses and defends
+  //      the guess. Verified separately that every clock in the stack was correct —
+  //      server UTC, Postgres, and tenants.timezone — so this was a missing input,
+  //      not a timezone bug.
+  it('HAPPY: renders the local wall clock in the tenant timezone', () => {
+    const at608pmCentral = new Date('2026-09-09T23:08:00Z');
+    expect(formatTimeForPrompt(at608pmCentral, 'America/Chicago')).toBe('6:08 PM');
+  });
+
+  it('HAPPY: the same instant reads differently per zone — the tenant zone decides', () => {
+    const instant = new Date('2026-09-09T23:08:00Z');
+    expect(formatTimeForPrompt(instant, 'America/New_York')).toBe('7:08 PM');
+    expect(formatTimeForPrompt(instant, 'Pacific/Honolulu')).toBe('1:08 PM');
+  });
+
+  it('HAPPY: midnight and noon are unambiguous', () => {
+    // "12:00 AM" beats "0:00" out loud, and a receptionist says the former.
+    expect(formatTimeForPrompt(new Date('2026-09-10T05:00:00Z'), 'America/Chicago')).toBe(
+      '12:00 AM'
+    );
+    expect(formatTimeForPrompt(new Date('2026-09-10T17:00:00Z'), 'America/Chicago')).toBe(
+      '12:00 PM'
+    );
   });
 });
 

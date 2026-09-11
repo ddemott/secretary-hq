@@ -93,7 +93,7 @@ describe('findNextAvailableSlots', () => {
     ]);
 
     // Future weekday with shift coverage 9-17 for both.
-    const date = '2026-06-15'; // Monday
+    const date = '2030-06-10'; // Monday
     await createScheduleEntry(root, tenantId, carlos, date, '09:00', '17:00');
     await createScheduleEntry(root, tenantId, mike, date, '09:00', '17:00');
 
@@ -131,7 +131,7 @@ describe('findNextAvailableSlots', () => {
     const tenantId = await createTenant(root, 'TireCo', 'mobile_tire', 'America/Chicago');
     await createResource(root, tenantId, 'Truck 1');
     const carlos = await createEmployee(root, tenantId, 'Carlos', ['tire-rotation']);
-    const date = '2026-06-15'; // Monday
+    const date = '2030-06-10'; // Monday
     await createScheduleEntry(root, tenantId, carlos, date, '09:00', '17:00');
 
     const fromTime = `${date}T15:04:05.123Z`; // 10:04:05 CDT — off-grid on purpose
@@ -182,7 +182,7 @@ describe('findNextAvailableSlots', () => {
       'balancing',
     ]);
 
-    const date = '2026-06-15';
+    const date = '2030-06-10';
     await createScheduleEntry(root, tenantId, carlos, date, '09:00', '17:00');
     await createScheduleEntry(root, tenantId, mike, date, '09:00', '17:00');
 
@@ -244,7 +244,7 @@ describe('findNextAvailableSlots', () => {
       'balancing',
     ]);
 
-    const date = '2026-06-15';
+    const date = '2030-06-10';
     await createScheduleEntry(root, tenantId, carlos, date, '09:00', '17:00');
     await createScheduleEntry(root, tenantId, mike, date, '09:00', '17:00');
 
@@ -313,7 +313,7 @@ describe('findNextAvailableSlots', () => {
       root as unknown as Parameters<typeof findNextAvailableSlots>[0],
       {
         tenantId,
-        fromTime: '2026-06-15T15:00:00.000Z',
+        fromTime: '2030-06-10T15:00:00.000Z',
         durationMinutes: 30,
         requiredSkills: ['tire-rotation'],
         count: 3,
@@ -336,7 +336,7 @@ describe('findNextAvailableSlots', () => {
     const tenantId = await createTenant(root, 'TireCo', 'mobile_tire', 'America/Chicago');
     const truck1 = await createResource(root, tenantId, 'Truck 1');
     const carlos = await createEmployee(root, tenantId, 'Carlos', []);
-    const date = '2026-06-15';
+    const date = '2030-06-10';
     await createScheduleEntry(root, tenantId, carlos, date, '09:00', '17:00');
 
     const slots = await findNextAvailableSlots(
@@ -376,8 +376,8 @@ describe('findNextAvailableSlots', () => {
     const tenantId = await createTenant(root, 'NightWrap Co', 'ai-platform', 'America/Chicago');
     await createResource(root, tenantId, 'Line 1');
     const emp = await createEmployee(root, tenantId, 'Dale Test', []);
-    const date = '2026-06-15'; // Monday, CDT (UTC-5)
-    const nextDate = '2026-06-16';
+    const date = '2030-06-10'; // Monday, CDT (UTC-5)
+    const nextDate = '2030-06-11';
     await createScheduleEntry(root, tenantId, emp, date, '13:00', '17:00');
     await createScheduleEntry(root, tenantId, emp, nextDate, '13:00', '17:00');
 
@@ -425,7 +425,7 @@ describe('findNextAvailableSlots', () => {
     const tenantId = await createTenant(root, 'NightWrap RPC Co', 'ai-platform', 'America/Chicago');
     await createResource(root, tenantId, 'Line 1');
     const emp = await createEmployee(root, tenantId, 'Dale Test', ['consulting']);
-    const date = '2026-06-15';
+    const date = '2030-06-10';
     await createScheduleEntry(root, tenantId, emp, date, '13:00', '17:00');
 
     // 11:30 PM local CDT = 04:30Z next day; end at local midnight = 05:00Z.
@@ -434,8 +434,8 @@ describe('findNextAvailableSlots', () => {
          p_tenant_id => $1,
          p_phone => '+15550009999',
          p_customer_name => 'Wrap Test',
-         p_start_time => '2026-06-16T04:30:00Z'::timestamptz,
-         p_end_time => '2026-06-16T05:00:00Z'::timestamptz,
+         p_start_time => '2030-06-11T04:30:00Z'::timestamptz,
+         p_end_time => '2030-06-11T05:00:00Z'::timestamptz,
          p_required_skills => ARRAY['consulting'],
          p_duration_minutes => 30
        )`,
@@ -451,8 +451,8 @@ describe('findNextAvailableSlots', () => {
          p_tenant_id => $1,
          p_phone => '+15550009999',
          p_customer_name => 'Wrap Test',
-         p_start_time => '2026-06-15T19:00:00Z'::timestamptz,
-         p_end_time => '2026-06-15T19:30:00Z'::timestamptz,
+         p_start_time => '2030-06-10T19:00:00Z'::timestamptz,
+         p_end_time => '2030-06-10T19:30:00Z'::timestamptz,
          p_required_skills => ARRAY['consulting'],
          p_duration_minutes => 30
        )`,
@@ -462,7 +462,7 @@ describe('findNextAvailableSlots', () => {
     expect(okRes.rows[0].success).toBe(true);
   });
 
-  describe('WORKDAY BOUNDARIES (Dale, 2026-07-17): bookable to the edge, refused past it', () => {
+  describe('WORKDAY BOUNDARIES (Dale, 2030-07-12): bookable to the edge, refused past it', () => {
     // WHO: every booking near open/close. WHAT: the last slot of the day
     //       (ends exactly AT closing) books; a slot ending one grid-step past
     //       closing, or starting before opening, is refused/never offered.
@@ -470,7 +470,7 @@ describe('findNextAvailableSlots', () => {
     //       is only right if 4:30–5:00 on a 1–5 shift still works. Boundary
     //       pairs prove both directions.
     const TZCO = 'America/Chicago';
-    const DATE = '2026-06-15'; // Monday, CDT (UTC-5): local 13:00 = 18:00Z
+    const DATE = '2030-06-10'; // Monday, CDT (UTC-5): local 13:00 = 18:00Z
 
     async function seedTenant(): Promise<string> {
       const tenantId = await createTenant(root, 'Edge Co', 'ai-platform', TZCO);
@@ -543,8 +543,8 @@ describe('findNextAvailableSlots', () => {
       const res = await root.query<{ success: boolean; error_code: string | null }>(
         `SELECT success, error_code FROM book_with_scheduling_atomic(
            p_tenant_id => $1, p_phone => '+15550007777', p_customer_name => 'Skilless',
-           p_start_time => '2026-06-16T04:30:00Z'::timestamptz,
-           p_end_time => '2026-06-16T05:00:00Z'::timestamptz,
+           p_start_time => '2030-06-11T04:30:00Z'::timestamptz,
+           p_end_time => '2030-06-11T05:00:00Z'::timestamptz,
            p_duration_minutes => 30
          )`,
         [t]
@@ -566,24 +566,34 @@ describe('findNextAvailableSlots', () => {
       expect(okRes.rows[0].success).toBe(true);
     });
 
-    it('HAPPY: a tenant with NO schedule data on the date keeps the historical fall-open', async () => {
+    it('SAD: a tenant with NO staff and NO schedule cannot be booked — the fall-open is gone', async () => {
       if (!dbAvailable) return;
-      // WHY: the guard is deliberately NARROW — a tenant that does not manage
-      //       schedules must keep booking exactly as before; only a day with
-      //       schedule rows enforces them.
+      // WHY: this test used to pin the historical fall-open — a tenant that did
+      //       not manage schedules booked "exactly as before". What it booked was
+      //       an appointment with a room and NOBODY on it. Migration 20260909210000
+      //       retired that on purpose (Dale, 2026-09-09: "you can't book an
+      //       appointment with a resource that doesn't exist"; 2026-09-11: a
+      //       person is bookable when the skill map links them and they are
+      //       scheduled). This is a RULE CHANGE, recorded as one — not a loosened
+      //       test: the assertion flipped because the product decision did.
       const tenantId = await createTenant(root, 'NoSchedule Co', 'ai-platform', TZCO);
       await createResource(root, tenantId, 'Line 1');
       const res = await root.query<{ success: boolean; error_code: string | null }>(
         `SELECT success, error_code FROM book_with_scheduling_atomic(
            p_tenant_id => $1, p_phone => '+15550006666', p_customer_name => 'Open',
-           p_start_time => '2026-06-16T04:30:00Z'::timestamptz,
-           p_end_time => '2026-06-16T05:00:00Z'::timestamptz,
+           p_start_time => '2030-06-11T04:30:00Z'::timestamptz,
+           p_end_time => '2030-06-11T05:00:00Z'::timestamptz,
            p_duration_minutes => 30
          )`,
         [tenantId]
       );
-      expect(res.rows[0].error_code).toBeNull();
-      expect(res.rows[0].success).toBe(true);
+      expect(res.rows[0].success).toBe(false);
+      expect(res.rows[0].error_code).toBe('NO_SKILLED_EMPLOYEE');
+      const written = await root.query(
+        'SELECT count(*) AS n FROM appointments WHERE tenant_id = $1',
+        [tenantId]
+      );
+      expect(Number(written.rows[0].n)).toBe(0);
     });
 
     it("SUGGESTER: the day's LAST offer is 4:30 PM — never 4:45, never a wrap", async () => {
@@ -626,7 +636,7 @@ describe('findNextAvailableSlots', () => {
       );
       await createResource(root, tenantId, 'Bay 1');
       const emp = await createEmployee(root, tenantId, 'Night Worker', []);
-      const date = '2026-06-15';
+      const date = '2030-06-10';
       await createScheduleEntry(root, tenantId, emp, date, '23:00', '06:00');
 
       const slots = await findNextAvailableSlots(
@@ -635,7 +645,7 @@ describe('findNextAvailableSlots', () => {
           tenantId,
           // 11:00 PM CDT on the shift date — which is 04:00Z on the FOLLOWING
           // UTC date (CDT = UTC-5).
-          fromTime: `2026-06-16T04:00:00.000Z`,
+          fromTime: `2030-06-11T04:00:00.000Z`,
           durationMinutes: 30,
           requiredSkills: [],
           count: 5,
@@ -644,11 +654,11 @@ describe('findNextAvailableSlots', () => {
       );
       // 11:30 PM CDT on the shift date = 04:30Z on the following UTC date.
       const starts = slots.map((s) => s.start_time);
-      expect(starts).toContain(`2026-06-16T04:30:00.000Z`);
+      expect(starts).toContain(`2030-06-11T04:30:00.000Z`);
     });
   });
 
-  describe('TENANT-CLOCK RENDERING (Dale, 2026-07-17): the caller hears THEIR wall-clock', () => {
+  describe('TENANT-CLOCK RENDERING (Dale, 2030-07-12): the caller hears THEIR wall-clock', () => {
     // WHO: any non-Chicago tenant. WHAT: a New-York tenant's 1:00 PM shift
     //       (17:00Z in June) must surface as 1:00 PM — a UTC-leak would say
     //       5:00 PM. The suggester returns UTC instants; every SPOKEN surface
@@ -662,7 +672,7 @@ describe('findNextAvailableSlots', () => {
       const tenantId = await createTenant(root, 'NY Render Co', 'ai-platform', 'America/New_York');
       await createResource(root, tenantId, 'Line 1');
       const emp = await createEmployee(root, tenantId, 'Ann', []);
-      const date = '2026-06-15';
+      const date = '2030-06-10';
       await createScheduleEntry(root, tenantId, emp, date, '13:00', '17:00');
 
       const slots = await findNextAvailableSlots(

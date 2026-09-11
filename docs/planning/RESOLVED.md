@@ -4,6 +4,146 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-11 — "The owner" is said as Dale everywhere, and the booking RPC stops booking the past, nobody, or the wrong room
+
+**"The owner" in the PROMPT was a request; the voice path is now a guarantee.** Dale:
+_"I am the owner but do not refer to statements like 'I will pass this on to the
+owner'. People don't know what that means."_ The 2026-09-09 prompt rule did not reach
+the phrase's other sources — `tenant_question_nodes` wording ("a meeting on the owner's
+calendar"), backend tool results relayed nearly verbatim ("Message saved — the owner
+has been alerted."), and the model's habit. `speechSanitizer.ts` now rewrites "the
+owner" / "the business owner" to the one active staff member's first name in
+`ttsNode`, and `transcriptionNode` applies the same rewrite so the call record matches
+what the caller heard. Deliberately narrow: never "the owner of …", never after "are
+you / is / I'm …", never "the owners" / "homeowners"; with several staff (or none) the
+phrase is left alone. Verified: 19 of 19 occurrences across three sets of
+`sim-questiontree` transcripts came out as "Dale".
+
+**Migration `20260909210000` — three rules `book_with_scheduling_atomic` did not
+enforce.** (1) No booking in the past (`PAST_TIME`, one minute of grace) — the item
+closed above as "still open". (2) Never an appointment with no person. (3) When the
+service is known, the skill map's `service_employee` / `service_resource` links are the
+whole rule, and an unlinked service is refused — Dale: _"Person → Role → Resource."_
+`availabilitySearch.ts`, the available-slots date path, and the appointments conflict
+suggestions read the same map. Guarded by `bookingRulesPastAndPerson.realdb.test.ts`
+and `skillMapLinks.realdb.test.ts`. Prod precondition checked read-only before apply:
+every Thinking Hammer service has a linked person and room; the only unlinked services
+belong to the platform super-admin tenant, which has no shifts and has never taken a
+call.
+
+**Also fixed:** three `console.error('DEBUG …')` lines in `checklistTools.ts` that had
+printed on every live call since August; e2e fixtures for the new rules; two
+calendar-sync spec bugs hidden because that spec does not run in CI; and the simulator
+itself, which told the model the wrong weekday, spoke "right now it is undefined", gave
+every caller a phantom Thursday 2 PM booking, and booked a day the caller was never
+offered. `sim-questiontree` can now move the CALLER off OpenAI too
+(`SIM_CALLER_BASE_URL` / `SIM_CALLER_API_KEY`).
+
+**`set_purpose` with no `trees` threw a TypeError — on live calls too, not only in the
+sim.** A JOB-DIRECT run crashed with `Cannot read properties of undefined (reading
+'includes')`, and the sim filed it as "API error after retries", so it was never
+counted. The cause is structural: `set_purpose` declares `trees` as `required` in a plain
+JSON schema, and LiveKit (`voice/generation.js`) validates arguments only for ZOD
+schemas — a JSON-schema tool gets the model's raw arguments. So a model that omits
+`trees` reached `trees.includes('job')`; LiveKit caught the throw and handed the model an
+opaque tool error, and the purpose was never set. Now: a missing `trees` is normalised,
+a `wrong_trees`-only call removes the tree as asked, and a call with neither is refused
+with a sentence that names the fix. Repro tests failed with the exact TypeError before
+the fix. The sim also stops hiding crashes: only provider errors count as "never reached
+the model"; a code throw is a FAIL with its stack.
+
+**Found and logged, not fixed** (all on `main`, see `TODO.md`): an urgent message saved
+as ordinary, a declined meeting that leaves the goodbye gate shut, a wrong node id that
+makes the agent re-ask, the morning half of a night shift unbookable, and the dashboard
+path still falling back to skill tags on an unlinked service.
+
+---
+
+## 2026-09-09 (evening) — Four calls, eight things the agent said that were not true
+
+Four prod calls between 18:02 and 18:18 CT on Thinking Hammer. Every booking landed
+and both job inquiries captured in full — and inside those working calls the agent
+told callers a series of things that were false.
+
+**IT DID NOT KNOW WHAT TIME IT WAS, SO IT MADE ONE UP AND DEFENDED IT.** On
+`SCL_HQNeyh5cVKd9`, at 18:08 CT, it offered "availability today from 1 to 5 PM" —
+three hours after closing — then said "It's currently 3 PM here", twice, and when
+the caller answered "it is not 3PM, it is 6PM" it replied "thanks for clarifying
+that it's 6 PM there in Chicago time" while still holding its own 3 PM. Sixty-four
+seconds of the call went to arguing about the clock. Root cause: `formatDateForPrompt`
+emits the DATE only, so the model had no time at all. Verified first that this was
+NOT a timezone bug — prod's HTTP `Date`, Postgres `now()`, this workstation and
+`tenants.timezone` all agreed to the second. **A model with no clock does not decline
+to answer; it guesses, and then defends the guess.** `CallRuntime.currentTime` +
+`formatTimeForPrompt` now put the real local time in the prompt, declared the only
+source for it, and the after-hours rule says both halves out loud: closed now, AND
+the next time we can see you — a bare closure reads as a refusal and ends the call.
+
+**IT REFUSED A TIME THAT WAS FREE.** Same call: offered 1:30/2:00/2:30, the caller
+asked for 4 PM, and it said "4 PM is not available on September 10." The shift runs
+to 5 and `open_times` held everything through 4:30. The response's own `note` already
+said, in plain words, that a time in `open_times` must never be refused. It refused
+anyway — which is the whole lesson: **an instruction it can skim loses to a sentence
+it must read aloud.** `offerBreadthClause()` now appends the rest of the day to the
+SPOKEN string, and returns empty when the offers really are the whole day, because
+inviting a caller to name a time that does not exist trades one wrong answer for another.
+(It first shipped as "any open quarter hour through 4:30 PM works too"; the PR #410 review
+caught that this is heard as EVERY quarter hour up to 4:30 when `open_times` has gaps, so
+since 2026-09-11 it reads "I have other openings too, as late as 4:30 PM.")
+
+**IT PROMISED TEXTS, TWICE, ON A PLATFORM THAT HAS NEVER SENT ONE.** It ran an
+invented consent flow — "you haven't given consent for text reminders yet… would you
+want a text reminder?" — got a yes from both callers, and told them it was noted.
+`consent_records` is empty, `communications_history` has ZERO rows all-time, and
+`ENABLE_SMS` is unset pending 10DLC. Under question trees there was no texting
+section at all, so the model built the idea from the one place it could see:
+`reminder_lead_minutes`' own parameter description. **Silence in a prompt is not a
+prohibition — the model fills it from whatever else is in front of it.** `smsEnabled`
+now flows from the same capability list that builds the toolset; with SMS off the
+parameter describes itself as impossible and the prompt opens "YOU CANNOT SEND A
+TEXT MESSAGE."
+
+**IT ASKED FOR WHAT SHE HAD JUST SAID, AND CALLED HER OWN BOOKING SOMEONE ELSE'S.**
+On `SCL_A9GtJeZF7EwF` the caller opened with "there's a job opening at US Bank" and
+was asked which company she was calling from ("I just told you, US Bank"), then which
+company the work was for ("She already told you, US Bank"). Later `get_my_appointments`
+returned HER OWN 2:30 booking from six minutes earlier and it was relayed as the
+owner's calendar, then used to push her to another day — while 1:30, 3:00, 3:30 and
+4:00 sat open. Both are now prompt/description guarantees: a company named in the
+opener is recorded and CONFIRMED, never re-asked, and these appointments belong to
+the person on the phone and never close a day.
+
+**AND IT NEVER TOLD ONE CALLER HER MESSAGE WAS SAVED** (`SCL_n79MyVHh9TVe`): the row
+was written and she heard only "You're all set, Camille." A success now owes one plain
+sentence naming what exists.
+
+Two more shipped alongside: **"the owner" became the owner's NAME** (Dale's note —
+"owner sounds cold"), resolved from the live staff roster with "someone on the team"
+for several and the role word only when there is no roster at all; the rule sits in
+the PROMPT because a provisioned tenant runs its questions from `tenant_question_nodes`
+rows and editing `trees.ts` would not have changed a single real call. And
+**`with_person`**: the booking tool had no person parameter at all — it passed NULL
+for `p_preferred_employee_id` — so a caller could ask for "Jane", hear "booked with
+Jane", and be assigned whoever was free. The name is now resolved against live active
+employees BEFORE the RPC and a miss refuses with Dale's own sentence: *"Jane doesn't
+work here. Did you mean someone else?"*
+
+**The guard caught what I did not.** Writing the "say the name, not the role" fix, I
+hardcoded "Dale" into two tool descriptions that ship to every tenant — a salon's
+agent would have read them. `tests/noHardcodedNames.test.ts` failed the suite by name.
+Two of my own new route tests were also asserting inside an `if` that never ran and
+would have passed with the fix deleted; the logic was extracted to `offerBreadthClause`
+so the assertions are unconditional.
+
+**Still open, deliberately:** a call that says "a possible job" still selects no `job`
+tree (bare "job" is excluded on purpose — in this product "I have a job for you" is a
+service request) and books a 15-minute Personal Callback, which then fragments the
+day for every 30-minute service. And **production still books appointments in the
+past** — `book_with_scheduling_atomic` has no past-time check; only the unused
+`book_appointment_atomic` does. Demonstrated by booking 1:00 PM at 6:52 PM.
+
+---
+
 ## 2026-09-09 — The call that collected everything and booked nothing (SCL_A5wnBexPbwCC)
 
 **A caller asked for 1:00 PM, was offered 1:00 PM, and was told 1:00 PM was not on

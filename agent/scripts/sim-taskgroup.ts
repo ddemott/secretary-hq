@@ -1251,6 +1251,13 @@ function makeDeps(): CallDeps {
     state: {},
     runtime: {
       currentDate,
+      // Required on CallRuntime since the clock fix (a9816df); scripts/ is outside
+      // tsconfig's include, so only a scripts typecheck caught it missing.
+      currentTime: new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'America/Chicago',
+      }),
       timezone: 'America/Chicago',
       businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
       bookableThrough: null,

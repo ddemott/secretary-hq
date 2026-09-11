@@ -10,9 +10,16 @@
  *   2. Then: no markdown reaches TTS.
  */
 import { describe, it, expect } from 'vitest';
-import { sanitizeForSpeech, sanitizeChunk, sanitizeStream } from './speechSanitizer.js';
+import {
+  sanitizeForSpeech,
+  sanitizeChunk,
+  sanitizeStream,
+  nameTheOwner,
+  nameTheOwnerStream,
+  spokenOwnerName,
+} from './speechSanitizer.js';
 
-async function collect(chunks: string[]): Promise<string> {
+async function collectChunks(chunks: string[], ownerName?: string | null): Promise<string[]> {
   const input = new ReadableStream<string>({
     start(c) {
       for (const chunk of chunks) c.enqueue(chunk);
@@ -20,13 +27,17 @@ async function collect(chunks: string[]): Promise<string> {
     },
   });
   const out: string[] = [];
-  const reader = sanitizeStream(input).getReader();
+  const reader = sanitizeStream(input, { ownerName }).getReader();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     out.push(value);
   }
-  return out.join('');
+  return out;
+}
+
+async function collect(chunks: string[], ownerName?: string | null): Promise<string> {
+  return (await collectChunks(chunks, ownerName)).join('');
 }
 
 describe('speech sanitizer — markdown must never reach the voice', () => {
@@ -130,5 +141,192 @@ describe('streaming path strips EVERYTHING the one-shot path does', () => {
     expect(await collect(['It is a 30-minute cut', ' — very popular.'])).toBe(
       'It is a 30-minute cut — very popular.'
     );
+  });
+});
+
+/**
+ * Dale, 2026-09-11: "I am the owner but do not refer to statements like 'I will
+ * pass this on to the owner'. People don't know what that means even if I am the
+ * owner." The phrase reaches the model from DB question rows and backend tool
+ * results the prompt cannot edit, so the spoken path rewrites it.
+ */
+describe('"the owner" is spoken as the owner\'s name', () => {
+  it('SAD: the sentence Dale quoted is said with his name', () => {
+    expect(nameTheOwner('I will pass this on to the owner.', 'Dale')).toBe(
+      'I will pass this on to Dale.'
+    );
+  });
+
+  it("SAD: the backend's take-message result and the RAG fallback read with the name", () => {
+    // WHERE: src/routes/agentTools/messaging.ts and knowledge.ts — relayed nearly verbatim.
+    expect(nameTheOwner('Message saved — the owner has been alerted.', 'Dale')).toBe(
+      'Message saved — Dale has been alerted.'
+    );
+    expect(
+      nameTheOwner("I'd be happy to take a message so the owner can get back to you", 'Dale')
+    ).toBe("I'd be happy to take a message so Dale can get back to you");
+  });
+
+  it("SAD: possessive, sentence-start and 'business owner' forms", () => {
+    // WHERE: the job tree's meeting_offer wording lives in tenant_question_nodes rows.
+    expect(nameTheOwner("a meeting on the owner's calendar", 'Dale')).toBe(
+      "a meeting on Dale's calendar"
+    );
+    expect(nameTheOwner('The owner will call you back.', 'dale')).toBe('Dale will call you back.');
+    expect(nameTheOwner('I will let the business owner know.', 'Dale')).toBe(
+      'I will let Dale know.'
+    );
+  });
+
+  it('HAPPY: other owners and questions about the CALLER are left alone', () => {
+    // WHY: a rewrite that mangles a real sentence is worse than the word it replaces.
+    const untouched = [
+      'Are you the owner of the vehicle?',
+      'Are you the business owner?',
+      "Dale is the owner, and I'm his assistant.",
+      'Who is responsible — a property owner, a driver?',
+      'We work with homeowners and the owners of small shops.',
+    ];
+    for (const s of untouched) expect(nameTheOwner(s, 'Dale')).toBe(s);
+  });
+
+  it('HAPPY: no name to say leaves the words exactly as produced', () => {
+    expect(nameTheOwner('I will pass this on to the owner.', null)).toBe(
+      'I will pass this on to the owner.'
+    );
+  });
+
+  it('only a ONE-person roster has a name to say', () => {
+    // WHY: guessing "Carlos" at a six-chair salon is worse than the role word.
+    expect(spokenOwnerName(['Dale'])).toBe('Dale');
+    expect(spokenOwnerName([' Dale ', ''])).toBe('Dale');
+    expect(spokenOwnerName(['Carlos', 'Jane'])).toBeNull();
+    expect(spokenOwnerName([])).toBeNull();
+    expect(spokenOwnerName(undefined)).toBeNull();
+  });
+
+  it('SAD: STREAMED — "the" and " owner" arrive as separate tokens and are still rewritten', async () => {
+    // WHY: this is how the LLM actually emits it. A per-chunk rewrite never sees the phrase.
+    expect(await collect(['I will pass', ' this on to', ' the', ' owner', '.'], 'Dale')).toBe(
+      'I will pass this on to Dale.'
+    );
+    expect(await collect(['on the', ' own', "er's", ' calendar'], 'Dale')).toBe(
+      "on Dale's calendar"
+    );
+  });
+
+  it('SAD: STREAMED — the phrase at the very END of the reply is rewritten on flush', async () => {
+    expect(await collect(['I will let', ' the owner'], 'Dale')).toBe('I will let Dale');
+  });
+
+  it('HAPPY: STREAMED — "owner of" and "is the owner" survive across chunk boundaries', async () => {
+    expect(await collect(['Are you', ' the owner', ' of the', ' car?'], 'Dale')).toBe(
+      'Are you the owner of the car?'
+    );
+    expect(await collect(['Dale is', ' the', ' owner.'], 'Dale')).toBe('Dale is the owner.');
+  });
+
+  it('HAPPY: STREAMED — ordinary words are not held back or glued', async () => {
+    // WHY: holding text back is dead air. Only a tail that could become "the owner" waits.
+    const chunks = await collectChunks(
+      ['Hello', ' world', ', with', ' 3:30', ' then', ' done.'],
+      'Dale'
+    );
+    expect(chunks.join('')).toBe('Hello world, with 3:30 then done.');
+    expect(chunks[0]).toBe('Hello');
+  });
+
+  it('HAPPY: STREAMED — markdown still stripped with the rewrite on', async () => {
+    expect(await collect(['*Tell', ' the', ' owner*', ' now.'], 'Dale')).toBe('Tell Dale now.');
+  });
+
+  it('SAD: REAL gpt-4.1-mini token splits, recorded 2026-09-11', async () => {
+    // WHERE: streamed from the prod voice model, not hand-written. The possessive
+    // arrives fused (" owner's"), the sentence-start form as "The" + " owner".
+    expect(
+      await collect(['Let', ' me', ' check', ' the', " owner's", ' schedule', '.'], 'Dale')
+    ).toBe("Let me check Dale's schedule.");
+    expect(await collect(['The', ' owner', ' will', ' call', ' you', ' back', '.'], 'Dale')).toBe(
+      'Dale will call you back.'
+    );
+    expect(
+      await collect(
+        [
+          'No',
+          ',',
+          ' I',
+          '’m',
+          ' the',
+          ' receptionist',
+          '.',
+          ' Something',
+          ' for',
+          ' the',
+          ' owner',
+          '?',
+        ],
+        'Dale'
+      )
+    ).toBe('No, I’m the receptionist. Something for Dale?');
+  });
+});
+
+/**
+ * The call record must say what the caller HEARD. LiveKit tees the model's text
+ * BEFORE ttsNode: one branch to the voice, one to transcriptionNode, and the
+ * transcript (voice_sessions.transcript, the dashboard, every call review) is
+ * built from the second. Rewriting only the voice would leave the record saying
+ * "the owner" while the caller heard "Dale".
+ */
+describe('the transcript is rewritten the same way (nameTheOwnerStream)', () => {
+  async function run<T extends string | { text: string }>(
+    chunks: T[],
+    ownerName: string | null
+  ): Promise<T[]> {
+    const input = new ReadableStream<T>({
+      start(c) {
+        for (const chunk of chunks) c.enqueue(chunk);
+        c.close();
+      },
+    });
+    const out: T[] = [];
+    const reader = nameTheOwnerStream(input, ownerName).getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out.push(value);
+    }
+    return out;
+  }
+
+  it('SAD: a streamed transcript names the owner, across token boundaries', async () => {
+    expect((await run(['I will pass', ' this to', ' the', ' owner', '.'], 'Dale')).join('')).toBe(
+      'I will pass this to Dale.'
+    );
+  });
+
+  it('SAD: TIMED chunks are rewritten in place and keep their timing', async () => {
+    // Timed chunks carry audio timing and are never split or merged.
+    const out = await run(
+      [
+        { text: 'I will tell', startTime: 0.1, endTime: 0.9 },
+        { text: ' the owner.', startTime: 1.0, endTime: 1.6 },
+      ],
+      'Dale'
+    );
+    expect(out).toEqual([
+      { text: 'I will tell', startTime: 0.1, endTime: 0.9 },
+      { text: ' Dale.', startTime: 1.0, endTime: 1.6 },
+    ]);
+  });
+
+  it('HAPPY: the transcript keeps its markdown — only the owner rewrite is shared', async () => {
+    // WHY: the transcript branch never stripped markdown; changing that is not this fix.
+    expect((await run(['*Tell*', ' the', ' owner'], 'Dale')).join('')).toBe('*Tell* Dale');
+  });
+
+  it('HAPPY: no name — the very same stream comes back, untouched', () => {
+    const input = new ReadableStream<string>();
+    expect(nameTheOwnerStream(input, null)).toBe(input);
   });
 });

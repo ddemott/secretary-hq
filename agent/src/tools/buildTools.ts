@@ -31,6 +31,11 @@ export function buildTools(
   }
 ): ToolMap {
   const hasVerification = !opts?.capabilities || opts.capabilities.includes('verification');
+  // Same source of truth as every other capability: index.ts drops 'sms' from
+  // activeCapabilities when ENABLE_SMS is off, so the booking tool's reminder
+  // parameter can describe itself honestly instead of inviting a promise the
+  // platform cannot keep (2026-09-09, two callers told a text was coming).
+  const smsEnabled = !opts?.capabilities || opts.capabilities.includes('sms');
 
   const gateVerificationAdvice = (res: ToolResponse): string => {
     if (
@@ -77,6 +82,7 @@ export function buildTools(
     outcome,
     speakFiller,
     hasVerification,
+    smsEnabled,
     canOfferTransfer,
     transferOrMessage,
     gateVerificationAdvice,

@@ -80,7 +80,7 @@ import { CallOutcomeTracker } from './callOutcome.js';
 import { summarizeCall } from './callSummary.js';
 import { classifyCallOutcome } from './callClassify.js';
 import { createTransferExecutor } from './transferClient.js';
-import { buildSystemPrompt, formatDateForPrompt } from './prompt.js';
+import { buildSystemPrompt, formatDateForPrompt, formatTimeForPrompt } from './prompt.js';
 
 // DNS_FORCE_IPV4=true patches dns.lookup to ask for A records only, for hosts
 // whose resolver stalls on AAAA. Installed at module load — before any plugin
@@ -1480,8 +1480,16 @@ export default defineAgent({
               // spoken services line, so it is the same words the caller heard.
               businessName: tenantConfig.name,
               businessBlurb: tenantConfig.greetingMenu,
+              // Same capability list that decides the TOOLSET, so the prompt and
+              // the tools can never disagree about whether this line can text.
+              smsEnabled: activeCapabilities.includes('sms'),
               runtime: {
                 currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
+                // Read at SESSION START, so a very long call drifts — acceptable:
+                // the alternative is re-rendering the system prompt mid-call, and a
+                // clock that is minutes stale still prevents the 3-hour confabulation
+                // this exists to stop (2026-09-09, SCL_HQNeyh5cVKd9).
+                currentTime: formatTimeForPrompt(new Date(), tenantConfig.timezone),
                 timezone: tenantConfig.timezone,
                 businessHours: tenantConfig.businessHours,
                 bookableThrough: tenantConfig.bookableThrough,
@@ -1535,6 +1543,7 @@ export default defineAgent({
                 // (where these live) with its own.
                 runtime: {
                   currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
+                  currentTime: formatTimeForPrompt(new Date(), tenantConfig.timezone),
                   timezone: tenantConfig.timezone,
                   businessHours: tenantConfig.businessHours,
                   bookableThrough: tenantConfig.bookableThrough,

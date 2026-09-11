@@ -185,7 +185,7 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
     const tenantId = await createTenant(root, 'Acme Auto Repair', 'auto-shop');
     const bayId = await createResourceWithCapabilities(root, tenantId, 'Bay 1', ['lift']);
     const techId = await createEmployee(root, tenantId, 'Bob the Mechanic', ['brakes', 'engine']);
-    await createScheduleEntry(root, tenantId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, techId, '2030-04-10', '08:00', '17:00');
     await createServiceWithRequirements(
       root,
       tenantId,
@@ -197,8 +197,8 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T15:00:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T15:00:00Z',
       requiredSkills: ['brakes'],
       requiredCapabilities: ['lift'],
     });
@@ -229,13 +229,13 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
     await root.query('DELETE FROM resources WHERE tenant_id = $1', [tenantId]);
     const chairId = await createResourceWithCapabilities(root, tenantId, 'Chair 1', []);
     const stylistId = await createEmployee(root, tenantId, 'Lila', ['cut', 'color']);
-    await createScheduleEntry(root, tenantId, stylistId, '2026-04-15', '09:00', '18:00');
+    await createScheduleEntry(root, tenantId, stylistId, '2030-04-10', '09:00', '18:00');
     await createServiceWithRequirements(root, tenantId, "Women's Cut", 45, ['cut'], []);
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T14:45:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T14:45:00Z',
       requiredSkills: ['cut'],
       requiredCapabilities: [],
     });
@@ -261,7 +261,7 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
       'tire-mount',
       'tire-balance',
     ]);
-    await createScheduleEntry(root, tenantId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, techId, '2030-04-10', '08:00', '17:00');
     await createServiceWithRequirements(
       root,
       tenantId,
@@ -273,8 +273,8 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T10:00:00Z',
-      endTime: '2026-04-15T11:00:00Z',
+      startTime: '2030-04-10T10:00:00Z',
+      endTime: '2030-04-10T11:00:00Z',
       requiredSkills: ['tire-mount'],
       requiredCapabilities: ['mobile'],
     });
@@ -310,8 +310,8 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
       'tire-rotation',
     ]);
     const tech2 = await createEmployee(root, tenantId, 'Tech Beta', ['oil-change']);
-    await createScheduleEntry(root, tenantId, tech1, '2026-04-15', '08:00', '17:00');
-    await createScheduleEntry(root, tenantId, tech2, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, tech1, '2030-04-10', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, tech2, '2030-04-10', '08:00', '17:00');
 
     await createServiceWithRequirements(
       root,
@@ -324,8 +324,8 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T14:45:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T14:45:00Z',
       requiredSkills: ['alignment'],
       requiredCapabilities: ['alignment-rack'],
     });
@@ -350,11 +350,17 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
     const tenantId = await createTenant(root, 'AI Platform Demo', 'ai-platform');
     const roomId = await createResourceWithCapabilities(root, tenantId, 'Meeting Room', []);
     await createServiceWithRequirements(root, tenantId, 'Discovery Call', 30, [], []);
+    // RULE CHANGE (migration 20260909210000): the no-requirements path used to
+    // book the room with NOBODY on it. An appointment is with somebody now, so a
+    // consultant is on shift; the ELSE branch still runs (no skills requested) and
+    // now names the person it found instead of leaving employee_id NULL.
+    const consultantId = await createEmployee(root, tenantId, 'Demo Consultant');
+    await createScheduleEntry(root, tenantId, consultantId, '2030-04-10', '00:00', '23:59');
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T15:00:00Z',
-      endTime: '2026-04-15T15:30:00Z',
+      startTime: '2030-04-10T15:00:00Z',
+      endTime: '2030-04-10T15:30:00Z',
       requiredSkills: [],
       requiredCapabilities: [],
     });
@@ -362,7 +368,10 @@ describe('Skill + resource matching — per-industry HAPPY paths', () => {
     expect(result.error_code).toBeNull();
     expect(result.success).toBe(true);
     expect(result.resource_id).toBe(roomId);
-    expect(result.employee_id, 'no skills required → no employee assigned').toBeNull();
+    expect(
+      result.employee_id,
+      'no skills required → still a scheduled person on it (was toBeNull before 20260909210000)'
+    ).toBe(consultantId);
   });
 });
 
@@ -406,12 +415,12 @@ describe('Skill + resource matching — error-code matrix', () => {
     const tenantId = await createTenant(root, 'Engine-Only Shop', 'auto-shop');
     await createResourceWithCapabilities(root, tenantId, 'Bay 1', ['lift']);
     const techId = await createEmployee(root, tenantId, 'Engine Eddie', ['engine']);
-    await createScheduleEntry(root, tenantId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, techId, '2030-04-10', '08:00', '17:00');
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T15:00:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T15:00:00Z',
       requiredSkills: ['transmission'], // no employee has this
     });
 
@@ -432,12 +441,12 @@ describe('Skill + resource matching — error-code matrix', () => {
     await createResourceWithCapabilities(root, tenantId, 'Bay 1', []);
     const techId = await createEmployee(root, tenantId, 'Daytime Dave', ['brakes']);
     // Dave's shift is 08:00-17:00 local; we book at 18:00 local (outside)
-    await createScheduleEntry(root, tenantId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, techId, '2030-04-10', '08:00', '17:00');
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T23:00:00Z', // 18:00 in America/Chicago (default tz)
-      endTime: '2026-04-15T23:30:00Z',
+      startTime: '2030-04-10T23:00:00Z', // 18:00 in America/Chicago (default tz)
+      endTime: '2030-04-10T23:30:00Z',
       requiredSkills: ['brakes'],
     });
 
@@ -457,14 +466,14 @@ describe('Skill + resource matching — error-code matrix', () => {
     const tenantId = await createTenant(root, 'OneTech Shop', 'auto-shop');
     const _bayId = await createResourceWithCapabilities(root, tenantId, 'Bay 1', []);
     const techId = await createEmployee(root, tenantId, 'Solo Sam', ['brakes']);
-    await createScheduleEntry(root, tenantId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, techId, '2030-04-10', '08:00', '17:00');
 
     // First booking takes the only slot
     const first = await bookWithScheduling({
       tenantId,
       phone: '+15551110001',
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T15:00:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T15:00:00Z',
       requiredSkills: ['brakes'],
     });
     expect(first.success, `first booking must succeed: ${first.error_message}`).toBe(true);
@@ -473,8 +482,8 @@ describe('Skill + resource matching — error-code matrix', () => {
     const second = await bookWithScheduling({
       tenantId,
       phone: '+15551110002',
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T15:00:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T15:00:00Z',
       requiredSkills: ['brakes'],
     });
 
@@ -497,13 +506,18 @@ describe('Skill + resource matching — error-code matrix', () => {
 
     const tenantId = await createTenant(root, 'Demo Tenant', 'ai-platform');
     const roomId = await createResourceWithCapabilities(root, tenantId, 'Meeting Room', []);
+    // Somebody on shift, so the FIRST booking can land at all (an appointment is
+    // with somebody — 20260909210000). The catch-all under test is the second
+    // caller finding the only ROOM taken, which this does not change.
+    const hostId = await createEmployee(root, tenantId, 'Demo Host');
+    await createScheduleEntry(root, tenantId, hostId, '2030-04-10', '00:00', '23:59');
 
     // Book the only room first
     const first = await bookWithScheduling({
       tenantId,
       phone: '+15551112221',
-      startTime: '2026-04-15T15:00:00Z',
-      endTime: '2026-04-15T15:30:00Z',
+      startTime: '2030-04-10T15:00:00Z',
+      endTime: '2030-04-10T15:30:00Z',
     });
     expect(first.success).toBe(true);
     expect(first.resource_id).toBe(roomId);
@@ -512,8 +526,8 @@ describe('Skill + resource matching — error-code matrix', () => {
     const second = await bookWithScheduling({
       tenantId,
       phone: '+15551112222',
-      startTime: '2026-04-15T15:00:00Z',
-      endTime: '2026-04-15T15:30:00Z',
+      startTime: '2030-04-10T15:00:00Z',
+      endTime: '2030-04-10T15:30:00Z',
     });
 
     expect(second.success).toBe(false);
@@ -535,8 +549,8 @@ describe('Skill + resource matching — error-code matrix', () => {
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T14:30:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T14:30:00Z',
       requiredSkills: [], // empty triggers the no-skill find path
       requiredCapabilities: ['lift'], // but capability is required
     });
@@ -568,19 +582,19 @@ describe('Skill + resource matching — cross-template guards', () => {
 
     // Salon has a 'color' stylist
     const stylistId = await createEmployee(root, salonId, 'Color Carla', ['color']);
-    await createScheduleEntry(root, salonId, stylistId, '2026-04-15', '09:00', '18:00');
+    await createScheduleEntry(root, salonId, stylistId, '2030-04-10', '09:00', '18:00');
     await createResourceWithCapabilities(root, salonId, 'Chair 1', []);
 
     // Auto shop has NO 'color' employee (doesn't do paint)
     await createResourceWithCapabilities(root, autoId, 'Bay 1', []);
     const techId = await createEmployee(root, autoId, 'Brake Bob', ['brakes']);
-    await createScheduleEntry(root, autoId, techId, '2026-04-15', '08:00', '17:00');
+    await createScheduleEntry(root, autoId, techId, '2030-04-10', '08:00', '17:00');
 
     // Auto shop tries to book a 'color' job — must NOT pull Carla from the salon
     const result = await bookWithScheduling({
       tenantId: autoId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T15:00:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T15:00:00Z',
       requiredSkills: ['color'],
     });
 
@@ -606,12 +620,12 @@ describe('Skill + resource matching — cross-template guards', () => {
     const tenantId = await createTenant(root, 'ExactMatch Salon', 'salon');
     await createResourceWithCapabilities(root, tenantId, 'Chair 1', []);
     const stylistId = await createEmployee(root, tenantId, 'Compound Cathy', ['haircut']); // not 'cut'
-    await createScheduleEntry(root, tenantId, stylistId, '2026-04-15', '09:00', '18:00');
+    await createScheduleEntry(root, tenantId, stylistId, '2030-04-10', '09:00', '18:00');
 
     const result = await bookWithScheduling({
       tenantId,
-      startTime: '2026-04-15T14:00:00Z',
-      endTime: '2026-04-15T14:30:00Z',
+      startTime: '2030-04-10T14:00:00Z',
+      endTime: '2030-04-10T14:30:00Z',
       requiredSkills: ['cut'], // not 'haircut'
     });
 

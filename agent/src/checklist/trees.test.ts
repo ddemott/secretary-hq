@@ -97,6 +97,7 @@ describe('library integrity', () => {
       persona: 'You are Chris, the AI receptionist for Thinking Hammer.',
       runtime: {
         currentDate: 'Tuesday, July 21, 2026',
+        currentTime: '3:00 PM',
         timezone: 'America/Chicago',
         businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
         bookableThrough: 'Friday, August 15, 2026',

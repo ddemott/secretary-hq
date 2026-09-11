@@ -149,6 +149,18 @@ export const BookWithSchedulingSchema = z.object({
     preferredResourceId: z.string().optional(),
   }),
   window: z.object({ from: z.string(), to: z.string() }),
+  // WHO THE CALLER ASKED TO SEE, in their own words ("Jane", "Dale", "the guy I
+  // spoke to last time" — the model passes what it heard, not an id).
+  //
+  // Optional, and when present it is CHECKED, not trusted: the route resolves it
+  // against the tenant's live active employees and refuses the booking if nobody
+  // by that name works there. Before this existed the tool had no person
+  // parameter at all — it passed NULL for p_preferred_employee_id — so a caller
+  // could ask for a person who does not exist, the agent could confirm "with
+  // Jane", and the RPC would quietly assign whoever was free. The appointment was
+  // right and the sentence was a lie (2026-07-27: "Jane" was STT for "Dale", the
+  // only person there, and the agent adopted the name unchallenged).
+  with_person: z.string().min(1).optional(),
   // The caller's answer to "would you like a text reminder, and how far ahead?"
   // Absent/null = they weren't asked or declined → no custom reminder is seeded
   // (the seeder falls back to their stored preference, then to the standard

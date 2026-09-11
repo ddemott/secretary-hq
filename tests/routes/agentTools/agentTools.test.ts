@@ -2460,6 +2460,45 @@ describe('agentTools /scheduling-options', () => {
   });
 });
 
+/**
+ * The mocked pool is STRICTLY POSITIONAL, and /book-with-scheduling runs a long
+ * fixed sequence before it reaches the RPC. Measured 2026-09-09:
+ *
+ *   0 customer SELECT · 1 name backfill UPDATE · 2 roster (only when with_person
+ *   is passed) · 3-8 service resolution (catalog, embedding refresh,
+ *   match_service_by_intent, fallbacks) · 9 buffer · 10 timezone · 11 duplicate
+ *   check · 12 book_with_scheduling_atomic
+ *
+ * Counting blanks by hand in each test is how a test ends up asserting against
+ * `{rows: []}` and passing for the wrong reason, so build the array here.
+ */
+function bookingRpcResponses(opts: {
+  roster?: { employee_id: string; name: string }[];
+  rpc: Record<string, unknown>;
+}) {
+  // A REAL service row on the first catalog query keeps the path SHORT and
+  // deterministic: resolveServiceForBooking stops there instead of walking the
+  // embedding refresh / semantic match / fallback chain, whose length depends on
+  // what each step returns. That data-dependence is why a fixed pad of blanks
+  // silently drifts (it did, on the first attempt at these tests).
+  const service = {
+    rows: [
+      { service_id: '77777777-8888-4999-8aaa-bbbbbbbbbbbb', name: 'Meeting', duration_minutes: 30 },
+    ],
+  };
+  const rows: { rows: unknown[] }[] = [
+    { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] }, // customer SELECT
+    { rows: [] }, // name backfill UPDATE
+  ];
+  if (opts.roster) rows.push({ rows: opts.roster }); // roster (only with with_person)
+  rows.push(service); // service catalog match
+  rows.push({ rows: [{ default_buffer_minutes: 0 }] }); // tenant buffer
+  rows.push({ rows: [{ timezone: 'America/Chicago' }] }); // tenant timezone
+  rows.push({ rows: [] }); // same-day duplicate check → none
+  rows.push({ rows: [opts.rpc] }); // book_with_scheduling_atomic
+  return rows;
+}
+
 describe('agentTools /book-with-scheduling', () => {
   it('SAD: a second booking for the SAME DAY on a LATER CALL is refused, with the one they have', async () => {
     // WHO: Jaya, 2026-07-27 (CALL_IMPROVEMENTS.md #9/#10). She booked 1:00 PM
@@ -2757,6 +2796,199 @@ describe('agentTools /book-with-scheduling', () => {
     });
     expect(res.json().error_code).toBe('OFF_GRID_TIME');
     expect(queries, 'rejected before any DB statement ran').toHaveLength(0);
+  });
+
+  it('SAD: a caller asking for someone who does not work there is REFUSED, not silently reassigned', async () => {
+    // WHO: Dale, 2026-09-09 — "when setting up a meeting make sure the person works
+    //      at the company."
+    // WHAT: with_person is resolved against live active employees BEFORE the RPC.
+    //      No match → NO_SUCH_EMPLOYEE, the real roster handed back, and the
+    //      booking RPC is never called.
+    // WHERE: the roster check in book-with-scheduling (scheduling.ts).
+    // WHEN: any booking where the caller named a person.
+    // WHY: the tool had NO person parameter at all — it passed null for
+    //      p_preferred_employee_id — so a caller could ask for "Jane", the agent
+    //      could confirm "with Jane", and the RPC would assign whoever was free.
+    //      The appointment was right and the sentence was a lie (2026-07-27:
+    //      "Jane" was STT for "Dale", the only employee). The prompt already
+    //      forbade this; a prompt sentence is a request, host code is a guarantee.
+    const { app, queries } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        { rows: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Dale DeMott' }] },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'Jane',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.error_code).toBe('NO_SUCH_EMPLOYEE');
+    expect(body.roster).toEqual(['Dale']);
+    // The exact sentence Dale asked for, handed to the model to speak.
+    expect(body.error).toContain(`Jane doesn't work here. Did you mean someone else?`);
+    // And the correction it should offer instead of inventing one.
+    expect(body.error).toContain('Did you mean Dale?');
+    // The booking RPC must never have run.
+    expect(queries.some((q) => q.text.includes('book_with_scheduling_atomic'))).toBe(false);
+  });
+
+  it('HAPPY: a caller asking for someone who DOES work there books, bound to that person', async () => {
+    // First-name match, case-insensitive — what a caller actually says.
+    const { app, queries } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        { rows: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Dale DeMott' }] },
+        { rows: [] },
+        {
+          rows: [
+            {
+              success: true,
+              appointment_id: '99999999-8888-4777-8666-555555555555',
+              start_time: '2026-09-10T18:00:00.000Z',
+              end_time: '2026-09-10T18:30:00.000Z',
+              employee_name: 'Dale DeMott',
+            },
+          ],
+        },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'dale',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().error_code).not.toBe('NO_SUCH_EMPLOYEE');
+    // The resolved employee id is bound as the preferred employee, so a real
+    // person who is off shift fails EMPLOYEE_NOT_SCHEDULED — a truthful refusal —
+    // rather than being silently swapped for whoever is free.
+    const rpcCall = queries.find((q) => q.text.includes('book_with_scheduling_atomic'));
+    expect(rpcCall, 'the booking RPC ran').toBeDefined();
+    // p_preferred_employee_id is the 14th positional parameter.
+    expect(rpcCall?.params).toContain('aaaaaaaa-1111-4222-8333-444444444444');
+  });
+
+  it('SAD: a person who WORKS there but is off shift is refused BY NAME', async () => {
+    // WHO: Dale's question, 2026-09-09 — "what happens when you try to book
+    //      someone who is not available but they do work there?"
+    // WHAT: measured answer was: refused (good, and never substituted) with the
+    //      RPC's generic "No employee available during requested time" (bad).
+    // WHERE: the refusal branch of book-with-scheduling.
+    // WHEN: any booking naming a person who is off shift for that window.
+    // WHY: read out to a caller who asked for Ada, "no employee available" is
+    //      about our search, not about Ada. The honest sentence is "Ada isn't
+    //      working then" — same wrong-reason class as saying "fully booked" when
+    //      the day had simply ended.
+    const { app } = buildApp({
+      queryResponses: bookingRpcResponses({
+        roster: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Ada Works' }],
+        rpc: {
+          success: false,
+          error_message: 'No employee available during requested time',
+          error_code: 'EMPLOYEE_NOT_SCHEDULED',
+        },
+      }),
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Vera Caller',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-11T20:00:00', to: '2026-09-11T20:30:00' },
+      with_person: 'Ada',
+    });
+    const body = res.json();
+    expect(body.success).toBe(false);
+    expect(body.requested_person).toBe('Ada');
+    expect(body.error).toContain('Ada is not working at that time');
+    expect(body.error).not.toContain('No employee available during requested time');
+  });
+
+  it('SAD: a person who is BUSY is refused as busy, not as "no availability"', async () => {
+    // "No available resource/employee combination found" sounds like the whole
+    // business is full. The caller asked for one person who has one conflict.
+    const { app } = buildApp({
+      queryResponses: bookingRpcResponses({
+        roster: [{ employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Ada Works' }],
+        rpc: {
+          success: false,
+          error_message: 'No available resource/employee combination found',
+          error_code: 'NO_AVAILABILITY',
+        },
+      }),
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Vera Caller',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-11T14:00:00', to: '2026-09-11T14:30:00' },
+      with_person: 'Ada',
+    });
+    expect(res.json().error).toContain('Ada is already booked at that time');
+    expect(res.json().error).toContain('not "no availability"');
+  });
+
+  it('a refusal with NO person named keeps the original RPC message', async () => {
+    // The rewrite must only fire when the caller actually named someone; a plain
+    // "book me next Tuesday" failure should still read as the RPC described it.
+    const { app } = buildApp({
+      queryResponses: bookingRpcResponses({
+        rpc: {
+          success: false,
+          error_message: 'No employee available during requested time',
+          error_code: 'EMPLOYEE_NOT_SCHEDULED',
+        },
+      }),
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Vera Caller',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-11T20:00:00', to: '2026-09-11T20:30:00' },
+    });
+    expect(res.json().error).toContain('No employee available during requested time');
+    expect(res.json().requested_person).toBeUndefined();
+  });
+
+  it('SAD: two people by the same name is refused, not guessed', async () => {
+    // Picking one would rebuild the exact defect this closes: a confident
+    // sentence about the wrong person.
+    const { app } = buildApp({
+      queryResponses: [
+        { rows: [{ customer_id: '11111111-2222-4333-8444-555555555555' }] },
+        { rows: [] },
+        {
+          rows: [
+            { employee_id: 'aaaaaaaa-1111-4222-8333-444444444444', name: 'Chris Bell' },
+            { employee_id: 'bbbbbbbb-1111-4222-8333-444444444444', name: 'Chris Dodd' },
+          ],
+        },
+      ],
+    });
+    const res = await post(app, '/agent-tools/book-with-scheduling', {
+      tenant_id: TENANT_ID,
+      phone: '5551234567',
+      name: 'Camille',
+      requirements: { serviceType: 'a meeting' },
+      window: { from: '2026-09-10T13:00:00', to: '2026-09-10T13:30:00' },
+      with_person: 'Chris',
+    });
+    expect(res.json().error_code).toBe('AMBIGUOUS_EMPLOYEE');
+    expect(res.json().error).toContain('Chris Bell, Chris Dodd');
   });
 
   it('HAPPY: RPC returns success with resource + employee names', async () => {
@@ -3579,7 +3811,10 @@ describe('agentTools /available-slots', () => {
     // The shifts + appointments query is second, keyed by tenant + date.
     // $3 is the caller's normalized phone for attributing a blocking
     // appointment back to them (2026-07-31); null when the agent sent none.
-    expect(queries[1].params).toEqual([TENANT_ID, '2030-01-01', null]);
+    // $4 is the resolved service: only shifts of people the skill map links to
+    // it count as openings (2026-09-11), matching what the booking RPC enforces.
+    expect(queries[1].params).toEqual([TENANT_ID, '2030-01-01', null, 'svc-oil-0001']);
+    expect(queries[1].text).toMatch(/service_employee[\s\S]*\$4::uuid/);
   });
 
   it('HAPPY: unmatched service_type falls through to the tenant default', async () => {

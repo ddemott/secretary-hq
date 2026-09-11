@@ -62,6 +62,12 @@ const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const AGENT_BASE = (process.env.SIM_QT_BASE_URL || '').replace(/\/+$/, '');
 const AGENT_URL = AGENT_BASE ? `${AGENT_BASE}/chat/completions` : OPENAI_URL;
 const AGENT_KEY = process.env.SIM_QT_API_KEY || API_KEY;
+// The CALLER can move too, for when the OpenAI account is unavailable — set
+// SIM_CALLER_BASE_URL + SIM_CALLER_API_KEY. Results then measure a different
+// caller, so say so when reporting them.
+const CALLER_BASE = (process.env.SIM_CALLER_BASE_URL || '').replace(/\/+$/, '');
+const CALLER_URL = CALLER_BASE ? `${CALLER_BASE}/chat/completions` : OPENAI_URL;
+const CALLER_KEY = process.env.SIM_CALLER_API_KEY || API_KEY;
 const CASE_FILTER = process.env.SIM_CASE || '';
 const BUSINESS_TYPES = (process.env.SIM_BUSINESS || '')
   .split(',')
@@ -96,11 +102,13 @@ async function openai(
   tools?: { type: 'function'; function: unknown }[]
 ): Promise<{ content: string | null; toolCalls: ToolCall[] }> {
   // The AGENT model (passed AGENT_MODEL) uses the configurable endpoint; every
-  // other call (the caller model) stays on OpenAI. Route by which model this is.
+  // other call (the caller model) uses the caller endpoint, OpenAI by default.
+  // Route by which model this is.
   const isAgent = model === AGENT_MODEL;
-  const url = isAgent ? AGENT_URL : OPENAI_URL;
-  const key = isAgent ? AGENT_KEY : API_KEY;
-  const who = isAgent && AGENT_BASE ? `agent-provider(${new URL(AGENT_URL).host})` : 'OpenAI';
+  const url = isAgent ? AGENT_URL : CALLER_URL;
+  const key = isAgent ? AGENT_KEY : CALLER_KEY;
+  const base = isAgent ? AGENT_BASE : CALLER_BASE;
+  const who = base ? `${isAgent ? 'agent' : 'caller'}-provider(${new URL(url).host})` : 'OpenAI';
   for (let attempt = 1; attempt <= 5; attempt++) {
     const res = await fetch(url, {
       method: 'POST',
@@ -184,8 +192,8 @@ function makeFakeBackend(): Record<string, Fake> {
       JSON.stringify({
         success: true,
         appointment_id: 'appt_sim_1',
-        booked_time: 'Tuesday, July 22 at 1:15 PM',
-        instruction: 'Booked for Tuesday, July 22 at 1:15 PM. Confirm THIS exact time.',
+        booked_time: 'Wednesday, July 22 at 1:15 PM',
+        instruction: 'Booked for Wednesday, July 22 at 1:15 PM. Confirm THIS exact time.',
       })
     ),
     get_available_slots: fake(
@@ -193,7 +201,7 @@ function makeFakeBackend(): Record<string, Fake> {
       { day: str, requested_time: str },
       JSON.stringify({
         success: true,
-        open_times: ['Tuesday, July 22 at 1:15 PM', '2:45 PM', '4:30 PM'],
+        open_times: ['Wednesday, July 22 at 1:15 PM', '2:45 PM', '4:30 PM'],
       }),
       ['requested_time']
     ),
@@ -245,14 +253,10 @@ function makeFakeBackend(): Record<string, Fake> {
       {},
       JSON.stringify({ success: true, appointment_id: 'appt_sim_9' })
     ),
-    get_my_appointments: fake(
-      'Look up the caller’s existing appointments.',
-      {},
-      JSON.stringify({
-        success: true,
-        appointments: [{ appointment_id: 'appt_sim_9', start: 'Thursday 2 PM' }],
-      })
-    ),
+    // (A second `get_my_appointments` sat here — same key, so it silently
+    // replaced the empty default above and handed EVERY scenario's caller a
+    // "Thursday 2 PM" booking they never made. Removed 2026-09-11; a scenario
+    // that needs existing bookings passes them via the myAppointments option.)
   };
 }
 
@@ -408,6 +412,11 @@ async function runCall(
       // that contradicted itself about what day it was; it resolved the
       // contradiction by inventing a third answer ("Thursday at 2 PM").
       currentDate: 'Tuesday, July 21, 2026',
+      // Required on CallRuntime since the clock fix (a9816df). This script is
+      // not typechecked, so it was missing and the model read the prompt's
+      // "RIGHT NOW it is undefined" aloud (KNOWN CALLER HEADER, 2026-09-11).
+      // Morning, so the afternoon slots the fakes offer are genuinely ahead.
+      currentTime: '10:00 AM',
       timezone: 'America/Chicago',
       businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
       bookableThrough: 'Friday, August 15, 2026',
@@ -807,7 +816,7 @@ give your name or number — if asked, say you're just curious.`,
       opener: "My laptop won't boot after an update — can someone take a look at it?",
       facts: `Your name: Pat Nguyen. You are calling from your own phone (they may already
 have the number — do NOT recite it unless asked). Dropping the laptop off is fine if
-they say that's how it works; Tuesday afternoon works. Any offered Tuesday time is
+they say that's how it works; Wednesday afternoon works. Any offered Wednesday time is
 fine — take the first one. Your data is backed up to OneDrive, nothing irreplaceable
 on the machine.`,
       behaviour: 'Easygoing; picks the first offered time.',
@@ -934,10 +943,13 @@ the first time they suggest.`,
       JSON.stringify({
         success: true,
         appointment_id: 'appt_sim_mech',
-        booked_time: 'Tuesday, July 21 at 1:15 PM',
+        // Matches the shared fake availability (Wednesday, July 22 at 1:15 PM).
+        // It said Tuesday, July 21 — a day the caller was never offered — and
+        // the agent confirmed a date it had not proposed.
+        booked_time: 'Wednesday, July 22 at 1:15 PM',
         what_happens_next: 'Dale will call you at this number at the booked time.',
         instruction:
-          'Booked for Tuesday, July 21 at 1:15 PM. Confirm THIS exact time. Then say this ' +
+          'Booked for Wednesday, July 22 at 1:15 PM. Confirm THIS exact time. Then say this ' +
           'VERBATIM: "Dale will call you at this number at the booked time."',
       }),
     ],
@@ -1369,12 +1381,21 @@ async function main(): Promise<void> {
             console.log(`${C.d}    ${t.who}: ${t.text}${C.x}`);
         }
       } catch (err) {
-        // NOT a failure — the scenario never ran. Counting an API outage as a
-        // behavioural fail is what made the 2026-08-15 run read "16/22" when
-        // one of the six was a real defect and five were rate limits. Same fix
-        // as sim-offscript: grade what was asked, and exit 2 for the rest.
-        errored++;
-        console.log(`${C.r}  ✗ ERROR ${String(err)}${C.x}`);
+        // An API outage is NOT a failure — the scenario never ran. Counting one
+        // as a behavioural fail is what made the 2026-08-15 run read "16/22"
+        // when one of the six was a real defect and five were rate limits. Same
+        // fix as sim-offscript: grade what was asked, and exit 2 for the rest.
+        // A CODE crash is the opposite: the scenario ran and something threw.
+        // Filing it under "API error" hid a TypeError on 2026-09-11, so it is a
+        // FAIL, with the stack.
+        const msg = String(err);
+        if (/unreachable after retries|^Error: (OpenAI|agent-provider|caller-provider)/.test(msg)) {
+          errored++;
+          console.log(`${C.r}  ✗ ERROR ${msg}${C.x}`);
+        } else {
+          fail++;
+          console.log(`${C.r}  ✗ FAIL (crash) ${err instanceof Error ? err.stack : msg}${C.x}`);
+        }
       }
     }
   }

@@ -308,6 +308,28 @@ describe('the work-direction gate — declared axis checked against the selectio
     expect(tracker.selectedTrees()).toContain('job');
   });
 
+  it('SAD: omitted trees gets a refusal that names the fix, not a TypeError', async () => {
+    // WHO: purpose selector | WHAT: set_purpose called with no `trees`
+    // WHY (2026-09-11 sim JOB-DIRECT): the parameters are a plain JSON schema, and
+    //      LiveKit validates only Zod schemas — so a model that omits a "required"
+    //      field reaches execute() anyway. `args.trees.includes` threw, the model
+    //      got an opaque tool error, and the purpose was never set.
+    const { toolkit, tracker } = makeKit();
+    const before = tracker.selectedTrees();
+    const out = await call(toolkit.selectedTools(), 'set_purpose', {
+      work_direction: 'neither_or_unclear',
+    });
+    expect(out).toMatch(/trees/);
+    expect(tracker.selectedTrees()).toEqual(before);
+  });
+
+  it('HAPPY: wrong_trees alone removes a tree even with trees omitted', async () => {
+    const { toolkit, tracker } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'booking'] });
+    await call(toolkit.selectedTools(), 'set_purpose', { wrong_trees: ['booking'] });
+    expect(tracker.selectedTrees()).not.toContain('booking');
+  });
+
   it('work_direction copy lists position and contract as owner-gets-paid work', () => {
     // WHO: purpose selector | WHAT: the enum description on set_purpose
     // WHY: last call said "position"; the schema the model reads must name it.
