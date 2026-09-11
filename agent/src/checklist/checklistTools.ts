@@ -1436,6 +1436,27 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         'next (get_available_slots). Nothing is booked until book_with_scheduling ' +
         'returns success — never say "booked" before it.';
     }
+    if (args.node_id === 'meeting_offer' && args.value === 'details_only') {
+      // Inverse of the wants_meeting escalation above. Found 2026-09-11
+      // (sim-questiontree JOB-DIRECT): "talk to someone about a job
+      // opportunity for Dale" selected identity + job + booking up front;
+      // the caller then answered the offer "just pass the details along"
+      // (details_only), booking stayed selected with nothing on it ever
+      // answered, and the goodbye gate refused finish_call forever — one run
+      // looped "You're welcome! ... Take care!" with no finish_call at all.
+      // The caller's own "no meeting" is the clearest signal there is; the
+      // gate must never hold a caller who has said no. Guarded on the
+      // booking action NOT already being done — a meeting already booked
+      // earlier in the same call (by whatever route) is real progress and
+      // must never be un-booked by a later answer to an unrelated question.
+      if (tracker.selectedTrees().includes('booking') && tracker.status('book') !== 'done') {
+        tracker.deselect('booking');
+        deps.onSelectionChanged();
+        directive +=
+          "\n\nNo meeting — booking is now OFF your checklist. Don't offer times or ask " +
+          'booking questions; just finish what is still open and close the call.';
+      }
+    }
     if (args.node_id === CALLER_NAME && args.value && !args.declined) {
       // 2026-07-21 live call: the caller gave his name and never heard it again
       // until the goodbye. A receptionist who learns a name USES it — nudge at

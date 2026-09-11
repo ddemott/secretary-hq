@@ -83,20 +83,24 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       row; SAD: a day shift never gains cross-day coverage) and
       `tests/services/availability-search.test.ts` (suggest-side parity, post-midnight-only search
       window).
-- [ ] **(code)** **A caller who declines the meeting can leave the call unable to END.** Found
-      2026-09-11 in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no grader
-      saw it), and on `main`. The opener "talk to someone about a job opportunity for Dale"
+- [x] ~~**A caller who declines the meeting can leave the call unable to END.**~~ — **FIXED
+      2026-09-11.** Found in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no
+      grader saw it), on `main`. The opener "talk to someone about a job opportunity for Dale"
       selected `identity + job + booking`; the caller then answered the meeting offer "just
       pass the details along" (`details_only`). Booking stayed selected with nothing left to do,
       so the goodbye gate refused `finish_call` ("Not yet — the checklist is not complete"),
       while the agent itself told the caller "there's no appointment to book". One run ended in
       a goodbye loop ("You're welcome! … Take care!" / "Thanks, Mike. If you need anything
-      else…") with no `finish_call` at all. `checklistTools.ts:1406` turns `wants_meeting` into
-      `select(['booking'])`; nothing does the inverse. Fix in host code: `details_only` (the
-      caller's own "no meeting") deselects `booking` when booking was selected only for the
-      meeting — the same shape as the `meeting_offer → booking` escalation, and the same rule
-      as the goodbye gate: a structural guarantee, not a prompt sentence. The gate must never
-      hold a caller who has said no.
+      else…") with no `finish_call` at all. `checklistTools.ts` turned `wants_meeting` into
+      `select(['booking'])`; nothing did the inverse. Added the missing `details_only` handler:
+      deselects `booking` (the caller's own "no meeting" is the clearest signal there is),
+      guarded on the booking action not already being `done` — a meeting booked earlier in the
+      call by whatever route is real progress and is never un-booked by a later, unrelated
+      answer. Same structural-guarantee shape as the `meeting_offer → booking` escalation, in
+      reverse. New tests in `checklistTools.test.ts`: the goodbye loop reproduced then fixed end
+      to end (select booking directly, decline the offer, finish the intake, `finish_call`
+      actually closes), plus a guard test pinning that an already-booked meeting survives a
+      later `details_only`.
 - [ ] **(code)** **An urgent message can be saved as ordinary while the caller is told "urgent".**
       Found 2026-09-11 in `sim-questiontree` URGENT CALLER (graded FAIL, correctly), and on
       `main`: the caller said "urgently" in her opener and "It's really urgent" again; the model
