@@ -101,17 +101,22 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       to end (select booking directly, decline the offer, finish the intake, `finish_call`
       actually closes), plus a guard test pinning that an already-booked meeting survives a
       later `details_only`.
-- [ ] **(code)** **An urgent message can be saved as ordinary while the caller is told "urgent".**
-      Found 2026-09-11 in `sim-questiontree` URGENT CALLER (graded FAIL, correctly), and on
-      `main`: the caller said "urgently" in her opener and "It's really urgent" again; the model
-      tried `record_answer("is_urgent")`, was refused (not a checklist node — same unhelpful
-      refusal as the item below), then called `take_message` WITHOUT `is_urgent: true` — and told
-      her "I've saved your urgent message for Dale". The question-tree path has NO urgency
-      handling at all: no node in any tree, no `ACTION_ARG_BACKFILL` entry, no host detection.
-      Migration 20260801020000 says the flag "is set from the caller's own words", but only the
-      model is asked to do it — a prompt request, not a guarantee. Fix in host code: set
-      `is_urgent` from the caller's own urgency words ("urgent", "emergency", "as soon as
-      possible", "right away") when `take_message` fires, raise-only like the DB column.
+- [x] ~~**An urgent message can be saved as ordinary while the caller is told "urgent".**~~ —
+      **FIXED 2026-09-11.** Found in `sim-questiontree` URGENT CALLER (graded FAIL, correctly),
+      on `main`: the caller said "urgently" in her opener and "It's really urgent" again; the
+      model tried `record_answer("is_urgent")`, was refused (not a checklist node), then called
+      `take_message` WITHOUT `is_urgent: true` — and told her "I've saved your urgent message for
+      Dale". The question-tree path had NO urgency handling at all: no node in any tree, no
+      `ACTION_ARG_BACKFILL` entry, no host detection. Migration 20260801020000 says the flag "is
+      set from the caller's own words", but only the model was ever asked to do it — a prompt
+      request, not a guarantee. New `messageSoundsUrgent()` matches "urgent(ly)", "emergency",
+      "as soon as possible"/"ASAP", "right away" against the FINAL message text (post-backfill,
+      so it catches `message_body` even when the model never retyped it) and `buildActionArgs`
+      applies it to every `take_message` call — RAISE-ONLY: it can only ever flip `is_urgent` to
+      `true`, never override an explicit `false` from the model, matching the DB column's own
+      raise-only contract. New tests in `checklistTools.test.ts`: the matcher itself, the raise
+      when the message text says urgent, the no-op when it doesn't, and the raise-only guard
+      against an explicit `is_urgent: true`.
 - [ ] **(code)** **A wrong node id makes the agent RE-ASK the caller instead of retrying.** Found
       2026-09-11 reading `sim-questiontree` transcripts, and on `main`. ONE-BREATH ("everything
       volunteered in the opener, nothing re-asked") was graded PASS while the transcript shows
