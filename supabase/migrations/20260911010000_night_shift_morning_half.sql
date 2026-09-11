@@ -280,6 +280,12 @@ BEGIN
                 AND es.tenant_id = p_tenant_id
                 AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                 AND es.is_off = false
+                -- Tighten before the function call (Copilot review, PR #412): a plain
+                -- day shift dated yesterday can never cover today
+                -- (the coverage function already says so), so exclude it here
+                -- rather than pulling every previous-day row into the join just to
+                -- discard it inside the function, for every slot/employee pair.
+                AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                 AND public.shift_row_covers_booking(
                         es.shift_date, v_shift_date, es.start_time, es.end_time,
                         v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -377,6 +383,12 @@ BEGIN
                  AND es.tenant_id = p_tenant_id
                  AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                  AND es.is_off = false
+                 -- Tighten before the function call (Copilot review, PR #412): a plain
+                 -- day shift dated yesterday can never cover today
+                 -- (the coverage function already says so), so exclude it here
+                 -- rather than pulling every previous-day row into the join just to
+                 -- discard it inside the function, for every slot/employee pair.
+                 AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                  AND public.shift_row_covers_booking(
                          es.shift_date, v_shift_date, es.start_time, es.end_time,
                          v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -443,6 +455,12 @@ BEGIN
              WHERE es.tenant_id = p_tenant_id
                AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                AND es.is_off = false
+               -- Tighten before the function call (Copilot review, PR #412): a plain
+               -- day shift dated yesterday can never cover today
+               -- (the coverage function already says so), so exclude it here
+               -- rather than pulling every previous-day row into the join just to
+               -- discard it inside the function, for every slot/employee pair.
+               AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                AND public.shift_row_covers_booking(
                        es.shift_date, v_shift_date, es.start_time, es.end_time,
                        v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -493,6 +511,12 @@ BEGIN
                     AND es.tenant_id = p_tenant_id
                     AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                     AND es.is_off = false
+                    -- Tighten before the function call (Copilot review, PR #412): a plain
+                    -- day shift dated yesterday can never cover today
+                    -- (the coverage function already says so), so exclude it here
+                    -- rather than pulling every previous-day row into the join just to
+                    -- discard it inside the function, for every slot/employee pair.
+                    AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                     AND public.shift_row_covers_booking(
                             es.shift_date, v_shift_date, es.start_time, es.end_time,
                             v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -561,6 +585,12 @@ BEGIN
                    AND es.tenant_id = p_tenant_id
                    AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                    AND es.is_off = false
+                   -- Tighten before the function call (Copilot review, PR #412): a plain
+                   -- day shift dated yesterday can never cover today
+                   -- (the coverage function already says so), so exclude it here
+                   -- rather than pulling every previous-day row into the join just to
+                   -- discard it inside the function, for every slot/employee pair.
+                   AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                    AND public.shift_row_covers_booking(
                            es.shift_date, v_shift_date, es.start_time, es.end_time,
                            v_start_time_of_day, v_end_time_of_day, v_end_wraps)

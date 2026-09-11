@@ -209,6 +209,16 @@ export async function findNextAvailableSlots(
        -- actually reaches this slot; this IN just stops excluding it upfront.
        AND es.shift_date IN ((ss.s AT TIME ZONE $5)::date, (ss.s AT TIME ZONE $5)::date - 1)
        AND es.is_off = false
+       -- Tighten before the function call (Copilot review, PR #412): a plain
+       -- day shift dated yesterday can never cover today (the coverage
+       -- function already says so), so exclude it here rather than pulling
+       -- every previous-day row into the join just to discard it inside the
+       -- function, for every slot/employee pair — this join runs once per
+       -- 15-minute slot across up to a 7-day horizon.
+       AND (
+             es.shift_date = (ss.s AT TIME ZONE $5)::date
+             OR es.end_time < es.start_time
+           )
        -- SHIFT COVERAGE IS ONE FUNCTION, SHARED WITH THE BOOKING RPC.
        -- This clause used to spell the comparison out, and the RPC spelled the
        -- same thing out three more times. Suggest and enforce MUST agree — when

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict nIxT3SE4UbhQu5FMMvc2RGIoIrwbHwP7LGectzwAUeiwpV3cQo9eLeY9YYbXFum
+\restrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -654,6 +654,12 @@ BEGIN
                 AND es.tenant_id = p_tenant_id
                 AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                 AND es.is_off = false
+                -- Tighten before the function call (Copilot review, PR #412): a plain
+                -- day shift dated yesterday can never cover today
+                -- (the coverage function already says so), so exclude it here
+                -- rather than pulling every previous-day row into the join just to
+                -- discard it inside the function, for every slot/employee pair.
+                AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                 AND public.shift_row_covers_booking(
                         es.shift_date, v_shift_date, es.start_time, es.end_time,
                         v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -751,6 +757,12 @@ BEGIN
                  AND es.tenant_id = p_tenant_id
                  AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                  AND es.is_off = false
+                 -- Tighten before the function call (Copilot review, PR #412): a plain
+                 -- day shift dated yesterday can never cover today
+                 -- (the coverage function already says so), so exclude it here
+                 -- rather than pulling every previous-day row into the join just to
+                 -- discard it inside the function, for every slot/employee pair.
+                 AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                  AND public.shift_row_covers_booking(
                          es.shift_date, v_shift_date, es.start_time, es.end_time,
                          v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -817,6 +829,12 @@ BEGIN
              WHERE es.tenant_id = p_tenant_id
                AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                AND es.is_off = false
+               -- Tighten before the function call (Copilot review, PR #412): a plain
+               -- day shift dated yesterday can never cover today
+               -- (the coverage function already says so), so exclude it here
+               -- rather than pulling every previous-day row into the join just to
+               -- discard it inside the function, for every slot/employee pair.
+               AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                AND public.shift_row_covers_booking(
                        es.shift_date, v_shift_date, es.start_time, es.end_time,
                        v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -867,6 +885,12 @@ BEGIN
                     AND es.tenant_id = p_tenant_id
                     AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                     AND es.is_off = false
+                    -- Tighten before the function call (Copilot review, PR #412): a plain
+                    -- day shift dated yesterday can never cover today
+                    -- (the coverage function already says so), so exclude it here
+                    -- rather than pulling every previous-day row into the join just to
+                    -- discard it inside the function, for every slot/employee pair.
+                    AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                     AND public.shift_row_covers_booking(
                             es.shift_date, v_shift_date, es.start_time, es.end_time,
                             v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -935,6 +959,12 @@ BEGIN
                    AND es.tenant_id = p_tenant_id
                    AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                    AND es.is_off = false
+                   -- Tighten before the function call (Copilot review, PR #412): a plain
+                   -- day shift dated yesterday can never cover today
+                   -- (the coverage function already says so), so exclude it here
+                   -- rather than pulling every previous-day row into the join just to
+                   -- discard it inside the function, for every slot/employee pair.
+                   AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
                    AND public.shift_row_covers_booking(
                            es.shift_date, v_shift_date, es.start_time, es.end_time,
                            v_start_time_of_day, v_end_time_of_day, v_end_wraps)
@@ -6951,5 +6981,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict nIxT3SE4UbhQu5FMMvc2RGIoIrwbHwP7LGectzwAUeiwpV3cQo9eLeY9YYbXFum
+\unrestrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
 
