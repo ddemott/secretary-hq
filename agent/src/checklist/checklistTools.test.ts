@@ -1296,6 +1296,74 @@ describe('meeting_offer (the live-path OFFER_MEETING port)', () => {
     expect(res).toContain('CHECKLIST STATE');
   });
 
+  it('SAD→FIXED: a details-only answer deselects booking, so the caller who said no can hang up', async () => {
+    // WHO: sim-questiontree JOB-DIRECT, 2026-09-11 — "talk to someone about a
+    //      job opportunity for Dale" selected identity + job + booking up
+    //      front; the caller then answered the offer "just pass the details
+    //      along" (details_only). Booking stayed selected with nothing on it
+    //      ever answered, so the goodbye gate refused finish_call forever —
+    //      one run looped "You're welcome! ... Take care!" with no
+    //      finish_call at all.
+    // WHY:  the caller's own "no meeting" is the clearest signal there is —
+    //       the same structural promotion as the wants_meeting escalation
+    //       above, in reverse. The gate must never hold a caller who said no.
+    const { toolkit, tracker, onSelectionChanged, closeCall } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', {
+      trees: ['identity', 'job', 'booking'],
+    });
+    expect(tracker.selectedTrees()).toContain('booking');
+    const res = await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'meeting_offer',
+      value: 'details_only',
+    });
+    expect(tracker.selectedTrees()).not.toContain('booking');
+    expect(onSelectionChanged).toHaveBeenCalled();
+    expect(res).toContain('booking is now OFF your checklist');
+    // Finish the job intake, then the gate must actually open.
+    for (const node_id of [
+      'caller_name',
+      'caller_phone',
+      'callers_company',
+      'hiring_for',
+      'role_description',
+      'employment_type',
+      'work_mode',
+    ]) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, declined: true });
+    }
+    await call(toolkit.selectedTools(), 'capture_job_inquiry', {});
+    const closed = await call(toolkit.selectedTools(), 'finish_call', {});
+    expect(closed).toBe('Call complete.');
+    expect(closeCall).toHaveBeenCalledOnce();
+  });
+
+  it('a details-only answer never un-books a meeting that already succeeded earlier in the call', async () => {
+    // A meeting booked by some other route before the (single, never-repeated)
+    // offer is real progress — a later, unrelated "details_only" recording
+    // must not erase it. (In practice meeting_offer's own wording forbids
+    // asking twice, but the guard must hold regardless of how the tree ended
+    // up both selected and already booked.)
+    const { toolkit, tracker } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', {
+      trees: ['identity', 'job', 'booking'],
+    });
+    for (const [node_id, value] of [
+      ['caller_name', 'Pat'],
+      ['caller_phone', '2624979039'],
+      ['meeting_topic', 'a job opportunity'],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'book_with_scheduling', {});
+    expect(tracker.status('book')).toBe('done');
+    await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'meeting_offer',
+      value: 'details_only',
+    });
+    expect(tracker.selectedTrees()).toContain('booking');
+    expect(tracker.status('book')).toBe('done');
+  });
+
   it('the offer gates the capture — await_tree holds the write until the offer is resolved', async () => {
     // The goodbye gate makes the offer STRUCTURAL: the intake cannot complete
     // (and the call cannot close) with the offer silently skipped.
