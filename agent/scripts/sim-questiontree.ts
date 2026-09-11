@@ -1381,12 +1381,21 @@ async function main(): Promise<void> {
             console.log(`${C.d}    ${t.who}: ${t.text}${C.x}`);
         }
       } catch (err) {
-        // NOT a failure — the scenario never ran. Counting an API outage as a
-        // behavioural fail is what made the 2026-08-15 run read "16/22" when
-        // one of the six was a real defect and five were rate limits. Same fix
-        // as sim-offscript: grade what was asked, and exit 2 for the rest.
-        errored++;
-        console.log(`${C.r}  ✗ ERROR ${String(err)}${C.x}`);
+        // An API outage is NOT a failure — the scenario never ran. Counting one
+        // as a behavioural fail is what made the 2026-08-15 run read "16/22"
+        // when one of the six was a real defect and five were rate limits. Same
+        // fix as sim-offscript: grade what was asked, and exit 2 for the rest.
+        // A CODE crash is the opposite: the scenario ran and something threw.
+        // Filing it under "API error" hid a TypeError on 2026-09-11, so it is a
+        // FAIL, with the stack.
+        const msg = String(err);
+        if (/unreachable after retries|^Error: (OpenAI|agent-provider|caller-provider)/.test(msg)) {
+          errored++;
+          console.log(`${C.r}  ✗ ERROR ${msg}${C.x}`);
+        } else {
+          fail++;
+          console.log(`${C.r}  ✗ FAIL (crash) ${err instanceof Error ? err.stack : msg}${C.x}`);
+        }
       }
     }
   }

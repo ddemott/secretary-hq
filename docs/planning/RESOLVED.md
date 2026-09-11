@@ -39,6 +39,19 @@ every caller a phantom Thursday 2 PM booking, and booked a day the caller was ne
 offered. `sim-questiontree` can now move the CALLER off OpenAI too
 (`SIM_CALLER_BASE_URL` / `SIM_CALLER_API_KEY`).
 
+**`set_purpose` with no `trees` threw a TypeError — on live calls too, not only in the
+sim.** A JOB-DIRECT run crashed with `Cannot read properties of undefined (reading
+'includes')`, and the sim filed it as "API error after retries", so it was never
+counted. The cause is structural: `set_purpose` declares `trees` as `required` in a plain
+JSON schema, and LiveKit (`voice/generation.js`) validates arguments only for ZOD
+schemas — a JSON-schema tool gets the model's raw arguments. So a model that omits
+`trees` reached `trees.includes('job')`; LiveKit caught the throw and handed the model an
+opaque tool error, and the purpose was never set. Now: a missing `trees` is normalised,
+a `wrong_trees`-only call removes the tree as asked, and a call with neither is refused
+with a sentence that names the fix. Repro tests failed with the exact TypeError before
+the fix. The sim also stops hiding crashes: only provider errors count as "never reached
+the model"; a code throw is a FAIL with its stack.
+
 **Found and logged, not fixed** (all on `main`, see `TODO.md`): an urgent message saved
 as ordinary, a declined meeting that leaves the goodbye gate shut, a wrong node id that
 makes the agent re-ask, the morning half of a night shift unbookable, and the dashboard
