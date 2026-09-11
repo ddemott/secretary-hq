@@ -47,10 +47,11 @@ test.beforeAll(async () => {
   const hdr = { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` };
 
   // Create a service so the QuickBook service dropdown has an option.
-  await ctx.post(`${BACKEND_URL}/services/create`, {
+  const svcRes = await ctx.post(`${BACKEND_URL}/services/create`, {
     headers: hdr,
     data: { tenant_id: tid, name: 'Test Service', duration_minutes: 30 },
   });
+  const svcId = (await svcRes.json()).service.service_id as string;
 
   // Seed 1 employee, 1 resource, 1 customer, shifts 1-14 days out.
   const datesAhead: string[] = [];
@@ -59,12 +60,25 @@ test.beforeAll(async () => {
     d.setUTCDate(d.getUTCDate() + i);
     datesAhead.push(d.toISOString().slice(0, 10));
   }
-  await seedBookingScenario(ctx, pool, tok, tid, {
+  const scenario = await seedBookingScenario(ctx, pool, tok, tid, {
     employees: ['Test Tech'],
     resources: ['Bay 1'],
     customer: 'E2E Fixture Customer',
     shiftDates: datesAhead,
     shiftHours: { start: '06:00', end: '20:00' },
+  });
+
+  // Link the service to the seeded employee + resource — STRICT
+  // (20260911000000): book_appointment_atomic refuses a service with no
+  // active service_employee/service_resource link, so the QuickBook flow
+  // needs a real link, not just a same-named service + free-floating staff.
+  await ctx.post(
+    `${BACKEND_URL}/services/${svcId}/employees/${scenario.employeeIds[0]}/assign`,
+    { headers: hdr, data: { tenant_id: tid } }
+  );
+  await ctx.post(`${BACKEND_URL}/services/${svcId}/resources/${scenario.resourceIds[0]}/assign`, {
+    headers: hdr,
+    data: { tenant_id: tid },
   });
 
   await ctx.dispose();
