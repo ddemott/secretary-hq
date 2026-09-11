@@ -656,6 +656,45 @@ describe('findNextAvailableSlots', () => {
       const starts = slots.map((s) => s.start_time);
       expect(starts).toContain(`2030-06-11T04:30:00.000Z`);
     });
+
+    it('HAPPY (20260911010000): the MORNING HALF of a night shift is offered too', async () => {
+      if (!dbAvailable) return;
+      // WHO: same night-shift business, same 23:00-06:00 row dated the
+      //      evening it starts.
+      // WHAT: a search window entirely AFTER local midnight (e.g. 2 AM–4 AM)
+      //       must still surface slots — that window has no employee_schedule
+      //       row of its own; the coverage comes from YESTERDAY's row.
+      // WHY: suggest and enforce must read the same calendar (the 2026-07-17
+      //      midnight-wrap lesson) — book_with_scheduling_atomic gained this
+      //      via shift_row_covers_booking() in the same commit
+      //      (20260911010000); this pins the suggest side of that parity.
+      const tenantId = await createTenant(
+        root,
+        'Night Suggest Morning Co',
+        'auto-repair',
+        'America/Chicago'
+      );
+      await createResource(root, tenantId, 'Bay 1');
+      const emp = await createEmployee(root, tenantId, 'Night Worker', []);
+      const date = '2030-06-10';
+      await createScheduleEntry(root, tenantId, emp, date, '23:00', '06:00');
+
+      const slots = await findNextAvailableSlots(
+        root as unknown as Parameters<typeof findNextAvailableSlots>[0],
+        {
+          tenantId,
+          // 2:00 AM CDT the NEXT calendar day = 07:00Z — searching only the
+          // post-midnight window, which carries no schedule row of its own.
+          fromTime: `2030-06-11T07:00:00.000Z`,
+          durationMinutes: 30,
+          requiredSkills: [],
+          count: 5,
+          searchHorizonHours: 2,
+        }
+      );
+      const starts = slots.map((s) => s.start_time);
+      expect(starts).toContain(`2030-06-11T07:00:00.000Z`);
+    });
   });
 
   describe('TENANT-CLOCK RENDERING (Dale, 2030-07-12): the caller hears THEIR wall-clock', () => {

@@ -60,15 +60,29 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
   - **Confirm recovery** after step 3: no new `errors_total{event="reminder_batch_failed"}`, `reminder_schedules` rows moving past `'scheduled'`, and nothing accumulating in `'sending'`.
   - **The general lesson:** "migrations before merge" assumes the migration is inert until new code uses it. When the RUNNING code already emits the value a constraint blocks, the constraint is a live behavioural gate and relaxing it deploys a change by itself. Ask which side is already emitting the value before choosing the order.
 - Fill real TELNYX_PUBLIC_KEY in .env
-- [ ] **(code)** **The morning half of a night shift can never be booked.** Found 2026-09-11 while
-      testing `20260909210000`, and it is already on `main` — reproduced against HEAD's
-      `book_with_scheduling_atomic` in a rolled-back transaction: an employee scheduled
-      22:00→06:00 every day, a 02:00 slot the next morning → `EMPLOYEE_NOT_SCHEDULED`; 23:00 the
-      same day books fine. Coverage is matched on the SLOT's local date, so a shift that started
-      the previous evening is never consulted for anything after midnight. No live tenant runs
-      night shifts today (Thinking Hammer is day-only), which is why no call has hit it. When
-      fixed, `availabilitySearch.ts` must change in the same commit — suggest and enforce must
-      read the calendar the same way (the 2026-07-17 midnight-wrap lesson).
+- [x] ~~**The morning half of a night shift can never be booked.**~~ — **FIXED 2026-09-11**,
+      migration `20260911010000_night_shift_morning_half.sql`. Coverage was matched on the SLOT's
+      own local date, so a night shift's row (dated the evening it started) was never consulted
+      for anything after midnight — 22:00→06:00 booked fine at 23:00 but refused a 02:00 slot the
+      next morning with `EMPLOYEE_NOT_SCHEDULED`. New `shift_row_covers_booking()` wraps
+      `shift_covers_booking()` and adds the missing case: a row dated YESTERDAY covers TODAY's
+      slot only when it is itself a wrapping night shift (end < start) reaching that far, and
+      today's slot doesn't itself wrap into a third day. Six call sites in
+      `book_with_scheduling_atomic` widened from `es.shift_date = v_shift_date` to
+      `es.shift_date IN (v_shift_date, v_shift_date - 1)` + the new function, plus
+      `availabilitySearch.ts`'s suggest-side JOIN in the same commit (suggest and enforce must
+      read the calendar the same way — the 2026-07-17 midnight-wrap lesson). `book_appointment_atomic`
+      (dashboard path) is untouched — it validates one chosen resource/employee against one day's
+      row by design and has never modeled night shifts; that gap is pre-existing and separate.
+      **Residual, deliberately out of scope:** the `get_available_slots` DATE path
+      (`src/routes/agentTools/scheduling.ts` `effective_shifts` CTE) has the identical
+      same-date-only join and was not touched — it renders a single day's shifts/appointments in
+      JS and was not part of this bug's repro. No live tenant runs night shifts, so this is not an
+      active gap; fix it in the same pass as the day it matters. New tests:
+      `tests/services/night-shift-availability.test.ts` (HAPPY: 02:00 books against a 22:00→06:00
+      row; SAD: a day shift never gains cross-day coverage) and
+      `tests/services/availability-search.test.ts` (suggest-side parity, post-midnight-only search
+      window).
 - [ ] **(code)** **A caller who declines the meeting can leave the call unable to END.** Found
       2026-09-11 in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no grader
       saw it), and on `main`. The opener "talk to someone about a job opportunity for Dale"

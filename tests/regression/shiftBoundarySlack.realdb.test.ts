@@ -121,35 +121,54 @@ describe('shift_covers_booking — one minute of slack, and only one', () => {
 });
 
 describe('shift coverage has exactly one definition', () => {
-  it('the booking RPC calls the function instead of spelling the comparison out', async () => {
+  it('the booking RPC calls shift_row_covers_booking instead of spelling the comparison out', async () => {
     const src = await setup.query<{ def: string }>(
       "SELECT pg_get_functiondef(oid) AS def FROM pg_proc WHERE proname = 'book_with_scheduling_atomic'"
     );
     expect(src.rows).toHaveLength(1);
     const def = src.rows[0].def;
-    // FIVE call sites inside the RPC now: the three original coverage joins
-    // (skills path, skill-less shift guard — which checks it twice, EXISTS and
-    // NOT EXISTS — and the resource path) plus the employee-SELECTION loop added
-    // 2026-09-09, which is what stopped the skill-less path from writing an
-    // appointment with a room and no person on it. SIX since 2026-09-11: the
-    // skill-map rule's refusal diagnostic ("is any LINKED person working then?"),
-    // which picks EMPLOYEE_NOT_SCHEDULED over TIMESLOT_OCCUPIED — and it, too,
-    // goes through the shared function. Every one must; the moment one spells the
-    // comparison out by hand, suggest and enforce can drift again (the 2026-07-17
-    // midnight-wrap call).
+    // SIX call sites inside the RPC: the skills-path coverage join, the
+    // skill-less employee-naming loop, the skill-less shift guard (checked
+    // twice, EXISTS and NOT EXISTS), the legacy no-service-id skill-array
+    // diagnostic, and the STRICT unlinked-employee diagnostic. Since
+    // 2026-09-11 (migration 20260911010000, the night-shift morning-half
+    // fix) every one of these calls shift_row_covers_booking(), not
+    // shift_covers_booking() directly — shift_row_covers_booking is the one
+    // that also knows a shift row dated YESTERDAY can cover TODAY's slot
+    // when it wraps past midnight; calling shift_covers_booking() straight
+    // would silently drop that case again.
     //
-    // The exact number matters less than the ZERO below it — but pinning it means
-    // a new coverage site cannot be added silently without a human reading this.
-    expect(def.split('shift_covers_booking').length - 1).toBe(6);
+    // The exact number matters less than the ZERO below it — but pinning it
+    // means a new coverage site cannot be added silently without a human
+    // reading this.
+    expect(def.split('shift_row_covers_booking').length - 1).toBe(6);
+    // And NOT the bare function — every call site must go through the
+    // cross-day-aware wrapper, none may call shift_covers_booking() itself.
+    expect(def).not.toContain('public.shift_covers_booking(');
     expect(def).not.toContain('es.end_time >= v_end_time_of_day');
+  });
+
+  it('shift_row_covers_booking defers to shift_covers_booking for same-date rows', async () => {
+    // The wrapper must not re-implement the slack/wrap rules — it delegates
+    // the same-date case verbatim and only adds the cross-day (yesterday's
+    // night shift) case on top.
+    const src = await setup.query<{ def: string }>(
+      "SELECT pg_get_functiondef(oid) AS def FROM pg_proc WHERE proname = 'shift_row_covers_booking'"
+    );
+    expect(src.rows).toHaveLength(1);
+    expect(src.rows[0].def).toContain('public.shift_covers_booking(');
   });
 
   it('the SUGGEST side calls the same function — suggest and enforce cannot drift', () => {
     // availabilitySearch.ts is what the agent reads slots from. When it disagreed
     // with the RPC, the agent offered a slot the booking then refused. Reading the
-    // file off disk is deliberate: it is the artifact that ships.
+    // file off disk is deliberate: it is the artifact that ships. Since
+    // 2026-09-11 this is shift_row_covers_booking(), the cross-day-aware
+    // wrapper (20260911010000) — not shift_covers_booking() directly, or the
+    // suggester would go back to never offering a night shift's morning half.
     const sql = readFileSync(join(process.cwd(), 'src/services/availabilitySearch.ts'), 'utf8');
-    expect(sql).toContain('public.shift_covers_booking(');
+    expect(sql).toContain('public.shift_row_covers_booking(');
+    expect(sql).not.toContain('public.shift_covers_booking(');
     expect(sql).not.toContain('AND es.end_time >= ((ss.s +');
   });
 });

@@ -106,6 +106,55 @@ describe('Fix #30: Night shifts (cross-midnight)', () => {
     }
   });
 
+  it('HAPPY (20260911010000): the MORNING HALF of a night shift can be booked', async () => {
+    // WHO: Employee working 22:00-06:00 every day, schedule row dated the
+    //      evening it starts (2030-05-27).
+    // WHAT: Booking at 02:00 the NEXT calendar day (2030-05-28) should
+    //       succeed — that's the wrapped tail of the 05-27 shift.
+    // WHY: Found 2026-09-11 (docs/planning/TODO.md) — coverage used to be
+    //      matched on the SLOT's own local date, so a shift that started the
+    //      previous evening was never consulted for anything after
+    //      midnight. shift_row_covers_booking() (20260911010000) is what
+    //      makes this reachable: the JOIN now also looks at yesterday's row,
+    //      and only a wrapping night shift's tail counts.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '22:00', '06:00');
+
+    const result = await client.query(
+      "SELECT * FROM book_with_scheduling_atomic($1, '+15551110004', 'Morning Half', 'Post-midnight repair', NULL, NULL, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, NULL, NULL, '{repair}', '{}', NULL, NULL, NULL, 30)",
+      [tenantId, '2030-05-28T02:00:00-05:00', '2030-05-28T02:30:00-05:00']
+    );
+
+    expect(result.rows[0].success).toBe(true);
+    expect(result.rows[0].error_message).toBeNull();
+
+    if (result.rows[0].appointment_id) {
+      await client.query('DELETE FROM appointments WHERE appointment_id = $1', [
+        result.rows[0].appointment_id,
+      ]);
+    }
+  });
+
+  it('SAD (20260911010000): a DAY shift never gains cross-day coverage', async () => {
+    // WHO: Employee with a normal 08:00-17:00 day shift dated 2030-05-27.
+    // WHAT: Booking at 02:00 the NEXT day (2030-05-28) must still fail —
+    //       a day shift (end > start) is not a wrapping shift, so
+    //       shift_row_covers_booking() must refuse the previous-day row.
+    // WHY: Pins the boundary of the fix — only a genuine overnight shift's
+    //      tail should ever reach into the next calendar day.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
+
+    const result = await client.query(
+      "SELECT * FROM book_with_scheduling_atomic($1, '+15551110005', 'No Cross Day', 'Should fail', NULL, NULL, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, NULL, NULL, '{repair}', '{}', NULL, $4, NULL, 30)",
+      [tenantId, '2030-05-28T02:00:00-05:00', '2030-05-28T02:30:00-05:00', employeeId]
+    );
+
+    expect(result.rows[0].success).toBe(false);
+  });
+
   it('SAD: booking outside night shift hours fails', async () => {
     // WHO: Employee with 22:00-06:00 shift
     // WHAT: Booking at 2pm should fail (outside shift)
