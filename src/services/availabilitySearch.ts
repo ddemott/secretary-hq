@@ -203,20 +203,38 @@ export async function findNextAvailableSlots(
       JOIN employee_schedule es
         ON es.employee_id = emp.employee_id
        AND es.tenant_id = $4
-       AND es.shift_date = (ss.s AT TIME ZONE $5)::date
+       -- TWO DATES, NOT ONE (2026-09-11): a night shift's row is dated the
+       -- evening it STARTED, so a slot after local midnight needs YESTERDAY's
+       -- row too — shift_row_covers_booking() below decides whether that row
+       -- actually reaches this slot; this IN just stops excluding it upfront.
+       AND es.shift_date IN ((ss.s AT TIME ZONE $5)::date, (ss.s AT TIME ZONE $5)::date - 1)
        AND es.is_off = false
+       -- Tighten before the function call (Copilot review, PR #412): a plain
+       -- day shift dated yesterday can never cover today (the coverage
+       -- function already says so), so exclude it here rather than pulling
+       -- every previous-day row into the join just to discard it inside the
+       -- function, for every slot/employee pair — this join runs once per
+       -- 15-minute slot across up to a 7-day horizon.
+       AND (
+             es.shift_date = (ss.s AT TIME ZONE $5)::date
+             OR es.end_time < es.start_time
+           )
        -- SHIFT COVERAGE IS ONE FUNCTION, SHARED WITH THE BOOKING RPC.
        -- This clause used to spell the comparison out, and the RPC spelled the
        -- same thing out three more times. Suggest and enforce MUST agree — when
        -- they don't, the agent offers a slot the booking then refuses, which is
        -- exactly what shipped on the 2026-07-17 midnight-wrap call. The rule now
-       -- lives in shift_covers_booking() (migration 20260909120000): wrap-aware,
-       -- shift-shape-aware (DAY shift: a slot crossing local midnight is never
-       -- covered; NIGHT shift, end < start: pre-midnight slots pass on the start
-       -- check and a wrapping slot must end by the morning end), plus one minute
-       -- of slack at each boundary so a 16:59 shift end still covers the 17:00
-       -- the caller actually said.
-       AND public.shift_covers_booking(
+       -- lives in shift_row_covers_booking() (migration 20260911010000, wrapping
+       -- shift_covers_booking() from 20260909120000): wrap-aware, shift-shape-aware
+       -- (DAY shift: a slot crossing local midnight is never covered; NIGHT shift,
+       -- end < start: pre-midnight slots pass on the start check and a wrapping
+       -- slot must end by the morning end; a row dated YESTERDAY covers TODAY's
+       -- slot only when it is itself a wrapping night shift reaching this far),
+       -- plus one minute of slack at each boundary so a 16:59 shift end still
+       -- covers the 17:00 the caller actually said.
+       AND public.shift_row_covers_booking(
+             es.shift_date,
+             (ss.s AT TIME ZONE $5)::date,
              es.start_time,
              es.end_time,
              (ss.s AT TIME ZONE $5)::time,

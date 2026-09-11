@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict vNOVTf4jh41EkF1120hLaVFgwq2ZJZoFMRvli9ItxHW5bEZA3PkYZ6CsePuAiMW
+\restrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -652,10 +652,16 @@ BEGIN
             JOIN employee_schedule es
                 ON es.employee_id = emp.employee_id
                 AND es.tenant_id = p_tenant_id
-                AND es.shift_date = v_shift_date
+                AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                 AND es.is_off = false
-                AND public.shift_covers_booking(
-                        es.start_time, es.end_time,
+                -- Tighten before the function call (Copilot review, PR #412): a plain
+                -- day shift dated yesterday can never cover today
+                -- (the coverage function already says so), so exclude it here
+                -- rather than pulling every previous-day row into the join just to
+                -- discard it inside the function, for every slot/employee pair.
+                AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+                AND public.shift_row_covers_booking(
+                        es.shift_date, v_shift_date, es.start_time, es.end_time,
                         v_start_time_of_day, v_end_time_of_day, v_end_wraps)
             WHERE res.tenant_id = p_tenant_id
                 AND res.is_active = true
@@ -749,10 +755,16 @@ BEGIN
                 JOIN employee_schedule es
                   ON es.employee_id = emp.employee_id
                  AND es.tenant_id = p_tenant_id
-                 AND es.shift_date = v_shift_date
+                 AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                  AND es.is_off = false
-                 AND public.shift_covers_booking(
-                         es.start_time, es.end_time,
+                 -- Tighten before the function call (Copilot review, PR #412): a plain
+                 -- day shift dated yesterday can never cover today
+                 -- (the coverage function already says so), so exclude it here
+                 -- rather than pulling every previous-day row into the join just to
+                 -- discard it inside the function, for every slot/employee pair.
+                 AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+                 AND public.shift_row_covers_booking(
+                         es.shift_date, v_shift_date, es.start_time, es.end_time,
                          v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                 WHERE emp.tenant_id = p_tenant_id
                   AND emp.is_active = true
@@ -796,17 +808,35 @@ BEGIN
        AND EXISTS (
             SELECT 1 FROM employee_schedule es
              WHERE es.tenant_id = p_tenant_id
-               AND es.shift_date = v_shift_date
                AND es.is_off = false
+               -- Yesterday's row only counts as "data near this date" when it
+               -- could ever be RELEVANT — i.e. it is itself a wrapping night
+               -- shift (end < start). A plain day shift from yesterday can
+               -- never cover today (shift_row_covers_booking already says
+               -- so); counting it here anyway would make this EXISTS true
+               -- for any tenant with an ordinary day-before shift, flipping
+               -- an unrelated "employee is off today" case from the generic
+               -- NO_SKILLED_EMPLOYEE fallback below to this EMPLOYEE_NOT_SCHEDULED
+               -- guard for no reason connected to night shifts at all.
+               AND (
+                 es.shift_date = v_shift_date
+                 OR (es.shift_date = v_shift_date - 1 AND es.end_time < es.start_time)
+               )
        )
        AND NOT EXISTS (
             SELECT 1 FROM employee_schedule es
               JOIN employees emp ON emp.employee_id = es.employee_id
              WHERE es.tenant_id = p_tenant_id
-               AND es.shift_date = v_shift_date
+               AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                AND es.is_off = false
-               AND public.shift_covers_booking(
-                       es.start_time, es.end_time,
+               -- Tighten before the function call (Copilot review, PR #412): a plain
+               -- day shift dated yesterday can never cover today
+               -- (the coverage function already says so), so exclude it here
+               -- rather than pulling every previous-day row into the join just to
+               -- discard it inside the function, for every slot/employee pair.
+               AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+               AND public.shift_row_covers_booking(
+                       es.shift_date, v_shift_date, es.start_time, es.end_time,
                        v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                AND emp.tenant_id = p_tenant_id
                AND emp.is_active = true
@@ -853,10 +883,16 @@ BEGIN
                 JOIN employee_schedule es
                     ON es.employee_id = emp.employee_id
                     AND es.tenant_id = p_tenant_id
-                    AND es.shift_date = v_shift_date
+                    AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                     AND es.is_off = false
-                    AND public.shift_covers_booking(
-                            es.start_time, es.end_time,
+                    -- Tighten before the function call (Copilot review, PR #412): a plain
+                    -- day shift dated yesterday can never cover today
+                    -- (the coverage function already says so), so exclude it here
+                    -- rather than pulling every previous-day row into the join just to
+                    -- discard it inside the function, for every slot/employee pair.
+                    AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+                    AND public.shift_row_covers_booking(
+                            es.shift_date, v_shift_date, es.start_time, es.end_time,
                             v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                 WHERE emp.tenant_id = p_tenant_id
                 AND emp.is_active = true
@@ -921,10 +957,16 @@ BEGIN
                   JOIN employee_schedule es
                     ON es.employee_id = emp.employee_id
                    AND es.tenant_id = p_tenant_id
-                   AND es.shift_date = v_shift_date
+                   AND es.shift_date IN (v_shift_date, v_shift_date - 1)
                    AND es.is_off = false
-                   AND public.shift_covers_booking(
-                           es.start_time, es.end_time,
+                   -- Tighten before the function call (Copilot review, PR #412): a plain
+                   -- day shift dated yesterday can never cover today
+                   -- (the coverage function already says so), so exclude it here
+                   -- rather than pulling every previous-day row into the join just to
+                   -- discard it inside the function, for every slot/employee pair.
+                   AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+                   AND public.shift_row_covers_booking(
+                           es.shift_date, v_shift_date, es.start_time, es.end_time,
                            v_start_time_of_day, v_end_time_of_day, v_end_wraps)
                  WHERE se.service_id = p_service_id
                    AND emp.is_active = true
@@ -2258,6 +2300,46 @@ $$;
 --
 
 COMMENT ON FUNCTION public.shift_covers_booking(p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval) IS 'Does this employee shift cover this booking? One minute of slack at each boundary. The single source of truth for shift coverage: book_with_scheduling_atomic calls it three times and availabilitySearch.ts calls it once, so suggest and enforce cannot drift.';
+
+
+--
+-- Name: shift_row_covers_booking(date, date, time without time zone, time without time zone, time without time zone, time without time zone, boolean, interval); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.shift_row_covers_booking(p_row_shift_date date, p_target_date date, p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval DEFAULT '00:01:00'::interval) RETURNS boolean
+    LANGUAGE sql IMMUTABLE
+    AS $$
+    SELECT CASE
+        WHEN p_row_shift_date = p_target_date THEN
+            -- Same-day row: unchanged shift_covers_booking() semantics
+            -- (20260909120000) — this is the whole story for a day shift,
+            -- and for the evening half of a night shift that starts today.
+            public.shift_covers_booking(
+                p_shift_start, p_shift_end, p_slot_start, p_slot_end,
+                p_slot_end_wraps, p_slack)
+        WHEN p_row_shift_date = p_target_date - 1 THEN
+            -- A row dated YESTERDAY only matters for TODAY's slot if it is a
+            -- wrapping night shift (end < start) whose tail reaches into
+            -- today, and today's slot itself stays within today (a slot
+            -- that also wraps into a THIRD day is never covered by either
+            -- row — same "never for a day shift" principle as
+            -- shift_covers_booking's own DAY-shift branch).
+            p_shift_end < p_shift_start
+            AND NOT p_slot_end_wraps
+            AND (
+                p_shift_end >= p_slot_end
+                OR (p_slot_end >= TIME '00:01' AND p_shift_end >= p_slot_end - p_slack)
+            )
+        ELSE FALSE
+    END
+$$;
+
+
+--
+-- Name: FUNCTION shift_row_covers_booking(p_row_shift_date date, p_target_date date, p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.shift_row_covers_booking(p_row_shift_date date, p_target_date date, p_shift_start time without time zone, p_shift_end time without time zone, p_slot_start time without time zone, p_slot_end time without time zone, p_slot_end_wraps boolean, p_slack interval) IS 'Does THIS employee_schedule row (dated p_row_shift_date) cover a booking on p_target_date? Same-date rows defer entirely to shift_covers_booking(). A row dated the day before only covers when it is a wrapping night shift reaching into p_target_date. Callers must widen their JOIN/EXISTS to `es.shift_date IN (p_target_date, p_target_date - 1)` — this function decides coverage per row, it does not select rows.';
 
 
 --
@@ -6899,5 +6981,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict vNOVTf4jh41EkF1120hLaVFgwq2ZJZoFMRvli9ItxHW5bEZA3PkYZ6CsePuAiMW
+\unrestrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
 
