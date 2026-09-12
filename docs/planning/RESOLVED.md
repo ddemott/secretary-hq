@@ -453,6 +453,128 @@ build.
 no-caller-ID fallbacks in `get_my_appointments`/cancel/reschedule now capability-gate
 the transfer offer (offer a message only when transfer is unwired).
 
+## 2026-07-08 through 2026-08-28 — doc-hygiene batch: per-IP limiter investigation, alert-rules research, 2026-08-19 catch-up session, refactor sweep (test-tree/knowledge/analytics/tools), question-tree call review, outage voice, greeting disclaimer
+
+Trimmed from `docs/planning/TODO.md` 2026-09-12 (doc-hygiene, second batch; content
+dated as below, each item was already `[x]`, nothing left open). The whole
+`## 🎙️ Voice — Phase 2` section (`Question-tree call review — 2026-07-21 07:34 call`
++ `Phase 2 backlog`) is archived here too — every item under both headers moved,
+leaving the headers themselves empty scaffolding, so they were deleted along with
+their content rather than left standing over nothing.
+
+**`/demo/start` per-IP limiter is a global bucket — investigated 2026-07-08, NOT a
+bug.** A controlled 16-min quiet-window test returned 200, so the window resets
+normally; the persistent 429s were self-inflicted test traffic. A spoofed
+`X-Forwarded-For` has no effect because Railway overwrites it with the true client IP
+(correct, non-spoofable). No action.
+
+**Alert rules — stand up a hosted monitoring destination — DROPPED 2026-07-09. No
+vendor meets the "really free forever" bar.** Researched rather than assumed:
+UptimeRobot free is not usable at all (since 2024-12-01 its ToS restricts the free
+plan to personal, non-commercial use, explicitly prohibiting revenue-generating
+applications — SecretaryHQ is a paid SaaS); Grafana Cloud free doesn't expire but is
+capped (10K active series, 14-day retention, 3 users, $6.50/1K series beyond — our
+worst case is 10 metrics × the 1000-series `MAX_LABEL_CARDINALITY` cap = exactly 10K,
+realistically ~2–3K, so it would fit, but "free within limits the vendor can move" is
+not free forever); Healthchecks.io free is heartbeat/cron monitoring (20 jobs), not
+metric thresholds. Every "free forever" tier is free-within-limits. Paid vendors
+(Sentry, Better Stack) were already declined 2026-07-02; the code keeps its no-op
+hooks either way. `docs/ALERTS.md` stays as a reusable PromQL reference — the rules
+are collector-agnostic and cost nothing to keep; paste-and-go if a destination is ever
+chosen. The one signal actually worth having — "SMS failure ratio crossed 20%", which
+would have caught the dead `TELNYX_PHONE_NUMBER` on day one — needed no vendor, which
+led to:
+
+**Zero-vendor alert — DONE 2026-08-28.** `.github/workflows/zero-vendor-alerts.yml`
+every 30m curls prod `/metrics` with `METRICS_TOKEN`, `scripts/zeroVendorAlerts.ts`
+evaluates ALERTS.md §3.9 on the boot-lifetime counters (`rate()` needs two scrapes; a
+dead from-number pins the ratio at 1.0). Opens or comments one `[zero-vendor]` issue.
+Unset token is SKIP, not a page. Pin: `tests/scripts/zeroVendorAlerts.test.ts` (5).
+
+**2026-08-19 catch-up session** (after a stretch of local-only work): commit + deploy
+the E2E sweep (20 defects, 4 livelocks fixed, PR #344 / `41c4d53`, `started_at`
+`2026-08-19T08:22:19Z`, verified `GET /health` + `POST /demo/start` both 200); refresh
+V8 coverage (stale since 05-22); fix 9 RLS failures blocking the test DB (`npm test`
+back to green at repo root, `2750 passed`); sync `TEST_COVERAGE`/`DEPLOYMENT`/`HANDOFF`
+docs with current code and corrected deployment env wording.
+
+**Structural-refactor sweep, 2026-08-21/2026-08-28** (re-verified against the code on
+2026-07-28, not carried over on trust — from the former root
+`07_11_2026_IMPROVEMENTS.md`, since deleted as a duplicate backlog): moved the last
+stray test file out of `src/` into `tests/` (`src/services/phoneLoopGuard.test.ts` →
+`tests/shared/transferLoopGuard.test.ts`, renamed for what it covers; `find src -name
+'*.test.ts'` returns 0); extracted `src/routes/knowledge.ts` (1,092 → 649 lines) into
+six `src/services/knowledge/` modules (PR #367) — tests came first (coverage
+74.77% → 83.18%), and the extraction surfaced three real defects fixed in their own
+commits: `/knowledge/explain` scored at the stale 0.5 threshold against production's
+0.30 and embedded the wrong (normalized, not expanded) query; embedding spend for
+`/knowledge/add` and `PUT /knowledge/:id` was filed under the provenance value
+`'policy-questionnaire'` instead of a real spend category; the embedding price was
+duplicated in three modules instead of read from the one authoritative pricing table;
+fixed `estimateCost` silently billing $0 for any model missing from `PRICING` (now
+bumps `errors_total{event="ai_cost_model_unpriced"}` and logs the model name); added a
+scheme/host guard (`assertSafeSiteFetchUrl`) to the website-scan fetch, refusing
+loopback/private/link-local literals (incl. `169.254.169.254` and its
+Node-canonicalized decimal form) and re-gating redirects so a public 302 cannot hop
+onto metadata; extracted `src/routes/analytics.ts` (880 → 430 lines) into five
+`src/services/analytics/` modules, writing characterization tests FIRST
+(78.86% → 100% lines) so the same 43 tests stayed green through every extraction step;
+grouped `agent/src/tools.ts` definitions by capability under `agent/src/tools/`
+(`agent/src/tools.ts` is now a 12-line barrel); reconciled `tools.ts` against what the
+model can actually reach (`DEFINED_UNREACHABLE_ON_QUESTION_TREE` parks the ladder
+routers, superseded scheduling tools, SMS-gated tools, and the previously-undecided
+`transfer_call` / `page_owner_via_sms` / `save_customer_preference` /
+`get_detailed_customer_history` as KEEP-UNWIRED, `find_caller_by_name` still excluded
+for its enumeration bug); confirmed `src/services/phoneUtils.ts` / `nameUtils.ts`
+already re-export `shared/phone` / `shared/name` with no duplicate implementation
+(entry had been misleading — nothing to dedupe); narrowed the two dead-CRM-provider
+CHECK constraints (`entity_sync_map_provider_check`,
+`tenant_integration_settings_provider_check`) that still enumerated
+`jobber`/`hubspot`/`servicetitan` alongside `square` eleven weeks after those 21
+adapters were deleted — both tables held zero prod rows, migration
+`20260821020000_drop_dead_crm_providers`.
+
+**Question-tree call review — 2026-07-21 07:34 call** (branch
+`feat/question-tree-architecture`, room `sim-call-1784637271290`): the call succeeded
+end-to-end (booked 4:30 PM, linked `job_inquiries.appointment_id`, semantic service
+match, E.164 phone, "Dale" not "Dale DeMott", no snake_case spoken), with five
+conversation-layer snags fixed, all re-verified stale-free 2026-08-21: a double
+read-back of a dictated number (now recorded immediately, without an initial
+read-back, per the invariant "read back exactly once — never skipped, never twice");
+a redundant "What is the meeting about?" third-ask (`meeting_topic` /
+`subject_details` now backfilled from `TREE_TOPIC` when `booking` rides with a subject
+tree); silent-turn recovery firing during call close (`watchdog.ts` guards the nudge
+on `session.closing`); `set_purpose` recording an empty volunteered `caller_name: ""`
+(an empty value never records, node stays open); salary stored verbatim as words with
+no readable range (`formatPayRangeDisplay` now renders "$140–160k (…words…)" in the
+inbox and job-inquiry email, unparseable copy like "competitive" left unchanged, DONE
+2026-08-28); and a 12-second wrap-up turn stacking three things at once (ending block
+now forbids stacking passed-along + email + "anything else" in one turn, DONE
+2026-08-28).
+
+**OUTAGE VOICE — a caller must never get silence when the LLM is down — DONE
+2026-08-21.** New `agent/src/session/outageGuard.ts` + `OUTAGE_LINE` in
+`holdLines.ts`. On the 2nd consecutive `AgentSession` error with no successful speech
+in between, the agent plays a pre-synthesized, cache-only line — "I'm having some
+technical trouble on my end. Please try calling back in a few minutes" — and closes
+the call. The line deliberately routes around the model, which is the whole lesson of
+the 2026-07-21 08:56 call: every other recovery path here IS a `generateReply` or a
+live TTS round trip, so when the LLM is the thing that is down they all die of the
+same cause and the caller gets seven consecutive errors' worth of silence. 2 not 1
+(a single transient error is survivable); the count is consecutive, reset by the
+`speaking` state transition; fires exactly once per call so a second trip cannot talk
+over the goodbye. The watchdog half of this item (the `reply_already_queued` branch
+arming the escalation timer instead of standing down) had already shipped 2026-08-15.
+
+**Recording disclaimer → deterministic verbatim greeting (Illinois 2-party consent) —
+already done; entry was stale (verified 2026-08-28).** The prescribed `tenants.greeting`
+column that `index.ts` would speak verbatim is the design `greeting.ts` exists to
+reject: a tenant-controlled whole greeting silently deleted the disclosure. What
+shipped instead: composed opener + unconditional disclosure + closer. Default: "this
+call is transcribed for quality and service" (never "recorded", never "training").
+Custom wording is `tenants.call_disclosure` with attestation (`20260711000000`), not a
+`greeting` column.
+
 ## 2026-07-13 (re-verified 2026-08-21) — Code review four-reviewer sweep (backend, security, reliability, dead code)
 
 Moved here from `docs/planning/TODO.md` §4b 2026-09-08 (doc-hygiene trim — every item in this section was `[x]` done, none open). Kept verbatim including the self-corrections and re-audit notes, because the corrections are as instructive as the findings.
