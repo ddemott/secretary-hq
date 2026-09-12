@@ -657,11 +657,18 @@ export function registerSessionRoutes({ app, withTenantClient }: AgentToolDeps):
               ? 'had concerns about pricing'
               : 'could not find an available time';
           const body = `SecretaryHQ: A recent caller ${outcomeMsg}. They may be worth a follow-up. — via SecretaryHQ`;
-          sendSms({ from: normalizedInbound, to: normalizedForward, body }).catch(
-            (err: unknown) => {
-              app.log.error({ err }, 'Failed to send outcome-follow-up SMS to owner');
+          // sendSms is a chokepoint that never rejects (see telnyxSms.ts) — it
+          // already counts the failure in errors_total, but a bare .catch()
+          // here can never fire, so a failed owner-nudge produced no local
+          // log line at all. Check result.ok instead.
+          void sendSms({ from: normalizedInbound, to: normalizedForward, body }).then((result) => {
+            if (!result.ok) {
+              app.log.error(
+                { error: result.error, status: result.status },
+                'Failed to send outcome-follow-up SMS to owner'
+              );
             }
-          );
+          });
         }
       }
 

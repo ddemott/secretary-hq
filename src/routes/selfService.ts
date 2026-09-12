@@ -182,11 +182,18 @@ export function registerSelfServiceRoutes(
             `Reschedule request from ${appt.customer_name} (${appt.customer_phone}) ` +
             `for ${appt.description} on ${new Date(appt.start_time).toLocaleDateString()}. ` +
             `Reply to schedule a new time.`;
-          sendSms({ from: normalizedInbound, to: normalizedForward, body }).catch(
-            (err: unknown) => {
-              req.log.error({ err }, 'Failed to send reschedule-request SMS to owner');
+          // sendSms is a chokepoint that never rejects (see telnyxSms.ts) — it
+          // already counts the failure in errors_total, but a bare .catch()
+          // here can never fire, so a failed owner-nudge produced no local
+          // log line at all. Check result.ok instead.
+          void sendSms({ from: normalizedInbound, to: normalizedForward, body }).then((result) => {
+            if (!result.ok) {
+              req.log.error(
+                { error: result.error, status: result.status },
+                'Failed to send reschedule-request SMS to owner'
+              );
             }
-          );
+          });
         }
       }
 
