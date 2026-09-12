@@ -17,6 +17,11 @@ import {
 } from '../../src/services/tokenManagement';
 
 import { createMockClient, createMockPool } from '../mock';
+import { errorsTotal } from '../../src/services/metrics';
+
+function errorsTotalFor(event: string): number {
+  return errorsTotal.snapshot().find((s) => s.labels.event === event)?.value ?? 0;
+}
 
 // ── Mock helpers ─────────────────────────────────────────────────────
 
@@ -266,6 +271,7 @@ describe('getIntegrationTokens — sad paths', () => {
 
     const refreshFn = vi.fn().mockRejectedValue(new Error('OAuth grant revoked'));
 
+    const before = errorsTotalFor('integration_token_refresh_failed');
     const result = await getIntegrationTokens(
       pool,
       TENANT_ID,
@@ -277,6 +283,10 @@ describe('getIntegrationTokens — sad paths', () => {
 
     expect(result).toBeNull();
     expect(refreshFn).toHaveBeenCalledOnce();
+    // WHY: a per-tenant log line alone is invisible until a customer
+    // complains — errors_total is what a dashboard could alert on across
+    // every tenant's OAuth grants going bad.
+    expect(errorsTotalFor('integration_token_refresh_failed')).toBe(before + 1);
 
     // Verify is_active was set to false
     // Located by CONTENT, not position (see withTenantContext, 2026-07-27).
@@ -502,6 +512,7 @@ describe('getCalendarTokens — sad paths', () => {
 
     const googleRefresh = vi.fn().mockRejectedValue(new Error('OAuth revoked'));
 
+    const before = errorsTotalFor('calendar_token_refresh_failed');
     const result = await getCalendarTokens(
       pool,
       TENANT_ID,
@@ -510,6 +521,7 @@ describe('getCalendarTokens — sad paths', () => {
     );
     expect(result).toBeNull();
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('token refresh FAILED'));
+    expect(errorsTotalFor('calendar_token_refresh_failed')).toBe(before + 1);
 
     // Located by CONTENT, not position (see withTenantContext, 2026-07-27).
     const updateCall = mockClient.query.mock.calls.find((c) =>
