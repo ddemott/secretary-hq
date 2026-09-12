@@ -16,7 +16,7 @@ import {
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { computeUsageStatements } from '../services/billingUsage';
-import { webhookSignatureFailuresTotal, errorsTotal } from '../services/metrics';
+import { webhookSignatureFailuresTotal } from '../services/metrics';
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -347,20 +347,12 @@ export function subscriptionGate(pool: Pool) {
         });
       }
     } catch (err) {
-      // Log billing check errors but fail open to avoid blocking legitimate traffic.
-      // errors_total is the monitoring a future fail-closed decision needs first —
-      // without it, a query that started throwing on every request would silently
-      // let all traffic through with no signal anyone could act on.
-      errorsTotal.inc({ event: 'subscription_gate_error' });
-      request.log.error(
-        {
-          event: 'subscription_gate_error',
-          error_message: (err as Error).message,
-          tenantId,
-          timestamp: new Date().toISOString(),
-        },
-        `Subscription gate check failed for tenant ${tenantId}`
-      );
+      // Fail open to avoid blocking legitimate traffic. logError() is the
+      // monitoring a future fail-closed decision needs first — without it, a
+      // query that started throwing on every request would silently let all
+      // traffic through with no signal anyone could act on. (It bumps
+      // errors_total itself, so no separate counter call here.)
+      logError(request, 'subscription_gate_error', err, { tenantId });
     }
   };
 }
