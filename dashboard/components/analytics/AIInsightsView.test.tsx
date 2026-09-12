@@ -19,7 +19,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import React from 'react';
 
-vi.mock('../AIConfigView', () => ({
+vi.mock('../aiconfig/AIConfigView', () => ({
   default: () => <div data-testid="persona-marker">persona</div>,
 }));
 vi.mock('../knowledge/KnowledgeBaseView', () => ({

@@ -12,21 +12,21 @@ import { setSubscriptionRequiredCallback } from '@/lib/api';
 import { showToast } from '@/components/ui/Toast';
 
 // Lazy load tab content — only loads the JS for the active tab
-const DashboardHome = dynamic(() => import('@/components/DashboardHome'), { ssr: false });
-const SchedulerView = dynamic(() => import('@/components/SchedulerView'), { ssr: false });
+const DashboardHome = dynamic(() => import('@/components/home/DashboardHome'), { ssr: false });
+const SchedulerView = dynamic(() => import('@/components/scheduler/SchedulerView'), { ssr: false });
 const CRMView = dynamic(() => import('@/components/crm/CRMView'), { ssr: false });
 // IA merge (2026-06-03): My Business + My Team + Business Settings collapsed into
 // one "Setup" tab hosting them as sub-tabs. SetupView imports those leaf views.
-const SetupView = dynamic(() => import('@/components/SetupView'), { ssr: false });
+const SetupView = dynamic(() => import('@/components/business/SetupView'), { ssr: false });
 const AIInsightsView = dynamic(() => import('@/components/analytics/AIInsightsView'), {
   ssr: false,
 });
-const SettingsView = dynamic(() => import('@/components/SettingsView'), { ssr: false });
+const SettingsView = dynamic(() => import('@/components/settings/SettingsView'), { ssr: false });
 const ProfileView = dynamic(() => import('@/components/auth/ProfileView'), { ssr: false });
 const SuperAdminDashboard = dynamic(() => import('@/components/team/SuperAdminDashboard'), {
   ssr: false,
 });
-const VoiceCallsView = dynamic(() => import('@/components/VoiceCallsView'), { ssr: false });
+const VoiceCallsView = dynamic(() => import('@/components/voice/VoiceCallsView'), { ssr: false });
 
 export type Tab =
   | 'dashboard'

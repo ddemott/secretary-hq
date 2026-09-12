@@ -51,7 +51,7 @@ vi.mock('../ui/ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 // Stub the detail pane so the test only exercises CRMView's own list + fetch
 // logic (the pane has its own dedicated tests).
-vi.mock('../CustomerDetailPanel', () => ({
+vi.mock('./CustomerDetailPanel', () => ({
   CustomerDetailPanel: ({ selectedCustomer }: { selectedCustomer: { name?: string } | null }) => (
     <div data-testid="detail">{selectedCustomer?.name ?? 'none'}</div>
   ),
@@ -117,10 +117,10 @@ describe('CRMView — subdirectory pin', () => {
     const fs = await import('fs');
     const path = await import('path');
     const settingsTest = fs.readFileSync(
-      path.join(__dirname, '..', 'BusinessSettingsView.test.tsx'),
+      path.join(__dirname, '..', 'business', 'BusinessSettingsView.test.tsx'),
       'utf-8'
     );
-    expect(settingsTest).toContain("vi.mock('./crm/CRMIntegrationCard'");
+    expect(settingsTest).toContain("vi.mock('../crm/CRMIntegrationCard'");
     expect(settingsTest).not.toContain("vi.mock('./CRMIntegrationCard'");
   });
 });

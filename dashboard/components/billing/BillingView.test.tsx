@@ -298,8 +298,8 @@ describe('BillingView — subdirectory pin', () => {
   test('SetupView imports BillingView from components/billing/', async () => {
     const fs = await import('fs');
     const path = await import('path');
-    const setup = fs.readFileSync(path.join(__dirname, '..', 'SetupView.tsx'), 'utf-8');
-    expect(setup).toContain("import BillingView from './billing/BillingView'");
+    const setup = fs.readFileSync(path.join(__dirname, '..', 'business', 'SetupView.tsx'), 'utf-8');
+    expect(setup).toContain("import BillingView from '../billing/BillingView'");
     expect(setup).not.toContain("import BillingView from './BillingView'");
   });
 });

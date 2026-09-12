@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { FolderTab, FolderTabBar } from '../ui/FolderTabs';
-import AIConfigView from '../AIConfigView';
+import AIConfigView from '../aiconfig/AIConfigView';
 import KnowledgeBaseView from '../knowledge/KnowledgeBaseView';
 import { useUrlQueryState } from '../../lib/useUrlQueryState';
 

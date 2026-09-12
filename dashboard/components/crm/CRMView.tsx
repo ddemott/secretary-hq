@@ -5,7 +5,7 @@ import { type Customer } from '@/lib/types';
 import { MOCK_CUSTOMERS, MOCK_SUMMARIES } from '@/lib/mockData';
 import { Api } from '../../lib/api';
 import { useActiveTenantId, useSessionContext } from '../../lib/SessionContext';
-import { CustomerDetailPanel } from '../CustomerDetailPanel';
+import { CustomerDetailPanel } from './CustomerDetailPanel';
 import { CustomerSidebar } from './CustomerSidebar';
 import { useCustomerForm } from '../../lib/useCustomerForm';
 import { useConfirm } from '../../lib/useConfirm';
