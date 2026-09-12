@@ -374,10 +374,22 @@ export function meetingTopicNamesOwnerRole(raw: string): boolean {
 export function messageSoundsUrgent(raw: string): boolean {
   const t = raw.trim().toLowerCase();
   if (!t) return false;
-  if (/\burgent(?:ly)?\b/.test(t)) return true;
-  if (/\bemergenc(?:y|ies)\b/.test(t)) return true;
-  if (/\bas soon as possible\b|\basap\b/.test(t)) return true;
-  if (/\bright away\b/.test(t)) return true;
+  // A caller saying something is NOT urgent is giving the OPPOSITE signal —
+  // "not urgent", "isn't an emergency", "nothing urgent", "not right away"
+  // must never raise the flag (Copilot review, PR #414). Negation is scoped
+  // to the CLAUSE it appears in (split on punctuation and "but"), not the
+  // whole message, so dismissing one word never suppresses a genuine signal
+  // in the next clause ("it's not urgent, but please call me back ASAP").
+  const negation = /\b(?:not|isn't|is not|no|nothing|never)\b/;
+  const keyword =
+    /\burgent(?:ly)?\b|\bemergenc(?:y|ies)\b|\bas soon as possible\b|\basap\b|\bright away\b/g;
+  for (const clause of t.split(/[,.;!?]|\bbut\b/)) {
+    let m: RegExpExecArray | null;
+    keyword.lastIndex = 0;
+    while ((m = keyword.exec(clause))) {
+      if (!negation.test(clause.slice(0, m.index))) return true;
+    }
+  }
   return false;
 }
 

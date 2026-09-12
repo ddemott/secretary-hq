@@ -111,12 +111,17 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       set from the caller's own words", but only the model was ever asked to do it — a prompt
       request, not a guarantee. New `messageSoundsUrgent()` matches "urgent(ly)", "emergency",
       "as soon as possible"/"ASAP", "right away" against the FINAL message text (post-backfill,
-      so it catches `message_body` even when the model never retyped it) and `buildActionArgs`
-      applies it to every `take_message` call — RAISE-ONLY: it can only ever flip `is_urgent` to
-      `true`, never override an explicit `false` from the model, matching the DB column's own
-      raise-only contract. New tests in `checklistTools.test.ts`: the matcher itself, the raise
-      when the message text says urgent, the no-op when it doesn't, and the raise-only guard
-      against an explicit `is_urgent: true`.
+      so it catches `message_body` even when the model never retyped it) — checked per
+      OCCURRENCE with a negation guard, so "not urgent" / "isn't an emergency" never false-positive
+      (Copilot review) — and `buildActionArgs` applies it to every `take_message` call.
+      RAISE-ONLY means MONOTONIC, not "never touches the model's value": when the caller's own
+      words say urgent, `is_urgent` is forced to `true` even over an explicit `false` from the
+      model (the caller's words outrank the model's guess); when nothing in the message says
+      urgent, whatever the model passed is left untouched — the flag can only ever move toward
+      `true`, never away from it, matching the DB column's own raise-only contract. New tests in
+      `checklistTools.test.ts`: the matcher itself (incl. negation), the raise when the message
+      text says urgent (including over an explicit `is_urgent: false`), and the no-op when
+      nothing in the message says urgent.
 - [ ] **(code)** **A wrong node id makes the agent RE-ASK the caller instead of retrying.** Found
       2026-09-11 reading `sim-questiontree` transcripts, and on `main`. ONE-BREATH ("everything
       volunteered in the opener, nothing re-asked") was graded PASS while the transcript shows

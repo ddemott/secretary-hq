@@ -806,6 +806,23 @@ describe('record_answer', () => {
       expect(messageSoundsUrgent('just checking on my appointment next week')).toBe(false);
       expect(messageSoundsUrgent('')).toBe(false);
     });
+
+    it('SAD→FIXED: negation is the OPPOSITE signal, not a match (Copilot review, PR #414)', () => {
+      // A caller volunteering that something is NOT urgent must never raise
+      // the flag — the pre-fix matcher treated "urgent" as a bare keyword
+      // and would have flagged every one of these.
+      expect(messageSoundsUrgent("it's not urgent")).toBe(false);
+      expect(messageSoundsUrgent("this isn't an emergency")).toBe(false);
+      expect(messageSoundsUrgent('nothing urgent, just a question')).toBe(false);
+      expect(messageSoundsUrgent('no emergency, whenever is fine')).toBe(false);
+      expect(messageSoundsUrgent('it never needs to happen right away')).toBe(false);
+    });
+
+    it('an unnegated signal ELSEWHERE in the same message still counts', () => {
+      // Negation is checked per occurrence, not per message — a caller can
+      // dismiss one word and still mean the other.
+      expect(messageSoundsUrgent("it's not urgent, but please call me back ASAP")).toBe(true);
+    });
   });
 
   it('PIN: an empty volunteered caller_name never records (set_purpose passed "" live)', async () => {
@@ -1570,7 +1587,28 @@ describe("take_message raises is_urgent from the caller's own words (URGENT CALL
     expect(args.is_urgent).toBeUndefined();
   });
 
-  it('is RAISE-ONLY — never turns an explicit is_urgent:true from the model back to false', async () => {
+  it('RAISE-ONLY means MONOTONIC: urgent words in the message win even over an explicit is_urgent:false from the model', async () => {
+    // "Raise-only" is not "the host never touches the model's value" — it
+    // means the flag can only ever move TOWARD true, never away from it. The
+    // caller's own words outrank a model that guessed wrong, so an explicit
+    // `false` from the model is overridden when the message itself says
+    // urgent (Copilot review, PR #414 — the original wording here claimed
+    // the opposite, which did not match this behavior).
+    const { toolkit, fakes } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    for (const [node_id, value] of [
+      ['caller_name', 'Dana'],
+      ['caller_phone', '2624979039'],
+      ['message_body', "It's really urgent, please have him call me back today"],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'take_message', { is_urgent: false });
+    const args = fakes.take_message.execute.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.is_urgent).toBe(true);
+  });
+
+  it('never LOWERS an explicit is_urgent:true when the message text says nothing urgent', async () => {
     const { toolkit, fakes } = makeKit();
     await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
     for (const [node_id, value] of [
