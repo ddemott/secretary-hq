@@ -453,6 +453,70 @@ build.
 no-caller-ID fallbacks in `get_my_appointments`/cancel/reschedule now capability-gate
 the transfer offer (offer a message only when transfer is unwired).
 
+## 2026-08-14 through 2026-08-28 — doc-hygiene batch: legal docs shipped, the ENABLE_OUTPUT_WATCHDOG chain (voice naturalness, turn-latency instrument, reminder pipeline outage + deploy-order lesson)
+
+Trimmed from `docs/planning/TODO.md` 2026-09-12 (doc-hygiene, third batch; content
+dated as below, each item was already `[x]`, nothing left open). Two live loose ends
+in this same area of the file were deliberately left in place, NOT archived: the
+"OPEN, needs Dale's ear" line asking whether `ENABLE_OUTPUT_WATCHDOG`'s filler line
+sounds like cover or a stutter on a real call, and the bare "Fill real
+TELNYX_PUBLIC_KEY in .env" note — both are still-open items, not history.
+
+**Publish + link legal docs — SHIPPED 2026-08-14.** Public `/privacy`, `/terms`,
+`/dpa`. Terms = Bonterms Standard Online Cloud Terms v1.0 by reference +
+Provider-Specific Terms. DPA = Bonterms DPA v2.0 cover + subprocessors. Privacy =
+ICO-style notice + product call-handling language. Footer + register checkbox link
+all three. Not a lawyer review.
+
+**Test voice naturalness on simulator (inflections, pauses) — PARTIAL 2026-08-19,
+then closed out same day.** A live browser-simulator call against prod surfaced two
+real defects. (1) Fixed: `agent/src/checklist/checklistTools.ts` — `job`/`fix_computer`
+co-selected with `generic_subject` left `generic_subject`'s own "what does this
+concern?" node open even after the topic was already known, so the caller got asked a
+second time; now backfilled from `TREE_TOPIC` same as `meeting_topic`. (2)
+Instrumented, not fixed at the time: no engine-level inflection/pacing control exists
+(Aura's WS path rejects `?speed=`) and nobody had turn-latency numbers to diagnose
+"long pauses" from — `agent/src/session/watchdog.ts` logs `turn_latency_ms` (INFO,
+WARN at ≥2500ms) on every turn. That instrument was then pulled from a real prod call
+the same day (`sim-call-1787158785189`, John Jones / job inquiry, 207s) and **found
+itself broken**: `turn_latency_ms` never once appeared in the log for a call with two
+turns of 17s and 20s of real dead air, because it had been added inside
+`attachOutputWatchdog`, gated behind `ENABLE_OUTPUT_WATCHDOG`, and prod ran that flag
+OFF. The same pull also caught a real re-ask bug in the transcript: the model recorded
+`hiring_for` as `"hiring_for_own_company"` (fusing the node_id onto the valid option
+`own_company`), `tracker.record()` rejected it as unknown, and the model re-asked the
+caller instead of silently retrying with the corrected key its own rejection handed
+it — fixed in `tracker.ts`'s choice-value check (strip a `${nodeId}_` prefix before
+rejecting). The latency logging itself was moved into `attachSilentTurnRecovery`,
+which is unconditional and the only thing that actually runs on every prod call. Both
+fixes have unit test coverage (`tracker.test.ts`, `watchdog.test.ts`).
+
+**Set `ENABLE_OUTPUT_WATCHDOG=true` on `secretary-hq-agent` — DONE 2026-08-28.** Dale
+confirmed Railway Variables on `secretary-hq-agent` already has it set; the agent env
+schema default is also ON (`undefined` → true; only the literal string `false`
+disables it). The 2026-07-17 / 2026-08-19 "prod runs that flag OFF" finding above is
+historical, not current.
+
+**Reminder pipeline totally dead since 2026-08-06 — FOUND AND FIXED 2026-08-19** on
+`fix/reminder-claim-status-constraint`. The atomic claim from #322 wrote a `status`
+the CHECK constraint rejected, so every tick threw and zero reminders or confirmations
+were sent for 13 days while the worker reported itself healthy. Migration
+`20260819000000` + `processReminder` accepting `'sending'` + `releaseStaleClaims()`,
+guarded by a real-DB regression suite; full write-up also in
+`docs/workflow/LESSONS_LEARNED.md`. **Deploy order for this one was deliberately the
+REVERSE of the house rule** ("prod DB migrations go in ahead of the merge"), because
+that rule assumes the migration is inert until new code uses it — here prod was
+ALREADY running code that wrote the value the constraint rejected, so widening the
+constraint on its own (with the old code still live) would flip the claim from
+throwing to SUCCEEDING, and the claimed rows would then strand in `'sending'` forever
+because the claim query only ever selects `'scheduled'` — turning a loud, harmless,
+total outage into a silent leak that damages rows, strictly worse. Correct sequence
+used: (1) merge the fix PR; (2) confirm the backend deploy actually landed (`/health`
+`started_at` moves — Railway can silently skip); (3) only then run the migration
+against prod. The general lesson: ask which side (code or constraint) is already
+emitting the value before choosing deploy order — "migrations before merge" is right
+only when the migration is inert until new code starts using it.
+
 ## 2026-07-08 through 2026-08-28 — doc-hygiene batch: per-IP limiter investigation, alert-rules research, 2026-08-19 catch-up session, refactor sweep (test-tree/knowledge/analytics/tools), question-tree call review, outage voice, greeting disclaimer
 
 Trimmed from `docs/planning/TODO.md` 2026-09-12 (doc-hygiene, second batch; content
