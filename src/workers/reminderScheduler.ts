@@ -190,6 +190,7 @@ async function processBatch(): Promise<number> {
         await reminderService.processReminder(reminder.reminder_schedule_id.toString());
         processed++;
       } catch (error) {
+        errorsTotal.inc({ event: 'reminder_process_failed' });
         console.error(`❌ Failed to process reminder ${reminder.reminder_schedule_id}:`, error);
         const currentRetryCount = reminder.retry_count ?? 0;
         const decision = decideRetry(error, currentRetryCount);
@@ -212,6 +213,10 @@ async function processBatch(): Promise<number> {
             });
           }
         } catch (updateError) {
+          // Worse than the outer catch: the row is stuck in 'sending' with no
+          // status write to recover it — only releaseStaleClaims()'s 5-minute
+          // sweep will put it back on the queue. Silent until then.
+          errorsTotal.inc({ event: 'reminder_status_update_failed' });
           console.error(`❌ Failed to update reminder status:`, updateError);
         }
       }
