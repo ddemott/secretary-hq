@@ -4880,6 +4880,50 @@ describe('agentTools /voice-session-start + /voice-session-end (call logging)', 
     ]);
   });
 
+  it('SAD: owner outcome-follow-up SMS fails — call still ends cleanly, and the failure is logged locally', async () => {
+    // WHO: platform operator, not the caller — the call itself ended fine.
+    // WHAT: sendSms resolves ok:false on a real Telnyx 500 (it never rejects —
+    //       see telnyxSms.ts); before this fix, a bare .catch() here could
+    //       never fire, so a failed owner-nudge produced no local log line.
+    // WHERE: end_voice_session's outcome-follow-up SMS branch — fires only for
+    //        outcome in ('price', 'no_availability') with both phones set.
+    process.env.TELNYX_API_KEY = 'test-telnyx-key';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('server error', { status: 500 }))
+    );
+    try {
+      const { app } = buildApp({
+        queryResponses: [
+          { rows: [{ ended: true }] },
+          { rows: [{ forward_phone: '+16305550100', inbound_phone: '+16305550101' }] },
+        ],
+      });
+      const logErrorSpy = vi.spyOn(app.log, 'error');
+
+      const res = await post(app, '/agent-tools/voice-session-end', {
+        tenant_id: TENANT_ID,
+        call_id: 'call-price-1',
+        duration_seconds: 60,
+        outcome: 'price',
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().success).toBe(true);
+
+      // Fire-and-forget: give the unhandled .then() a tick to run.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(logErrorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 500 }),
+        'Failed to send outcome-follow-up SMS to owner'
+      );
+    } finally {
+      delete process.env.TELNYX_API_KEY;
+    }
+  });
+
   it('SAD: a long call whose transcript holds no Caller line bumps errors_total{no_caller_audio}', async () => {
     // WHO: a real caller who dialed in, heard the greeting, and spoke.
     // WHAT: the finalized transcript holds ONLY the agent's greeting — not one

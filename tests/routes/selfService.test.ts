@@ -8,8 +8,18 @@
  *        uses withTenantClient so FORCE RLS on appointments table passes.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+
+// sendSms is a chokepoint that never rejects (see telnyxSms.ts) — mocked here
+// to prove the reschedule route's fire-and-forget owner SMS checks
+// result.ok and logs locally on failure, since a .catch() on this call can
+// never fire.
+const mockSendSms = vi.fn();
+vi.mock('../../src/services/telnyxSms.js', () => ({
+  sendSms: (...args: unknown[]) => mockSendSms(...args),
+}));
+
 import { registerSelfServiceRoutes } from '../../src/routes/selfService.js';
 import { generateSelfServiceToken } from '../../src/services/selfServiceToken.js';
 import { buildRouteTestApp, type RouteTestAppHandle } from '../mock';
@@ -41,6 +51,8 @@ afterAll(async () => {
 beforeEach(() => {
   handle.queries.length = 0;
   handle.queryResponses.length = 0;
+  mockSendSms.mockReset();
+  mockSendSms.mockResolvedValue({ ok: true, status: 200 });
 });
 
 describe('GET /self/cancel', () => {
@@ -147,9 +159,51 @@ describe('GET /self/reschedule', () => {
       expect(body.success).toBe(true);
       expect(body.message).toMatch(/contact you shortly/i);
     });
+
   });
 
   describe('Sad Paths', () => {
+    it('owner SMS fails — route still succeeds, and the failure is logged locally', async () => {
+      // WHO: platform operator, not the customer — the customer's request
+      //      still succeeded from their point of view
+      // WHAT: sendSms resolves ok:false (never rejects — see telnyxSms.ts);
+      //       before this fix, a bare .catch() here could never fire, so a
+      //       failed owner-nudge produced no local log line at all
+      const logErrorSpy = vi.spyOn(app.log, 'error');
+      mockSendSms.mockResolvedValue({ ok: false, error: 'http_500', status: 500 });
+
+      handle.queryResponses.push({
+        rows: [
+          {
+            start_time: '2026-07-10T14:00:00Z',
+            description: 'Haircut',
+            customer_name: 'Alice',
+            customer_phone: '+16305550199',
+          },
+        ],
+        rowCount: 1,
+      });
+      handle.queryResponses.push({
+        rows: [{ forward_phone: '+16305550100', inbound_phone: '+16305550101' }],
+        rowCount: 1,
+      });
+
+      const token = generateSelfServiceToken(APPT_ID, TENANT_ID, 'reschedule')!;
+      const res = await app.inject({ method: 'GET', url: `/self/reschedule?token=${token}` });
+
+      expect(res.statusCode).toBe(200);
+      expect((JSON.parse(res.body) as { success: boolean }).success).toBe(true);
+
+      // Fire-and-forget: give the unhandled .then() a tick to run.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockSendSms).toHaveBeenCalledTimes(1);
+      expect(logErrorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'http_500', status: 500 }),
+        'Failed to send reschedule-request SMS to owner'
+      );
+    });
+
     it('returns 400 when token is missing', async () => {
       // WHO: bot/browser with no token
       // WHAT: rejected before any DB query
