@@ -462,7 +462,27 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
 - [ ] **(Dale — BLOCKER)** Review live scheduling **coloring/grading** so Cluster A neutral-language work can proceed (de-grade slices were reverted 2026-05-20; do not re-apply unprompted).
 - [ ] **Cluster A — neutral-language / no-grading** (8 surfaces, blocked on the Dale review): `StepReview`, `SkillRelationshipMap`/`SkillMapNode`, `ResourceColumnsView`, `AppointmentListView`, `EmployeeDayFocusPanel`, `AnalyticsView`, `AppointmentDetailPanel`. (Violates the "no percentage/letter grading" product rule.)
 - [x] ~~**Wizard Phase B**~~ — reversed from "held" and **shipped 2026-07-05/06** (PRs #204–#208): draft-commit `SetupWizard` + `GoLivePanel` + E2E coverage, merged to main, no prod migration needed. Full writeup + lessons in `docs/planning/RESOLVED.md`.
-- [ ] **Wizard Phase B follow-ups** (explicitly deferred in the design doc, not bugs): abandoned-test-number reaper (a `phone_status='active'` DID with no `forwarded_from_phone` and no recent `voice_sessions`) — queryable, not built; auto forwarding-verification heuristic (SIP caller-ID match instead of asking the owner) — named, not built; real Telnyx porting API integration — deferred until a real port customer per YAGNI.
+- [x] ~~**Wizard Phase B follow-up: abandoned-test-number reaper**~~ — **DONE 2026-09-12** (query
+      only, as scoped — "queryable, not built"). `scripts/find-abandoned-test-numbers.ts`: a
+      `phone_status='active'` DID with no `forwarded_from_phone` and no `voice_sessions` in the
+      last N days (default 14, `--older-than`) is billing Telnyx every month with no live purpose.
+      Report-only by design — it never releases a number or touches Telnyx; deciding "abandoned
+      enough to release" stays a human call, mirroring `purge-soft-deleted.ts`'s dry-run-first
+      philosophy (except here there is no `--execute` at all, since deprovisioning is a
+      platform-owner ops action, not something to automate blind). The query is exported
+      (`findAbandonedTestNumbers`) and shared verbatim with its real-DB test
+      (`tests/regression/abandonedTestNumbers.realdb.test.ts`, 6 cases: flags the genuinely
+      abandoned tenant; never flags one with `forwarded_from_phone` set, one called inside the
+      window, one soft-deleted, or one never phone-activated; re-opens as abandoned once a past
+      call ages out of the window) plus a CLI-guard test
+      (`scripts/find-abandoned-test-numbers.test.ts`, same `--older-than` misparse class
+      `purge-soft-deleted.ts` was fixed for on PR #351 — a dropped guard here costs a misleading
+      report, not a destructive purge, but a misleading report about which real phone numbers to
+      release is still the wrong answer). Full backend suite green (3099 tests).
+- [ ] **Wizard Phase B follow-ups, remaining** (explicitly deferred in the design doc, not bugs):
+      auto forwarding-verification heuristic (SIP caller-ID match instead of asking the owner) —
+      named, not built; real Telnyx porting API integration — deferred until a real port customer
+      per YAGNI.
 - [ ] **Dense-view decomposition** — track, don't piecemeal: `SettingsView`, `TenantEditPanel`, `CRMView`, `AppointmentView`, `DashboardHome`, `CustomerDetailPanel`, scheduler orchestration, `ShiftManagementView`, `ServiceAssignmentView`/`SkillAssignmentsView`/`SkillMatrixView`. Split each overloaded view into focused sub-components (no file over ~300 lines); sequence with C1+C2 to avoid duplicated churn.
   - _First slice DONE 2026-07-05 (PR #201):_ `VoiceCallsView` 1185→711, extracted `components/voice/` (`callFormatters`, `outcome`, `CallRows`, `MessagesInbox` — each <300 lines; also closed a swallowed-failure defect in the inbox).
   - _Second slice DONE 2026-07-06 (PR #211):_ `KnowledgeBaseView` 1143→408 (`components/knowledge/`), `AnalyticsView` 970→265 (`components/analytics/`), `ShiftManagementView` 960→402 (`components/shifts/`), `DashboardHome` 838→318 (`components/home/`), `ServiceAssignmentView` 816→395 (`components/services/`). 874 dashboard tests green.
