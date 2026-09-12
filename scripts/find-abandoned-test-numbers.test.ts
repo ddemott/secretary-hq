@@ -12,8 +12,17 @@
  * "abandoned" is still the wrong answer to give an operator about to release
  * a real phone number.
  *
- * Driven as a subprocess (same approach as `purge-soft-deleted.test.ts`)
- * because the guard runs at module scope and calls `process.exit`.
+ * Driven as a subprocess (same approach as `purge-soft-deleted.test.ts`),
+ * not a direct import + call. The guard lives in `runCli()`, gated behind
+ * `invokedDirectly` — importing the module for `findAbandonedTestNumbers`
+ * (as the real-DB test does) never runs it. But a genuinely bad flag calls
+ * `process.exit`, and `invokedDirectly` is true precisely when the module is
+ * the process entry point — which a subprocess IS. Calling `runCli()`
+ * in-process instead would let a real failure kill the vitest worker running
+ * this very test; a subprocess is what lets us assert on the exit code
+ * safely from outside it (Copilot review, PR #417 — the previous wording
+ * here said the guard ran "at module scope," which stopped being true once
+ * it moved into `runCli()`).
  */
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';

@@ -141,4 +141,27 @@ describe('findAbandonedTestNumbers', () => {
     const rows = await findAbandonedTestNumbers(root, 14);
     expect(rows.map((r) => r.tenant_id)).not.toContain(t);
   });
+
+  it('SAD: phone_status=active with no telnyx_phone_number_id/inbound_phone on file is never flagged (Copilot review, PR #417)', async () => {
+    // The schema does not enforce that an 'active' phone_status carries a
+    // real Telnyx id — a corrupt or partial row could have the status flag
+    // set with nothing actually provisioned. Reporting that as "billing
+    // Telnyx monthly" would be false, and there would be nothing for an
+    // operator to actually go release. Both columns must be present.
+    if (!dbAvailable) return;
+    const t = await createTenant(root, 'Corrupt Row Co', 'auto-repair', 'America/Chicago');
+    await root.query(
+      `UPDATE tenants
+          SET phone_status = 'active',
+              inbound_phone = NULL,
+              telnyx_phone_number_id = NULL,
+              forwarded_from_phone = NULL,
+              created_at = now() - interval '40 days'
+        WHERE tenant_id = $1`,
+      [t]
+    );
+
+    const rows = await findAbandonedTestNumbers(root, 14);
+    expect(rows.map((r) => r.tenant_id)).not.toContain(t);
+  });
 });

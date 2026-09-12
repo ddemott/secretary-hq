@@ -68,6 +68,13 @@ export async function findAbandonedTestNumbers(
      FROM tenants t
      LEFT JOIN voice_sessions vs ON vs.tenant_id = t.tenant_id
      WHERE t.phone_status = 'active'
+       -- Copilot review, PR #417: phone_status='active' alone does not prove
+       -- a real Telnyx number is on file — schema does not enforce it, so a
+       -- corrupt/partial row (active status, no id ever recorded) would
+       -- report as "billing" with nothing to actually go release. Both
+       -- columns must be present for a row to mean what this report claims.
+       AND t.telnyx_phone_number_id IS NOT NULL
+       AND t.inbound_phone IS NOT NULL
        AND t.forwarded_from_phone IS NULL
        AND (t.is_deleted IS NULL OR t.is_deleted = false)
      GROUP BY t.tenant_id, t.name, t.inbound_phone, t.telnyx_phone_number_id, t.created_at
