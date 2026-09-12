@@ -45,8 +45,12 @@ vi.mock('stripe', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────
 import { registerBillingRoutes, subscriptionGate } from '../../src/routes/billing';
-import { registry } from '../../src/services/metrics';
+import { registry, errorsTotal } from '../../src/services/metrics';
 import { jsonContentTypeParser } from '../../src/jsonContentTypeParser';
+
+function errorsTotalFor(event: string): number {
+  return errorsTotal.snapshot().find((s) => s.labels.event === event)?.value ?? 0;
+}
 import type { AppRequest } from '../../src/middleware/fastify-middleware';
 
 const TENANT_ID = 'f234e471-0e60-4163-86c9-93cfd9338e3a';
@@ -543,5 +547,27 @@ describe('subscriptionGate middleware/fastify-middleware', () => {
 
     expect(res.statusCode).toBe(200);
     expect((mockPool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+  });
+
+  it('SAD: a DB error fails open (request still passes) but bumps errors_total', async () => {
+    // WHO: platform operator watching /metrics, not the caller
+    // WHAT: the gate's own query throws; the request must still reach the
+    //       route handler (fail-open is deliberate — see the comment in
+    //       billing.ts), but the failure must be COUNTED so it can be acted
+    //       on, per this codebase's "instrument every sad path" rule
+    // WHY: a silently-swallowed error here means nobody would ever notice
+    //      the gate stopped protecting anything
+    const mockPool = {
+      query: vi.fn().mockRejectedValue(new Error('connection reset')),
+    } as unknown as Pool;
+    const app = Fastify({ logger: false });
+    app.addHook('preHandler', subscriptionGate(mockPool));
+    app.get('/some-data', async (_req, reply) => reply.send({ ok: true }));
+
+    const before = errorsTotalFor('subscription_gate_error');
+    const res = await app.inject({ method: 'GET', url: '/some-data?tenant_id=' + TENANT_ID });
+
+    expect(res.statusCode).toBe(200);
+    expect(errorsTotalFor('subscription_gate_error')).toBe(before + 1);
   });
 });
