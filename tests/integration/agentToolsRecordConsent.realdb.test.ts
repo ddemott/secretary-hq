@@ -26,6 +26,11 @@ import { API_DB_URL, getRootClient, createTenant, skipIfDbDown } from '../utils'
 import { createWithTenantClient } from '../../src/database';
 import { registerAgentToolRoutes } from '../../src/routes/agentTools';
 import { normalizePhone } from '../../shared/phone';
+import { errorsTotal } from '../../src/services/metrics';
+
+function errorsTotalFor(event: string): number {
+  return errorsTotal.snapshot().find((s) => s.labels.event === event)?.value ?? 0;
+}
 
 const AGENT_SECRET = 'test-consent-secret';
 const stubEmbedding = (): Promise<number[]> => Promise.resolve(new Array(1536).fill(0));
@@ -154,5 +159,56 @@ describe('POST /agent-tools/record-consent — verbal SMS consent → consent_re
       [tenantId]
     );
     expect(rows.rows[0].n).toBe(0);
+  });
+});
+
+// No real DB needed below — withTenantClient is a plain function parameter
+// on registerAgentToolRoutes, so a throwing stub exercises the catch block
+// directly without a pool at all. Runs even when the real-DB suite above is
+// skipped (no DATABASE_URL in this environment).
+describe('POST /agent-tools/record-consent — DB failure is instrumented, not silent', () => {
+  it('SAD: a DB error still returns a soft failure but bumps errors_total', async () => {
+    // WHO: platform operator watching /metrics, not the caller
+    // WHAT: withTenantClient rejects (simulating a DB hiccup); the route must
+    //       still answer with the best-effort soft-failure shape (never a
+    //       500 mid-call) AND count the failure — see sad-path-instrumentation
+    // WHY: an uncounted, systematically-failing consent write is invisible
+    //      until a customer complains reminders never mentioned consent
+    const prevSecret = process.env.AGENT_SECRET;
+    process.env.AGENT_SECRET = 'test-consent-failure-secret';
+
+    const failingApp = Fastify({ logger: false });
+    const throwingWithTenantClient = async () => {
+      throw new Error('connection reset');
+    };
+    registerAgentToolRoutes(
+      failingApp,
+      {} as Pool,
+      throwingWithTenantClient,
+      async () => new Array(1536).fill(0),
+      async (text: string) => text
+    );
+    await failingApp.ready();
+
+    try {
+      const before = errorsTotalFor('record_consent_insert_failed');
+      const res = await failingApp.inject({
+        method: 'POST',
+        url: '/agent-tools/record-consent',
+        headers: { 'x-agent-secret': 'test-consent-failure-secret' },
+        payload: {
+          tenant_id: '11111111-1111-1111-8111-111111111111',
+          phone: '555-777-0009',
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().success).toBe(false);
+      expect(errorsTotalFor('record_consent_insert_failed')).toBe(before + 1);
+    } finally {
+      await failingApp.close();
+      if (prevSecret === undefined) delete process.env.AGENT_SECRET;
+      else process.env.AGENT_SECRET = prevSecret;
+    }
   });
 });
