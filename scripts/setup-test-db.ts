@@ -99,7 +99,7 @@ async function setupSchemaMigrations(client: Client) {
   console.log('[setup-test-db] schema_migrations table ready.');
 }
 
-async function runMigrationsUpToTarget(client: Client) {
+async function runAllMigrations(client: Client) {
   const migrationsToRun = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => /^\d{14}_.*\.sql$/.test(f))
@@ -204,7 +204,7 @@ async function main() {
 
   try {
     await setupSchemaMigrations(testClient);
-    await runMigrationsUpToTarget(testClient);
+    await runAllMigrations(testClient);
     await ensureAppUserRole(testClient);
     await verifyRole(testClient);
 
