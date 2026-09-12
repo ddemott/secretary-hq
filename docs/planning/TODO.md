@@ -122,19 +122,26 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       `checklistTools.test.ts`: the matcher itself (incl. negation), the raise when the message
       text says urgent (including over an explicit `is_urgent: false`), and the no-op when
       nothing in the message says urgent.
-- [ ] **(code)** **A wrong node id makes the agent RE-ASK the caller instead of retrying.** Found
-      2026-09-11 reading `sim-questiontree` transcripts, and on `main`. ONE-BREATH ("everything
-      volunteered in the opener, nothing re-asked") was graded PASS while the transcript shows
-      the opposite: the caller gave company, full-time, senior QA, $120–140k, hybrid and the
-      address in her first sentence; the model recorded them under invented ids (`role_type`,
-      `role_title`, `role_salary_range`, `role_location`), `tracker.ts:328` refused each with
-      `"<id>" is not on this call's checklist. Record only the ids the checklist shows.` — which
-      names no valid id — and the model then asked her for all of it again ("Like I said…",
-      twice). `role_description` was saved as DECLINED although "senior QA" was said in the
-      opener. Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the refusal must
-      hand the model the ids it CAN record (or the nearest one), so a wrong id costs a silent
-      retry, not the caller's patience. The grader must also fail a "nothing re-asked" scenario
-      that re-asks.
+- [x] ~~**A wrong node id makes the agent RE-ASK the caller instead of retrying.**~~ — **FIXED
+      2026-09-11.** Found reading `sim-questiontree` transcripts, on `main`. ONE-BREATH
+      ("everything volunteered in the opener, nothing re-asked") was graded PASS while the
+      transcript showed the opposite: the caller gave company, full-time, senior QA, $120–140k,
+      hybrid and the address in her first sentence; the model recorded them under invented ids
+      (`role_type`, `role_title`, `role_salary_range`, `role_location`), `tracker.ts`'s `record()`
+      refused each with `"<id>" is not on this call's checklist. Record only the ids the checklist
+      shows.` — which named no valid id — and the model then asked her for all of it again ("Like
+      I said…", twice). Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the
+      refusal must hand the model the ids it CAN record, so a wrong id costs a silent retry, not
+      the caller's patience. Fix: the `UnknownNodeError` now appends `Open ids you may record
+      now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
+      shape as `UnknownTreeError` on `set_purpose`. Also fixed the grader: it only checked one
+      hard-coded re-ask phrasing (the caller's name), which is exactly why this scenario passed
+      despite the transcript showing a real re-ask. Added a generic tripwire instead — the
+      persona's own behaviour instruction ("repeat it with mild impatience — 'like I said, …'")
+      fires ONLY when the agent actually re-asks something already said, so `sim-questiontree.ts`
+      now fails ONE-BREATH if the caller ever says "like I said" for ANY reason, not just the name.
+      New unit test in `tracker.test.ts` pins the error message; the grader fix has no separate
+      unit test (it's the harness itself).
 - [x] ~~**The dashboard booking form and the phone disagree on an UNLINKED service.**~~ — **FIXED
       2026-09-11**, migration `20260911000000_book_appointment_atomic_strict_links.sql`.
       `book_appointment_atomic` (dashboard path) now applies the identical STRICT rule

@@ -537,6 +537,30 @@ describe('recording hygiene', () => {
     expect(() => t.record('favourite_colour', { value: 'blue' })).toThrow(UnknownNodeError);
   });
 
+  it('SAD→FIXED: the refusal NAMES the ids the model can actually use (2026-09-11 ONE-BREATH bug)', () => {
+    // WHO: sim-questiontree ONE-BREATH — the caller volunteered company,
+    //      full-time, senior QA, salary, hybrid, and an address in her FIRST
+    //      sentence; the model invented plausible-looking ids for them
+    //      (role_type, role_title, role_salary_range, role_location), none
+    //      of which exist, the old refusal named no valid id, and the model
+    //      RE-ASKED for everything the caller had already said — twice.
+    // WHAT: the error message must list the checklist's current open ASK
+    //       ids, so a wrong guess costs one silent retry, not the caller's
+    //       patience.
+    const t = make();
+    t.select(['identity', 'job']);
+    let message = '';
+    try {
+      t.record('role_type', { value: 'full_time' });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain('"role_type" is not on this call');
+    expect(message).toContain('Open ids you may record now:');
+    // caller_name is identity's first open node — a real id must appear.
+    expect(message).toContain('caller_name');
+  });
+
   it('a corrected answer overwrites — last record wins', () => {
     const t = make();
     t.select(['identity']);

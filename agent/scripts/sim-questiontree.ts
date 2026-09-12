@@ -524,6 +524,8 @@ const valueMatch = (o: RunOutcome, node: string, re: RegExp): string[] =>
     : [`${node} = '${o.tracker.value(node) ?? '(unset)'}' !~ ${re}`];
 const agentSaid = (o: RunOutcome, re: RegExp): boolean =>
   o.transcript.some((t) => t.who === 'agent' && re.test(t.text));
+const callerSaid = (o: RunOutcome, re: RegExp): boolean =>
+  o.transcript.some((t) => t.who === 'caller' && re.test(t.text));
 const mustClose = (o: RunOutcome): string[] => (o.closed ? [] : ['call never closed']);
 const mustResolve = (o: RunOutcome): string[] =>
   o.tracker.isResolved() ? [] : ['checklist never resolved'];
@@ -632,6 +634,16 @@ office at 400 Water Street, Milwaukee.`,
       ...(agentSaid(o, /(can i (get|have)|what(’|')?s) your name/i)
         ? ['agent asked for a name that was volunteered in the opener']
         : []),
+      // TITLE CLAIMS "nothing re-asked", so the grader must actually catch a
+      // re-ask, not just the name (2026-09-11 finding: this scenario was
+      // graded PASS while the real transcript showed the agent asking twice
+      // for facts already in the opener). The persona's own behaviour
+      // instruction ("repeat it with mild impatience — 'like I said, ...'")
+      // is a caller-side tripwire: it fires ONLY when the agent actually
+      // re-asks for something already said, so a bug that invents a wrong
+      // node id and re-asks a real answer can no longer hide behind a
+      // grader that checked one hard-coded phrasing.
+      ...(callerSaid(o, /like i said/i) ? ['caller had to repeat an already-given answer'] : []),
       ...mustResolve(o),
       ...mustClose(o),
     ],

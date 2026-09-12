@@ -324,8 +324,22 @@ export class ChecklistTracker {
   record(nodeId: NodeId, input: { value?: string; declined?: boolean }): NodeStatus {
     const entry = this.#entries.get(nodeId);
     if (!entry || this.#liveness(nodeId) === 'unselected') {
+      // NAME THE IDS IT CAN USE (2026-09-11, sim-questiontree ONE-BREATH: the
+      // caller volunteered company, full-time, senior QA, $120-140k, hybrid,
+      // and an address in her FIRST sentence; the model invented plausible-
+      // looking ids for them — role_type, role_title, role_salary_range,
+      // role_location — none of which exist, this refusal named no valid id,
+      // and the model RE-ASKED for everything the caller had already said,
+      // twice. Same class as the 2026-08-19 hiring_for_own_company fix: a
+      // wrong id must cost a silent retry, never the caller's patience. The
+      // frontier's open ASK ids are exactly what the model is allowed to
+      // record right now — handing them back turns a guess into a lookup.
+      const open = this.frontier()
+        .filter((f) => f.kind === 'ask')
+        .map((f) => f.node_id);
+      const hint = open.length ? ` Open ids you may record now: ${open.join(', ')}.` : '';
       throw new UnknownNodeError(
-        `"${nodeId}" is not on this call's checklist. Record only the ids the checklist shows.`
+        `"${nodeId}" is not on this call's checklist.${hint} Record only the ids the checklist shows.`
       );
     }
     const def = entry.def;
