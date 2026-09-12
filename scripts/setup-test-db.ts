@@ -27,7 +27,6 @@ import { Client } from 'pg';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const TARGET_MIGRATION = '20260903000000_blackout_dates.sql';
 const ROOT_DIR = path.resolve(__dirname, '..');
 const MIGRATIONS_DIR = path.join(ROOT_DIR, 'supabase/migrations');
 
@@ -100,22 +99,13 @@ async function setupSchemaMigrations(client: Client) {
   console.log('[setup-test-db] schema_migrations table ready.');
 }
 
-async function runMigrationsUpToTarget(client: Client) {
-  const files = fs
+async function runAllMigrations(client: Client) {
+  const migrationsToRun = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => /^\d{14}_.*\.sql$/.test(f))
     .sort();
 
-  const targetIndex = files.indexOf(TARGET_MIGRATION);
-  if (targetIndex === -1) {
-    throw new Error(`Target migration ${TARGET_MIGRATION} not found.`);
-  }
-
-  const migrationsToRun = files.slice(0, targetIndex + 1);
-
-  console.log(
-    `[setup-test-db] Will run ${migrationsToRun.length} migrations up to ${TARGET_MIGRATION}.`
-  );
+  console.log(`[setup-test-db] Will run all ${migrationsToRun.length} migrations on disk.`);
 
   const appliedRes = await client.query<{ version: string }>(
     'SELECT version FROM schema_migrations'
@@ -214,7 +204,7 @@ async function main() {
 
   try {
     await setupSchemaMigrations(testClient);
-    await runMigrationsUpToTarget(testClient);
+    await runAllMigrations(testClient);
     await ensureAppUserRole(testClient);
     await verifyRole(testClient);
 

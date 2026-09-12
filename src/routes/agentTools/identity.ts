@@ -318,6 +318,7 @@ export function registerIdentityRoutes({ app, withTenantClient }: AgentToolDeps)
         // Best-effort: a DB hiccup must NOT 500 mid-call. Log the cause (a
         // systematically-failing consent write should be diagnosable — see
         // sad-path-instrumentation) and hand back a soft failure.
+        errorsTotal.inc({ event: 'record_consent_insert_failed' });
         reply.log.error({ err, tenant_id: args.tenant_id }, 'record-consent insert failed');
         return fail(reply, "I couldn't note that just now — your appointment is still all set.");
       }
