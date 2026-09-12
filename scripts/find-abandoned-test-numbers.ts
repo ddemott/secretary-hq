@@ -37,6 +37,7 @@
  *   npx tsx scripts/find-abandoned-test-numbers.ts --db "postgres://…" # target a specific DB
  */
 import { Client } from 'pg';
+import { pathToFileURL } from 'node:url';
 
 export interface AbandonedTestNumberRow {
   tenant_id: string;
@@ -78,37 +79,44 @@ export async function findAbandonedTestNumbers(
   return res.rows;
 }
 
-const args = process.argv.slice(2);
-const has = (flag: string) => args.includes(flag);
-const valueOf = (flag: string): string | undefined => {
-  const i = args.indexOf(flag);
-  return i >= 0 ? args[i + 1] : undefined;
-};
+/**
+ * All CLI-only behavior (arg parsing, exiting on a bad flag, opening a real
+ * connection) lives here, gated behind `invokedDirectly` below. Importing
+ * this module for `findAbandonedTestNumbers` — as the real-DB test does —
+ * must never parse `process.argv` or call `process.exit`; a module with
+ * top-level side effects like that cannot be imported safely at all.
+ */
+async function runCli() {
+  const args = process.argv.slice(2);
+  const has = (flag: string) => args.includes(flag);
+  const valueOf = (flag: string): string | undefined => {
+    const i = args.indexOf(flag);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
 
-const OLDER_THAN_REQUESTED = has('--older-than');
-const olderThanRaw = valueOf('--older-than');
-if (OLDER_THAN_REQUESTED && (olderThanRaw === undefined || olderThanRaw.startsWith('--'))) {
-  console.error(
-    'FATAL: --older-than was passed with no value. ' +
-      'Refusing to run rather than silently falling back to the default window.'
-  );
-  process.exit(1);
-}
-const DAYS = OLDER_THAN_REQUESTED ? Number(olderThanRaw) : 14;
-if (!Number.isFinite(DAYS) || DAYS < 0) {
-  console.error(
-    `FATAL: --older-than expects a non-negative number of days, got "${olderThanRaw}".`
-  );
-  process.exit(1);
-}
+  const OLDER_THAN_REQUESTED = has('--older-than');
+  const olderThanRaw = valueOf('--older-than');
+  if (OLDER_THAN_REQUESTED && (olderThanRaw === undefined || olderThanRaw.startsWith('--'))) {
+    console.error(
+      'FATAL: --older-than was passed with no value. ' +
+        'Refusing to run rather than silently falling back to the default window.'
+    );
+    process.exit(1);
+  }
+  const DAYS = OLDER_THAN_REQUESTED ? Number(olderThanRaw) : 14;
+  if (!Number.isFinite(DAYS) || DAYS < 0) {
+    console.error(
+      `FATAL: --older-than expects a non-negative number of days, got "${olderThanRaw}".`
+    );
+    process.exit(1);
+  }
 
-const DB_URL = valueOf('--db') ?? process.env.DATABASE_URL;
-if (!DB_URL) {
-  console.error('FATAL: no database. Pass --db "postgres://…" or set DATABASE_URL.');
-  process.exit(1);
-}
+  const DB_URL = valueOf('--db') ?? process.env.DATABASE_URL;
+  if (!DB_URL) {
+    console.error('FATAL: no database. Pass --db "postgres://…" or set DATABASE_URL.');
+    process.exit(1);
+  }
 
-async function main() {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
@@ -143,7 +151,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('FATAL:', err);
-  process.exit(1);
-});
+const invokedDirectly =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  runCli().catch((err) => {
+    console.error('FATAL:', err);
+    process.exit(1);
+  });
+}
