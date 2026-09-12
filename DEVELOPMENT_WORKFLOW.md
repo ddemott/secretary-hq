@@ -13,7 +13,7 @@
      `SELECT 1`, then runs the bootstrap below.
 2. Bootstrap test database: `npx tsx scripts/setup-test-db.ts`
    - Creates `test_db` if missing.
-   - Runs all `supabase/migrations/` up to and including `20260724000100_app_user_role.sql` **as superuser**.
+   - Runs every migration in `supabase/migrations/`, lexically, **as superuser** (was pinned to a hardcoded cutoff migration until 2026-09-12 — the cutoff fell 4 migrations behind disk and `test_db` silently ran an outdated schema, failing 72 unrelated tests with stale function/behavior errors; see `docs/workflow/LESSONS_LEARNED.md`).
    - Creates `app_user` role with `NOBYPASSRLS`.
    - Applies grants and verifies posture.
    - Guards against prod DBs (refuses non-local hosts or prod-named DBs).
