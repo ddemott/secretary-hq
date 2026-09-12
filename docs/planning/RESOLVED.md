@@ -362,6 +362,97 @@ paragraph still reporting the failures this branch fixes. Re-measured 2026-09-08
 backend **3,029** passing (254 files), dashboard **1,069** (99), agent **981** (60),
 32 route modules, 192 migrations, 40 e2e specs, `verify:claude-md` clean.
 
+## 2026-07-05 through 2026-07-11 — doc-hygiene batch: Telnyx creds, deploy-gate proof, webhook/gate/vitest fixes, Setup-tabs scroll, transfer-fallback string
+
+Trimmed from `docs/planning/TODO.md` 2026-09-12 (doc-hygiene; content dated as below,
+each item was already `[x]`, nothing left open).
+
+**Confirm `TELNYX_API_KEY` + `TELNYX_SIP_CONNECTION_ID` are set on Railway — DONE
+2026-07-09.** All three present. `TELNYX_PHONE_NUMBER` held the dead `+16308661960`
+(order deleted); corrected to `+16308229086` and the backend redeployed (`started_at`
+`23:49:38Z`). What it was breaking: the var is the outbound-SMS `from` fallback
+(`tenantConfig.inboundPhone || process.env.TELNYX_PHONE_NUMBER`, `smsService.ts:66,147`
++ `appointments.ts:710`) — any tenant without its own `inbound_phone` was sending
+confirmations/reminders from a number Telnyx no longer owns, so the provider rejected
+it and left silent `status='failed'` rows in `communications_history`. Inbound voice
+was unaffected (routing is Telnyx number → SIP Connection, not this var), which is why
+the 2026-06-30 live-call test passed while SMS was broken. Nothing caught it earlier
+because `featureReadiness.ts:68,81` checks only that the var is *set*, never that
+Telnyx still owns the number — a set-but-dead credential reads as healthy. Only the
+backend reads this var (agent takes the transfer target from tenant config, not env),
+so a single fix sufficed.
+
+**Enable the "Wait for CI" toggle on the 3 Railway services — DONE 2026-07-09.** Enabled
+on all three (`secretary-hq`, `secretary-hq-agent`, `dashboard`) at Railway → Service →
+Settings → Source → "Wait for CI" ("Trigger deployments after all GitHub actions have
+completed successfully"). Railway stages settings edits — they only take effect after
+clicking Deploy on the "Apply N changes" banner. The Railway GitHub App already held
+`checks` + `commit statuses` read/write on all repos, so no permission grant was needed.
+Caveat: this is unversioned dashboard state — `railway.json` has no field for it, and if
+a service is ever recreated the toggle silently reverts with nothing in the repo to say
+so. Caveat: the setting waits on *all* GitHub Actions on the commit, not the
+branch-protection required-checks list — any future workflow that runs on `main` and
+can fail will also block deploys.
+
+**Prove the gate end-to-end — PROVEN 2026-07-09 (PR #227).** A deliberately-failing test
+made `Backend` red → `mergeStateStatus: BLOCKED` → `gh pr merge` refused with "the base
+branch policy prohibits the merge". Deleting the test flipped all 4 checks green →
+`CLEAN` → merge allowed. Branch protection holds. Not tested, deliberately: `gh pr merge
+--admin` — the API reports `enforce_admins: true`, verified-by-config, not by
+experiment. This proves the MERGE gate only; the deploy gate is the "Wait for CI" item
+above (after #226 merged, Railway had brought up the new backend ~4 min ahead of CI
+going green — exactly what that toggle closes).
+
+**Telnyx webhook verifies a re-stringified body — FIXED 2026-07-09.**
+`/communications/telnyx/status` now HMACs `req.rawBody` (the exact received bytes),
+like `billing.ts`/`square.ts`. Signature verification was also moved before payload
+parsing — previously an unsigned caller reached the parse path and the route's safety
+rested on the id/status guard firing first (the parser synthesizes `{}` for an empty
+body). Compare is now `timingSafeEqual`. The old happy-path test hardcoded
+`JSON.stringify(payload)` as the signed bytes, so it could never see the bug; replaced
+with a regression test that signs raw bytes whose key order + whitespace
+`JSON.stringify` would not reproduce (asserted non-equal, so the test has teeth —
+verified failing against the old code).
+
+**`npm run prepare-commit` reported a false failure — FIXED 2026-07-09.** Two
+independent causes, both of which kept the gate red on a pristine `main`: (1)
+`run_or_skip` eval'd each configured command in the parent shell, so the `cd dashboard`
+chained into `checks`/`unitTests` leaked out and stranded every later step in the wrong
+directory (`Missing script: "verify:claude-md"`) — each command now runs in a subshell
+(`if (eval "$cmd")`). (2) Step 4's `focusedTestScan` regex was `(\.only\(|\.skip\()`,
+which flagged every conditional skip (`test.skip(process.env.FOO !== '1', …)`,
+`ctx.skip()`) as if it were a focused test — 12 legitimate guards, so the step could
+never pass. Extracted to `scripts/focused-test-scan.sh`, which flags only `.only(` and
+skips/todos whose first argument is a string literal (a test disabled by name = dead
+code). Verified: silent on the clean tree, and still catches an injected
+`describe.only(...)` / `it.skip('name', …)`.
+
+**Dashboard vitest exited nonzero with 0 failing tests — FIXED 2026-07-09.** Surfaced by
+the now-working `prepare-commit` gate: `Tests 1012 passed` + `Errors 2 errors`.
+`useEntityList` / `useServiceMappings` in `dashboard/lib/hooks.ts` fetched from an
+effect with no cancellation, so an unmount mid-flight ran `setLoading(false)` after
+vitest tore down jsdom — React read a dead `window` and threw an unhandled rejection.
+Only reproduced under full-suite load. Fixed with a `useIsMounted()` guard on every
+post-`await` setter; 5 regression tests in `dashboard/lib/hooks.test.tsx` simulate
+teardown by deleting `globalThis.window` (verified failing without the guard). Lesson
+recorded in `docs/LESSONS_LEARNED.md`.
+
+**BUG — Setup tabs don't scroll — FIXED 2026-07-11** (reported by Dale). `SetupView`'s
+sub-tab panel was a plain block `<div>` with `overflow-hidden`. Two failures at once:
+the leaf views written as `flex-1 … overflow-y-auto` (Services, Resources, Employees,
+Business Settings) only get a bounded height as flex children, so under a block parent
+`flex-1` was inert — they sized to content, their own scrolling never engaged, and the
+parent clipped the overspill; and the plain-`<div>` views (Billing, Audit Log, Answer
+Debugger) had no scroll container at all. So no Setup tab scrolled. Fix: `flex-1
+flex flex-col min-h-0 overflow-y-auto` (`min-h-0` is load-bearing — without it the
+default `min-height:auto` re-inflates the box and the clipping returns). Regression
+test: `dashboard/e2e/setup-tabs-scroll.spec.ts`, verified to fail against the pre-fix
+build.
+
+**`get_my_appointments` transfer-fallback string — DONE 2026-07-05 (PR #198).** The
+no-caller-ID fallbacks in `get_my_appointments`/cancel/reschedule now capability-gate
+the transfer offer (offer a message only when transfer is unwired).
+
 ## 2026-07-13 (re-verified 2026-08-21) — Code review four-reviewer sweep (backend, security, reliability, dead code)
 
 Moved here from `docs/planning/TODO.md` §4b 2026-09-08 (doc-hygiene trim — every item in this section was `[x]` done, none open). Kept verbatim including the self-corrections and re-audit notes, because the corrections are as instructive as the findings.
