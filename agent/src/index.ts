@@ -973,6 +973,11 @@ export default defineAgent({
         livekitApiSecret: config.LIVEKIT_API_SECRET,
         roomName: sessionCtx.roomName ?? undefined,
         participantIdentity: sessionCtx.participantIdentity ?? undefined,
+        reportConfig: {
+          BACKEND_URL: config.BACKEND_URL,
+          AGENT_SECRET: config.AGENT_SECRET,
+          tenantId: sessionCtx.tenantId,
+        },
       });
       // Realtime is token-constrained — expose only the lean message+meeting
       // capability subset. The SAME array drives BOTH the tool set (buildTools
