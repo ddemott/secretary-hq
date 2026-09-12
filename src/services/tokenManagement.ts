@@ -20,6 +20,7 @@
 import type { Pool } from 'pg';
 
 import { withTenantContext } from '../database/index';
+import { errorsTotal } from './metrics';
 
 /** Minimal logger interface used by all sync services */
 export interface SyncLogger {
@@ -148,6 +149,11 @@ export async function getIntegrationTokens(
           );
           log.info(`${prefix} — token refreshed`);
         } catch (err) {
+          // Count the failure BEFORE the cleanup UPDATE below — if that
+          // UPDATE itself throws (DB outage, permissions, connection drop)
+          // the refresh failure must still be counted, or the one moment
+          // alerting exists for is exactly the moment it goes silent.
+          errorsTotal.inc({ event: 'integration_token_refresh_failed' });
           // Mark inactive so user sees "Reconnect" in dashboard
           await client.query(
             `UPDATE tenant_integration_settings SET is_active = false, updated_at = NOW()
@@ -343,6 +349,8 @@ export async function getCalendarTokens(
           );
           log.info(`${prefix} — ${providerName} token refreshed`);
         } catch (err) {
+          // Count first — see the matching comment in getIntegrationTokens above.
+          errorsTotal.inc({ event: 'calendar_token_refresh_failed' });
           await client.query(
             `UPDATE tenant_calendar_settings SET is_active = false, updated_at = NOW() WHERE tenant_id = $1`,
             [tenantId]
