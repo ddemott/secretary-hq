@@ -357,6 +357,42 @@ export function meetingTopicNamesOwnerRole(raw: string): boolean {
   return false;
 }
 
+/**
+ * Does the caller's own message say this is urgent? Found 2026-09-11 in
+ * `sim-questiontree` URGENT CALLER (graded FAIL): the caller said "urgently"
+ * in her opener and "It's really urgent" again, `record_answer("is_urgent")`
+ * was refused (not a checklist node), and `take_message` fired WITHOUT
+ * `is_urgent: true` — the agent then told her "I've saved your urgent
+ * message", which was false. Migration 20260801020000 says the flag "is set
+ * from the caller's own words," but only the MODEL was ever asked to do it —
+ * a prompt request, not a guarantee. This is the host-code guarantee:
+ * `buildActionArgs` runs it against the final message text and can only ever
+ * RAISE `is_urgent` to true, matching the DB column's own raise-only
+ * contract — a caller who never said an urgent word gets whatever the model
+ * passed, untouched.
+ */
+export function messageSoundsUrgent(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  if (!t) return false;
+  // A caller saying something is NOT urgent is giving the OPPOSITE signal —
+  // "not urgent", "isn't an emergency", "nothing urgent", "not right away"
+  // must never raise the flag (Copilot review, PR #414). Negation is scoped
+  // to the CLAUSE it appears in (split on punctuation and "but"), not the
+  // whole message, so dismissing one word never suppresses a genuine signal
+  // in the next clause ("it's not urgent, but please call me back ASAP").
+  const negation = /\b(?:not|isn't|is not|no|nothing|never)\b/;
+  const keyword =
+    /\burgent(?:ly)?\b|\bemergenc(?:y|ies)\b|\bas soon as possible\b|\basap\b|\bright away\b/g;
+  for (const clause of t.split(/[,.;!?]|\bbut\b/)) {
+    let m: RegExpExecArray | null;
+    keyword.lastIndex = 0;
+    while ((m = keyword.exec(clause))) {
+      if (!negation.test(clause.slice(0, m.index))) return true;
+    }
+  }
+  return false;
+}
+
 /** How many times set_purpose may fire before the call is told to wrap up. */
 const DEFAULT_MAX_PURPOSE_ROUNDS = 5;
 
@@ -1653,6 +1689,18 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
           break;
         }
       }
+    }
+    // RAISE-ONLY URGENCY (2026-09-11): the caller's own words decide, not the
+    // model's discretion — see messageSoundsUrgent(). Checked against the
+    // FINAL message text (post-backfill, so it catches the tracker's
+    // message_body even when the model never retyped it) and can only ever
+    // flip is_urgent to true; a caller who said nothing urgent keeps whatever
+    // the model passed, untouched.
+    if (
+      toolName === 'take_message' &&
+      messageSoundsUrgent(toNonEmptyString(provided['message']) ?? '')
+    ) {
+      provided['is_urgent'] = true;
     }
     return provided;
   };

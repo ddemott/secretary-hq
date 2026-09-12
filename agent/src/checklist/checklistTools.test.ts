@@ -16,6 +16,7 @@ import type { VerticalPresetDef } from './blockTypes.js';
 import {
   createChecklistTools,
   meetingTopicNamesOwnerRole,
+  messageSoundsUrgent,
   unusablePhoneReason,
   countPhoneDigits,
   placeholderNameReason,
@@ -787,6 +788,43 @@ describe('record_answer', () => {
     });
   });
 
+  describe('messageSoundsUrgent', () => {
+    it('matches the words the TODO names', () => {
+      expect(messageSoundsUrgent("It's really urgent")).toBe(true);
+      expect(messageSoundsUrgent('please call urgently')).toBe(true);
+      expect(messageSoundsUrgent('this is an emergency')).toBe(true);
+      expect(messageSoundsUrgent('need this as soon as possible')).toBe(true);
+      expect(messageSoundsUrgent('need it ASAP')).toBe(true);
+      expect(messageSoundsUrgent('call me right away')).toBe(true);
+    });
+
+    it('is case-insensitive and matches mid-sentence', () => {
+      expect(messageSoundsUrgent('Please have him call me back URGENTLY today')).toBe(true);
+    });
+
+    it('rejects an ordinary message with none of the words', () => {
+      expect(messageSoundsUrgent('just checking on my appointment next week')).toBe(false);
+      expect(messageSoundsUrgent('')).toBe(false);
+    });
+
+    it('SAD→FIXED: negation is the OPPOSITE signal, not a match (Copilot review, PR #414)', () => {
+      // A caller volunteering that something is NOT urgent must never raise
+      // the flag — the pre-fix matcher treated "urgent" as a bare keyword
+      // and would have flagged every one of these.
+      expect(messageSoundsUrgent("it's not urgent")).toBe(false);
+      expect(messageSoundsUrgent("this isn't an emergency")).toBe(false);
+      expect(messageSoundsUrgent('nothing urgent, just a question')).toBe(false);
+      expect(messageSoundsUrgent('no emergency, whenever is fine')).toBe(false);
+      expect(messageSoundsUrgent('it never needs to happen right away')).toBe(false);
+    });
+
+    it('an unnegated signal ELSEWHERE in the same message still counts', () => {
+      // Negation is checked per occurrence, not per message — a caller can
+      // dismiss one word and still mean the other.
+      expect(messageSoundsUrgent("it's not urgent, but please call me back ASAP")).toBe(true);
+    });
+  });
+
   it('PIN: an empty volunteered caller_name never records (set_purpose passed "" live)', async () => {
     // 2026-07-21: the model passed caller_name: "" in set_purpose args. The
     // sanitizer dropped it — pin that so an empty string can never become a
@@ -1508,6 +1546,81 @@ describe('corrections reach what was already written (batch D — the "Jamil" ro
     });
     await flush();
     expect(fakes.book_with_scheduling.execute).toHaveBeenCalledOnce();
+  });
+});
+
+describe("take_message raises is_urgent from the caller's own words (URGENT CALLER, 2026-09-11)", () => {
+  // WHO: sim-questiontree URGENT CALLER (graded FAIL, correctly) — the caller
+  //      said "urgently" in her opener and "It's really urgent" again;
+  //      record_answer("is_urgent") was refused (not a checklist node), and
+  //      take_message fired WITHOUT is_urgent: true. The agent then told her
+  //      "I've saved your urgent message for Dale" — false, since the flag
+  //      never got set. No node, no ACTION_ARG_BACKFILL entry, no host
+  //      detection existed for it before this fix.
+  it('sets is_urgent when the message text itself says urgent, even though the model never passed it', async () => {
+    const { toolkit, fakes } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    for (const [node_id, value] of [
+      ['caller_name', 'Dana'],
+      ['caller_phone', '2624979039'],
+      ['message_body', "It's really urgent, please have him call me back today"],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'take_message', {});
+    const args = fakes.take_message.execute.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.is_urgent).toBe(true);
+  });
+
+  it('leaves is_urgent alone when nothing in the message says urgent', async () => {
+    const { toolkit, fakes } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    for (const [node_id, value] of [
+      ['caller_name', 'Dana'],
+      ['caller_phone', '2624979039'],
+      ['message_body', 'just checking on my appointment next week'],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'take_message', {});
+    const args = fakes.take_message.execute.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.is_urgent).toBeUndefined();
+  });
+
+  it('RAISE-ONLY means MONOTONIC: urgent words in the message win even over an explicit is_urgent:false from the model', async () => {
+    // "Raise-only" is not "the host never touches the model's value" — it
+    // means the flag can only ever move TOWARD true, never away from it. The
+    // caller's own words outrank a model that guessed wrong, so an explicit
+    // `false` from the model is overridden when the message itself says
+    // urgent (Copilot review, PR #414 — the original wording here claimed
+    // the opposite, which did not match this behavior).
+    const { toolkit, fakes } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    for (const [node_id, value] of [
+      ['caller_name', 'Dana'],
+      ['caller_phone', '2624979039'],
+      ['message_body', "It's really urgent, please have him call me back today"],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'take_message', { is_urgent: false });
+    const args = fakes.take_message.execute.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.is_urgent).toBe(true);
+  });
+
+  it('never LOWERS an explicit is_urgent:true when the message text says nothing urgent', async () => {
+    const { toolkit, fakes } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    for (const [node_id, value] of [
+      ['caller_name', 'Dana'],
+      ['caller_phone', '2624979039'],
+      ['message_body', 'just checking on my appointment next week'],
+    ] as const) {
+      await call(toolkit.selectedTools(), 'record_answer', { node_id, value });
+    }
+    await call(toolkit.selectedTools(), 'take_message', { is_urgent: true });
+    const args = fakes.take_message.execute.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.is_urgent).toBe(true);
   });
 });
 
