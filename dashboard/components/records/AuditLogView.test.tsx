@@ -165,8 +165,8 @@ describe('AuditLogView — subdirectory pin', () => {
   test('SetupView imports AuditLogView from components/records/', async () => {
     const fs = await import('fs');
     const path = await import('path');
-    const setup = fs.readFileSync(path.join(__dirname, '..', 'SetupView.tsx'), 'utf-8');
-    expect(setup).toContain("import AuditLogView from './records/AuditLogView'");
+    const setup = fs.readFileSync(path.join(__dirname, '..', 'business', 'SetupView.tsx'), 'utf-8');
+    expect(setup).toContain("import AuditLogView from '../records/AuditLogView'");
     expect(setup).not.toContain("import AuditLogView from './AuditLogView'");
   });
 });

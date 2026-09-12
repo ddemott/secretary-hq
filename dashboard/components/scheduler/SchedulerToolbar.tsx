@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { SchedulerDateNav } from './SchedulerDateNav';
-import type { SchedulerViewTab } from '../SchedulerView';
+import type { SchedulerViewTab } from './SchedulerView';
 
 type DayMode = 'staff' | 'resources' | 'list';
 
