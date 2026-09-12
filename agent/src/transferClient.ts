@@ -21,6 +21,7 @@
 import { SipClient } from 'livekit-server-sdk';
 
 import { getLogger } from './logger.js';
+import { reportCallTransferFailed } from './transferReport.js';
 
 export interface TransferDeps {
   /** LiveKit host (the wss:// URL works; the server SDK normalizes it). */
@@ -31,6 +32,13 @@ export interface TransferDeps {
   roomName: string;
   /** SIP participant identity of the caller leg to transfer. */
   participantIdentity: string;
+  /**
+   * Backend reporting config, for the fire-and-forget failure/timeout metric
+   * (agent/src has no /metrics endpoint of its own — see transferReport.ts).
+   * Optional: when absent (e.g. in tests), the report is simply skipped —
+   * this must never be the thing that makes a transfer itself fail.
+   */
+  reportConfig?: { BACKEND_URL: string; AGENT_SECRET: string; tenantId: string };
 }
 
 export type TransferResult =
@@ -57,7 +65,14 @@ const TRANSFER_TIMEOUT_MS = 10_000;
 export function createTransferExecutor(
   deps: Partial<TransferDeps>
 ): ((forwardPhone: string | null) => Promise<TransferResult>) | null {
-  const { livekitUrl, livekitApiKey, livekitApiSecret, roomName, participantIdentity } = deps;
+  const {
+    livekitUrl,
+    livekitApiKey,
+    livekitApiSecret,
+    roomName,
+    participantIdentity,
+    reportConfig,
+  } = deps;
   if (!livekitUrl || !livekitApiKey || !livekitApiSecret || !roomName || !participantIdentity) {
     return null;
   }
@@ -102,6 +117,9 @@ export function createTransferExecutor(
       return { ok: true };
     } catch (err) {
       const timedOut = err instanceof Error && err.message === 'transfer_timeout';
+      const reason: 'transfer_failed' | 'transfer_timeout' = timedOut
+        ? 'transfer_timeout'
+        : 'transfer_failed';
       log.error(
         {
           event: timedOut ? 'call_transfer_timeout' : 'call_transfer_failed',
@@ -114,7 +132,14 @@ export function createTransferExecutor(
           ? `SIP transfer timed out after ${TRANSFER_TIMEOUT_MS}ms — caller stays on the line with the agent`
           : 'SIP transfer failed — caller stays on the line with the agent'
       );
-      return { ok: false, reason: timedOut ? 'transfer_timeout' : 'transfer_failed' };
+      if (reportConfig) {
+        void reportCallTransferFailed(reportConfig, {
+          tenantId: reportConfig.tenantId,
+          room: roomName,
+          reason,
+        });
+      }
+      return { ok: false, reason };
     }
   };
 }

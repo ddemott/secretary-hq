@@ -22,6 +22,13 @@ vi.mock('livekit-server-sdk', () => ({
   },
 }));
 
+// The fire-and-forget backend-report call — mocked so failure tests can
+// assert on it without a real network call.
+const mockReportCallTransferFailed = vi.fn().mockResolvedValue(undefined);
+vi.mock('./transferReport.js', () => ({
+  reportCallTransferFailed: (...args: unknown[]) => mockReportCallTransferFailed(...args),
+}));
+
 import { createTransferExecutor } from './transferClient.js';
 
 const FULL_DEPS = {
@@ -35,6 +42,7 @@ const FULL_DEPS = {
 describe('createTransferExecutor', () => {
   beforeEach(() => {
     transferSipParticipant.mockReset();
+    mockReportCallTransferFailed.mockClear();
   });
 
   it('SAD: returns null when any LiveKit/call dep is missing', () => {
@@ -87,6 +95,28 @@ describe('createTransferExecutor', () => {
     const exec = createTransferExecutor(FULL_DEPS);
     const result = await exec!('+16082175303');
     expect(result).toEqual({ ok: false, reason: 'transfer_failed' });
+    expect(mockReportCallTransferFailed).not.toHaveBeenCalled(); // no reportConfig in FULL_DEPS
+  });
+
+  it('SAD: a failure with reportConfig set fires the backend metric report', async () => {
+    // WHO: platform operator watching /metrics for the transfer failure rate.
+    // WHAT: agent/src has no metrics endpoint of its own, so a failed transfer
+    //       reports to the backend the same way report-dispatch-no-participant
+    //       does — fire-and-forget, never blocking the caller's own result.
+    transferSipParticipant.mockRejectedValueOnce(new Error('REFER rejected by trunk'));
+    const reportConfig = {
+      BACKEND_URL: 'https://backend.test',
+      AGENT_SECRET: 'secret-key',
+      tenantId: 'tenant-1',
+    };
+    const exec = createTransferExecutor({ ...FULL_DEPS, reportConfig });
+    const result = await exec!('+16082175303');
+    expect(result).toEqual({ ok: false, reason: 'transfer_failed' });
+    expect(mockReportCallTransferFailed).toHaveBeenCalledWith(reportConfig, {
+      tenantId: 'tenant-1',
+      room: 'sip-room-1',
+      reason: 'transfer_failed',
+    });
   });
 
   it('SAD: SDK hangs (no timeout of its own) → transfer_timeout after 10s, never hangs the turn', async () => {
@@ -101,11 +131,21 @@ describe('createTransferExecutor', () => {
     try {
       // Never settles → only the timeout can resolve the race.
       transferSipParticipant.mockReturnValueOnce(new Promise(() => {}));
-      const exec = createTransferExecutor(FULL_DEPS);
+      const reportConfig = {
+        BACKEND_URL: 'https://backend.test',
+        AGENT_SECRET: 'secret-key',
+        tenantId: 'tenant-1',
+      };
+      const exec = createTransferExecutor({ ...FULL_DEPS, reportConfig });
       const resultPromise = exec!('+16082175303');
       await vi.advanceTimersByTimeAsync(10_000);
       const result = await resultPromise;
       expect(result).toEqual({ ok: false, reason: 'transfer_timeout' });
+      expect(mockReportCallTransferFailed).toHaveBeenCalledWith(reportConfig, {
+        tenantId: 'tenant-1',
+        room: 'sip-room-1',
+        reason: 'transfer_timeout',
+      });
     } finally {
       vi.useRealTimers();
     }

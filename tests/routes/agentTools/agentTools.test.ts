@@ -5266,6 +5266,53 @@ describe('/agent-tools/report-dispatch-no-participant', () => {
   });
 });
 
+describe('/agent-tools/report-call-transfer-failed', () => {
+  it('HAPPY: bumps errors_total{call_transfer_failed} and writes no DB row', async () => {
+    // WHO: agent/src has no metrics endpoint of its own, so a failed live SIP
+    //      transfer reports here the same way a ghost dispatch does above.
+    // WHY: the transfer FAILURE RATE must be visible on /metrics; there is no
+    //      DB write — the call's own log line at the transfer site is the
+    //      primary record.
+    const { app, queries } = buildApp({ queryResponses: [] });
+    const before = errorCount('call_transfer_failed');
+
+    const res = await post(app, '/agent-tools/report-call-transfer-failed', {
+      tenant_id: TID,
+      room: 'sip-room-1',
+      reason: 'transfer_failed',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, result: { recorded: true } });
+    expect(errorCount('call_transfer_failed')).toBe(before + 1);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('HAPPY: a timeout bumps errors_total{call_transfer_timeout} distinctly from a hard failure', async () => {
+    const { app } = buildApp({ queryResponses: [] });
+    const before = errorCount('call_transfer_timeout');
+
+    const res = await post(app, '/agent-tools/report-call-transfer-failed', {
+      tenant_id: TID,
+      room: 'sip-room-1',
+      reason: 'transfer_timeout',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(errorCount('call_transfer_timeout')).toBe(before + 1);
+  });
+
+  it('SAD: rejects a missing/invalid reason before doing anything', async () => {
+    const { app, queries } = buildApp({ queryResponses: [] });
+    const res = await post(app, '/agent-tools/report-call-transfer-failed', {
+      tenant_id: TID,
+      room: 'sip-room-1',
+      reason: 'something_else',
+    });
+    expectValidationFailure(res, queries);
+  });
+});
+
 describe('/agent-tools/voice-session-start — duplicate-dispatch detector', () => {
   it('SAD: a second session for the same caller within 30s bumps the counter', async () => {
     // WHO: a forked inbound call — two SIP legs, same caller_phone, seconds apart

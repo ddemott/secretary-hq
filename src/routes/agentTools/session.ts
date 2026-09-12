@@ -13,6 +13,7 @@ import {
   VoiceSessionEndSchema,
   VoiceSessionTranscriptSchema,
   ReportDispatchNoParticipantSchema,
+  ReportCallTransferFailedSchema,
 } from './schemas';
 import { ok, fail, toolRoute, pgErrorFields, type AgentToolDeps } from './helpers';
 import { getBusinessHours } from '../../services/businessHours';
@@ -403,6 +404,36 @@ export function registerSessionRoutes({ app, withTenantClient }: AgentToolDeps):
       return ok(reply, { recorded: true });
     },
     'Failed to record dispatch-no-participant'
+  );
+
+  // report-call-transfer-failed — the agent posts this when a live SIP cold
+  // transfer (REFER) failed or timed out. Observability ONLY: bumps
+  // errors_total{event="call_transfer_failed"|"call_transfer_timeout"}. There
+  // is no agent-side /metrics endpoint (agent/src has zero metrics infra), so
+  // the agent reports here the same way it already does for a ghost dispatch
+  // (report-dispatch-no-participant, above). No DB write — the call's own log
+  // line at the transfer site is the primary record; this is the durable
+  // counter that makes the FAILURE RATE visible on /metrics.
+  toolRoute(
+    app,
+    '/agent-tools/report-call-transfer-failed',
+    ReportCallTransferFailedSchema,
+
+    async (args, reply) => {
+      errorsTotal.inc({ event: `call_${args.reason}` });
+      app.log.warn(
+        {
+          event: `call_${args.reason}`,
+          tenant_id: args.tenant_id,
+          room: args.room,
+        },
+        args.reason === 'transfer_timeout'
+          ? 'live SIP transfer timed out — caller stayed on the line with the agent'
+          : 'live SIP transfer failed — caller stayed on the line with the agent'
+      );
+      return ok(reply, { recorded: true });
+    },
+    'Failed to record call-transfer-failed'
   );
 
   // voice-session-end — agent calls this from its shutdown callback when the

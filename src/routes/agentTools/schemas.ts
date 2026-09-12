@@ -491,6 +491,18 @@ export const ReportDispatchNoParticipantSchema = z.object({
   room: z.string().min(1).max(200),
 });
 
+// The agent posts this when a live SIP transfer (cold transfer via REFER)
+// failed or timed out. Observability only — bumps
+// errors_total{event="call_transfer_failed"|"call_transfer_timeout"}. There
+// is no agent-side metrics endpoint (agent/src has no /metrics of its own),
+// so this mirrors report-dispatch-no-participant's pattern: fire-and-forget
+// POST to the backend, which owns the real counter.
+export const ReportCallTransferFailedSchema = z.object({
+  tenant_id: z.string().uuid(),
+  room: z.string().min(1).max(200),
+  reason: z.enum(['transfer_failed', 'transfer_timeout']),
+});
+
 export const VoiceSessionEndSchema = z.object({
   tenant_id: z.string().uuid(),
   call_id: z.string().min(1),
