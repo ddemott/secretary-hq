@@ -16,6 +16,7 @@ import {
 } from '../middleware/fastify-middleware';
 import * as gcal from '../services/googleCalendar';
 import * as outlook from '../services/outlookCalendar';
+import { errorsTotal } from '../services/metrics';
 
 const CalendarSettingsSchema = z.object({
   tenant_id: z.string().uuid().optional(),
@@ -112,6 +113,7 @@ export function registerCalendarRoutes(
       );
       return reply.redirect(`${dashboardUrl}/dashboard?calendarConnected=true`);
     } catch (err) {
+      errorsTotal.inc({ event: 'calendar_oauth_failed' });
       app.log.error(
         { event: 'calendar_oauth_failed', tenantId, error: (err as Error).message },
         'Google Calendar OAuth failed'
@@ -204,6 +206,7 @@ export function registerCalendarRoutes(
       );
       return reply.redirect(`${dashboardUrl}/dashboard?calendarConnected=true`);
     } catch (err) {
+      errorsTotal.inc({ event: 'calendar_oauth_failed' });
       app.log.error(
         { event: 'calendar_oauth_failed', tenantId, error: (err as Error).message },
         'Outlook Calendar OAuth failed'
