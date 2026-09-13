@@ -501,7 +501,13 @@ export function registerAppointmentRoutes(
           let effectiveStartTime = body.start_time ?? null;
           let effectiveEndTime = body.end_time ?? null;
 
-          const timeChanged = Boolean(body.start_time || body.end_time);
+          // Explicit undefined checks, not truthiness: an empty-string
+          // start_time/end_time is a value the caller DID provide (Zod's
+          // z.string().optional() lets '' through) and must still be
+          // validated and rejected — `Boolean('' || undefined)` would have
+          // read as "nothing changed" and silently no-op'd instead (Copilot
+          // review, PR #448).
+          const timeChanged = body.start_time !== undefined || body.end_time !== undefined;
           const resourceChanged = body.resource_id !== undefined;
           const employeeProvided = body.employee_id !== undefined;
           const normalizedNewEmployeeId =

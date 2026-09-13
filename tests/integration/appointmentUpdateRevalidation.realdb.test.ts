@@ -301,4 +301,34 @@ describe('POST /appointments/:id/update — business-rule re-validation', () => 
     );
     expect(row.rows[0].start_time.toISOString()).toBe('2027-08-24T02:00:00.000Z');
   });
+
+  it('SAD: an empty-string start_time is rejected, not silently ignored (Copilot review, PR #448)', async () => {
+    // WHO: a malformed request — a bug in a caller, or a form field that
+    //      serializes an unset date picker as '' rather than omitting it.
+    // WHAT: '' is a value the caller DID provide (Zod's z.string().optional()
+    //       lets it through), and must be validated and rejected — not
+    //       treated as "nothing changed" because '' is falsy.
+    const resourceId = await createResource(setup, tenantId, 'Bay Empty String');
+    const customerId = await createCustomerFull(setup, tenantId, '+15550001007', 'Grace');
+    const originalFrom = hoursFromNow(90);
+    const apptRes = await setup.query<{ appointment_id: string }>(
+      `INSERT INTO appointments (tenant_id, resource_id, customer_id, start_time, end_time, description, status)
+       VALUES ($1, $2, $3, $4, $5, 'empty-string test', 'scheduled') RETURNING appointment_id`,
+      [tenantId, resourceId, customerId, originalFrom, hoursFromNow(91)]
+    );
+    const apptId = apptRes.rows[0].appointment_id;
+
+    const res = await update(apptId, {
+      tenant_id: tenantId,
+      start_time: '',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error_code).toBe('INVALID_PARAMS');
+
+    const row = await setup.query<{ start_time: Date }>(
+      `SELECT start_time FROM appointments WHERE appointment_id = $1`,
+      [apptId]
+    );
+    expect(row.rows[0].start_time.toISOString()).toBe(originalFrom);
+  });
 });
