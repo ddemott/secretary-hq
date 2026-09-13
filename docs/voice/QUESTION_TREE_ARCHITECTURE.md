@@ -5,8 +5,10 @@
 > Not a plan any more. `ENABLE_QUESTION_TREE` is `(v) => v !== 'false'` in
 > `agent/src/configSchema.ts` — **ON unless explicitly disabled** — so
 > `agent/src/index.ts` builds a `ChecklistAgent` for every call. The code is in
-> `agent/src/checklist/`: `types.ts` (node shapes), `trees.ts` (the 10-tree platform
-> library), `tracker.ts` (state + the goodbye gate), `checklistAgent.ts` (the prompt
+> `agent/src/checklist/`: `types.ts` (node shapes), `trees.ts` (the platform
+> library — 10 hand-written trees plus 30 more from `verticalIntakeTrees.ts`,
+> #388 2026-08-31; this banner said "10-tree" for two weeks after that shipped),
+> `tracker.ts` (state + the goodbye gate), `checklistAgent.ts` (the prompt
 > and the one agent), `checklistTools.ts` (`set_purpose` / `record_answer` /
 > `finish_call` / `answer_question` + the action wrappers).
 >
@@ -16,9 +18,15 @@
 > through `shared/checklistPresetDerivation.ts` into the `checklist_runtime_config`
 > the agent receives, and the **preset decides which trees are selectable at all**.
 > Overrides can only SUBTRACT — there is no ADD verb — so **a tree missing from the
-> tenant's preset is unreachable no matter what the model asks for.** The five
-> presets are `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk`,
-> `owner_for_hire_front_desk`, and `law_firm_front_desk`. This is not a hypothetical
+> tenant's preset is unreachable no matter what the model asks for.** There are
+> **33 presets as of #388 (2026-08-31)**: the original five —
+> `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk`,
+> `owner_for_hire_front_desk`, and `law_firm_front_desk` — plus 28 more
+> vertical-intake presets (`VERTICAL_INTAKE_PRESETS`), one per additional
+> business vertical, each pairing with its own slot-filling intake tree. See
+> `CLAUDE.md`'s `/agent/src/checklist/` bullet for the live, maintained count —
+> this banner should not be treated as the authoritative source for it. This is
+> not a hypothetical
 > failure mode: `job` was
 > in `forbidden_trees` on all three original presets, so no tenant could reach it,
 > and two recruiter calls on 2026-08-13 produced zero `job_inquiries` rows while the

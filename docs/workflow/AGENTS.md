@@ -2,7 +2,7 @@
 
 ## Project
 
-AI Secretary — Next.js dashboard, TypeScript, Supabase backend, multi-tenant SaaS. Solo-developer codebase. Code is backed by git; making changes is safe.
+SecretaryHQ — Next.js dashboard, TypeScript, Supabase backend, multi-tenant SaaS. Solo-developer codebase. Code is backed by git; making changes is safe.
 
 ## Scope of this agent
 

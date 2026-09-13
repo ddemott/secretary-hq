@@ -1,5 +1,12 @@
 # VERTICAL-PRESET-BLOCK-ARCHITECTURE
 
+> **Design/history doc, frozen at 2026-08-13 — NOT the live source of truth for
+> current counts.** Numbers below (e.g. "the first three real preset bundles")
+> describe the state as of that date. #388 (2026-08-31) added 28 more
+> vertical-intake presets; the platform runs **33 presets** today. For the
+> live, maintained catalog and counts, see `CLAUDE.md`'s `/agent/src/checklist/`
+> bullet — where the code and this doc differ, the code wins.
+
 **Status:** phases 1-4, presets, live `runtimeConfig`, setup UI, Step 9 overrides, and Step 10 CI journeys are implemented. **Date:** 2026-08-13. **Owner:** Dale.
 
 **The ask:** turn the current one-off call flows into configurable, reusable building blocks that can be pre-packaged by business type. An auto shop should start with an auto-shop-ready set of blocks; a salon should start with salon-ready blocks; both should still be built from the same reusable primitives so the platform does not decay into twenty bespoke scripts.
