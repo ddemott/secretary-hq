@@ -1,6 +1,6 @@
 # TODO Item Lifecycle — Start to Finish (and Purge)
 
-End-to-end process for taking one backlog item (a `docs/planning/TODO.md` entry or a `docs/PRODUCT_ROADMAP.md` task `T-XXX`) from pick → ship → branch purge.
+End-to-end process for taking one backlog item (a `docs/planning/TODO.md` entry or a `docs/planning/PRODUCT_ROADMAP.md` task `T-XXX`) from pick → ship → branch purge.
 
 This doc does **not** replace `DEVELOPMENT_WORKFLOW.md` or `BRANCH_CHECKLIST.md`. It stitches them into two explicit paths:
 
@@ -40,7 +40,7 @@ Useful commands:
 
 ```bash
 npm run create-branch feat/T-XXX-short-slug
-cp docs/BRANCH_CHECKLIST.md .
+cp docs/workflow/BRANCH_CHECKLIST.md .
 npm run checks
 npm run prepare-commit
 npm run pre-pr
@@ -57,7 +57,7 @@ Use when: no other feature PRs open, and you will not start a second branch unti
 
 ### A1. Pick and claim
 
-- [ ] Pick the highest-priority unblocked item from `docs/planning/TODO.md` or `docs/PRODUCT_ROADMAP.md`.
+- [ ] Pick the highest-priority unblocked item from `docs/planning/TODO.md` or `docs/planning/PRODUCT_ROADMAP.md`.
 - [ ] Set roadmap status `🟡` (section + master table) if it is a `T-XXX` task.
 - [ ] Confirm no open feature PRs / leftover feature branches:
 
@@ -181,7 +181,7 @@ git add -A
 git commit   # merge commit, unless the merge was already clean
 ```
 
-**Conflict hygiene (especially `docs/PRODUCT_ROADMAP.md`):**
+**Conflict hygiene (especially `docs/planning/PRODUCT_ROADMAP.md`):**
 
 - Do **not** blindly keep “ours” or “theirs.”
 - Status lines must match §0.7 reality: already-merged work → `✅`; still-only-on-a-branch → `🟡`.
@@ -295,7 +295,7 @@ Then:
 The situation this doc's Path B is for, as it actually happened:
 
 - `#391` T-007, `#392` T-008, `#393` T-015, `#395` T-012 all open simultaneously.
-- `#394` (T-006/T-010/T-011) merged first and rewrote `docs/PRODUCT_ROADMAP.md`
+- `#394` (T-006/T-010/T-011) merged first and rewrote `docs/planning/PRODUCT_ROADMAP.md`
   (+362/-104).
 - **All three older PRs went `CONFLICTING` in the same hour, on the same file**,
   none of them for a code reason. Branch protection is `strict: true`, so every

@@ -91,7 +91,7 @@ Quick commands:
 - Verify docs drift: `npm run verify:claude-md`. Verify the baseline snapshot still matches the migrations: `npm run verify:schema` (this is the guard that fails CI when a migration-created table/column never made it into `supabase/baseline.sql` — run `npm run db:baseline` after any schema migration). `npm run generate-kit` regenerates `portable-workflow-kit/`.
 - **Verify the agent can actually SPEAK: `cd agent && npm run verify:tts`** — opens the REAL Deepgram WebSocket with the REAL config and demands real audio bytes back, for every voice the picker can map to. **MANDATORY before any TTS change reaches prod.** Origin: 2026-07-14 — a TTS engine swap passed typecheck and all 567 unit tests and took the phone line COMPLETELY SILENT (the plugin appends `?speed=…` to the WS upgrade URL; Aura answers 400; the socket never opens; there is no TTS at all). Not one of those tests synthesises a word — they all mock the TTS. **"It compiles and the tests are green" is not the same as "it makes noise."** `tenants.tts_speed` is consequently INERT under Aura — it is not passed, because passing it is what caused the outage.
 
-Logins (all `/ password`):
+Logins (all seeded with the same bcrypt hash — verified against `supabase/seed.sql` 2026-09-13, password is `p@ssw0rd`, not the literal word "password" this doc claimed):
 
 - `admin@secretaryhq.com` — platform super-admin on tenant `00000000-0000-0000-0000-000000000000`
 - `daledemott@gmail.com` — Thinking Hammer LLC owner on tenant `d5e3c6a1-7b9f-4e2a-bf30-8c11a5d8e9f0` (Dale's real business; intentionally separate from his super-admin identity so platform rights don't bleed into business workspace)

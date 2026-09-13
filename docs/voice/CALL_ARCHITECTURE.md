@@ -67,7 +67,7 @@ after pickup is itself the defect.**
 
 Prewarm (idle process, before any call) resolves the call-path DNS names. One
 unresolved name cost 11 s of silence on a WSL host with a cached, ready greeting
-frame — see `docs/LESSONS_LEARNED.md`.
+frame — see `docs/workflow/LESSONS_LEARNED.md`.
 
 ### 1 — GREET
 
@@ -295,8 +295,8 @@ has already paid for twice (`role_description`, `location_type`).
 | --- | --- | --- |
 | `docs/VOICE_AGENT_PLAYBOOK.md` | the voice PIPELINE: latency, turn-taking, dead air, TTS, model ids | current for the pipeline; **its §11 "Recipe" is LADDER-ERA** — persona + `buildTools(capabilities)` describes a path prod does not run |
 | `docs/VERTICAL-PRESET-BLOCK-ARCHITECTURE.md` | the block/preset model | design doc |
-| `docs/CODING_STANDARDS.md` | general TS/SQL/test conventions | current |
-| `docs/LESSONS_LEARNED.md`, `docs/BUILDING_SCRIPT_NOTES.md` | dated incidents, append-only | current |
+| `docs/workflow/CODING_STANDARDS.md` | general TS/SQL/test conventions | current |
+| `docs/workflow/LESSONS_LEARNED.md`, `docs/BUILDING_SCRIPT_NOTES.md` | dated incidents, append-only | current |
 | **this section** | building a call SECTION under question trees | current |
 
 ### 8.2 The fourteen rules, each paid for once
@@ -454,5 +454,5 @@ guard** — that is how this table was built.
 
 - `docs/QUESTION_TREE_ARCHITECTURE.md` — how trees, the tracker, and the goodbye gate work
 - `docs/ARCHITECTURE.md` §6 — the voice stack and the three call architectures
-- `docs/LESSONS_LEARNED.md` — the DNS lesson, the TTS outage, the measure-first rule
+- `docs/workflow/LESSONS_LEARNED.md` — the DNS lesson, the TTS outage, the measure-first rule
 - `CLAUDE.md` — the live catalog of trees, presets, tools, and their counts

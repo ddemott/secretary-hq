@@ -98,7 +98,7 @@ npm run verify:claude-md
 3. **SMS is OFF by design** until 10DLC registration completes. `ENABLE_SMS` defaults to false in the agent config schema. "Fixing SMS" means completing 10DLC + flipping the gate, not patching a bug.
 4. **No live human transfer on the question-tree path today.** Escalation takes a message and flags urgency. SIP REFER plumbing exists but is not wired into the tree flow. Do not claim transfer works until a task explicitly builds and tests it.
 5. **Product voice** in all user-facing copy: "Sounds Real. Books Smart. Never Misses a Call." / "Live in under 10 minutes."
-6. **Every PK follows `<table_singular>_id`** (see `docs/CODING_STANDARDS.md`).
+6. **Every PK follows `<table_singular>_id`** (see `docs/workflow/CODING_STANDARDS.md`).
 7. **Every test covers happy + sad paths** with 5W diagnostic context (Who/What/When/Where/Why) in sad-path assertions.
 
 ### 0.7 Status legend (how to read + set task status)
@@ -402,7 +402,7 @@ STATUS: 🟡 IN_PROGRESS — code + rules landed 2026-09-03; the two HUMAN items
    - turn_latency_ms is measured in the AGENT and shipped on voice-session-end —
      before this it was a log line only, and prod's log sink is unconfigured, so
      the number was measurable and unalertable at the same time.
-   - docs/ALERTS.md §3.10-3.12 + the 5% warn tier in §3.9 carry the four rules
+   - docs/operations/ALERTS.md §3.10-3.12 + the 5% warn tier in §3.9 carry the four rules
      this task names, as collector-agnostic PromQL.
    - Tests: tests/services/t006MetricSeries.test.ts (series + label-key contract),
      tests/routes/agentTools/callMetrics.test.ts (route wiring, incl. the
@@ -411,7 +411,7 @@ STATUS: 🟡 IN_PROGRESS — code + rules landed 2026-09-03; the two HUMAN items
      added to the existing Stripe/Telnyx signature-rejection tests.
   OPEN (Human — cannot be done from here):
    - Choose a scrape destination. There is none today and that is a DECISION,
-     not an oversight (docs/ALERTS.md header: paid vendors declined 2026-07-02,
+     not an oversight (docs/operations/ALERTS.md header: paid vendors declined 2026-07-02,
      no free tier met the bar). Until one exists, the rules are paste-and-go text
      and `.github/workflows/zero-vendor-alerts.yml` is the only live alert.
    - Prove one alert fires (screenshot in the PR). Requires the above.
@@ -422,7 +422,7 @@ PRIORITY: HIGH
 EFFORT: 6–10h
 DEPENDS_ON: None
 CONTEXT: A reminder outage went undetected for 13 days while `/health` stayed green. We need metrics + alerts that fire on real failure conditions. Metrics already partly emit to a token-gated `/metrics`.
-FILES: `src/routes/metrics.ts` (or wherever `/metrics` lives — grep `prom-client`), agent instrumentation in `agent/src/session/`, new `docs/ALERTS.md` rules, alert config (Better Stack recommended).
+FILES: `src/routes/metrics.ts` (or wherever `/metrics` lives — grep `prom-client`), agent instrumentation in `agent/src/session/`, new `docs/operations/ALERTS.md` rules, alert config (Better Stack recommended).
 STEPS:
 
 1. Confirm/instrument counters: `calls_total`, `call_outcome_total{outcome}`, `reminders_sent_total`, `reminders_skipped_total{reason}`, `errors_total{event}`, `turn_latency_ms`, `sms_sends_total{status}`, `webhook_signature_failures_total`.
@@ -441,7 +441,7 @@ curl -s -H "Authorization: Bearer $METRICS_TOKEN" https://<backend>/metrics \
 DEFINITION_OF_DONE:
 
 - [ ] All 8 metric series present in `/metrics` output.
-- [ ] Alert rules committed to `docs/ALERTS.md`: reminder_batch_failed>3/10min (page), sms failure>5% (warn), webhook_signature_failures>0/1h (page), turn_latency p95>3000ms (warn).
+- [ ] Alert rules committed to `docs/operations/ALERTS.md`: reminder_batch_failed>3/10min (page), sms failure>5% (warn), webhook_signature_failures>0/1h (page), turn_latency p95>3000ms (warn).
 - [ ] At least one alert proven to fire (notification screenshot in PR).
 
 ---
@@ -622,7 +622,7 @@ verified — backend `started_at` moved to 2026-09-03T22:33:09Z, 4/4 on
     `expected [ 1, 2, 3, 4, 5, 6 ] to deeply equal [ 1, 2, 3, 4, 5 ]`.
   - Adoption path proven end-to-end through the REAL save path
     (`expandWeeklyToSchedule`), not by inserting pattern rows directly.
-  - docs/RUNBOOK.md §6b documents the re-save trigger, both source-of-truth
+  - docs/operations/RUNBOOK.md §6b documents the re-save trigger, both source-of-truth
     branches, and the two behaviours (replace-not-merge; empty pattern does not
     wipe). NO backfill script was added — deliberately.
 -->
@@ -632,7 +632,7 @@ PRIORITY: MEDIUM
 EFFORT: 2–4h
 DEPENDS_ON: None
 CONTEXT: Migration `20260820000000` added `employee_schedule_pattern` with a **deliberate no-backfill** policy: existing tenants keep a clamped derived fallback until they next save hours. Do NOT invent patterns from historical rows ("row archaeology" was explicitly rejected). This task only _verifies_ the adoption path works and documents the operational consequence.
-FILES: `src/services/scheduling/extendSchedules.ts` (read-only understanding), `tests/services/extendSchedules.realdb.test.ts` (extend), `docs/RUNBOOK.md` (document the re-save trigger).
+FILES: `src/services/scheduling/extendSchedules.ts` (read-only understanding), `tests/services/extendSchedules.realdb.test.ts` (extend), `docs/operations/RUNBOOK.md` (document the re-save trigger).
 STEPS:
 
 1. Write a real-DB test: tenant with no pattern + a far-future one-off shift → extend does NOT go weekend-only (clamp holds).

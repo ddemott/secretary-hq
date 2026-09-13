@@ -10,9 +10,9 @@ Items are ordered by what should be done first. Ownership tags:
 **untagged** = deferred code work (the P3 / UX / doc-hygiene sections — no per-item owner because nothing there is scheduled).
 
 **Not backlogs (left as reusable procedure/reference, do not fold here):**
-`docs/BRANCH_CHECKLIST.md`, `docs/CODING_STANDARDS.md`, `docs/DEPLOYMENT.md`,
-`docs/DEVELOPMENT_WORKFLOW.md`, `docs/ALERTS.md`. Completed work + history: `docs/planning/RESOLVED.md`.
-Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
+`docs/workflow/BRANCH_CHECKLIST.md`, `docs/workflow/CODING_STANDARDS.md`, `docs/operations/DEPLOYMENT.md`,
+`docs/workflow/DEVELOPMENT_WORKFLOW.md`, `docs/operations/ALERTS.md`. Completed work + history: `docs/planning/RESOLVED.md`.
+Voice/Telnyx go-live ops detail + incident recovery: `docs/operations/RUNBOOK.md` §7.
 
 ---
 
@@ -398,7 +398,7 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
       `AIInsightsView.test.tsx` — that hardcoded the old top-level paths and had to move with it).
       Verified: `tsc --noEmit` clean, dashboard `next build` succeeds, full dashboard suite green
       (1070 tests, 99 files).
-- [ ] **(code)** **Migration chain squash** — **192** files in `supabase/migrations/`. Do when convenient; `baseline.sql` already carries the collapsed schema.
+- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema.
 
 ---
 

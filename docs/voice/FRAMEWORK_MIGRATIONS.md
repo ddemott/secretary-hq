@@ -14,7 +14,7 @@ Tracks in-flight and recently-completed framework/provider swaps. This is the in
 
 **Current stack:** Telnyx (carrier + SIP trunk) → LiveKit Cloud (SIP ingress) → LiveKit Agent worker (Node) → Deepgram Nova-3 (STT) + **OpenAI GPT-4.1-mini** (voice LLM; 4o-mini for summaries/classify/fallback) + **Deepgram Aura** (TTS, streaming; per-tenant voice via `tenants.tts_voice` — `tts_speed` is INERT, see §5) → Fastify `/agent-tools/*`. Call SEQUENCING is question trees (§6).
 
-**Open follow-up:** First live PSTN call still pending full different-carrier verification — see `docs/planning/TODO.md` (P0 Voice) and `docs/RUNBOOK.md` section 7.
+**Open follow-up:** First live PSTN call still pending full different-carrier verification — see `docs/planning/TODO.md` (P0 Voice) and `docs/operations/RUNBOOK.md` section 7.
 
 ---
 

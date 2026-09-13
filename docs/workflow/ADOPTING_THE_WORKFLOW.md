@@ -201,7 +201,7 @@ After running `npm install`, the hooks will be installed automatically.
 
 Copy these into your project (recommended locations):
 
-- `docs/BRANCH_CHECKLIST.md` → `docs/BRANCH_CHECKLIST.md`
+- `docs/BRANCH_CHECKLIST.md` → `docs/BRANCH_CHECKLIST.md` (recommended location in your project; the kit itself ships it at the repo root — see `portable-workflow-kit/BRANCH_CHECKLIST.md`)
 - `.github/pull_request_template.md`
 - `.github/BRANCH_PROTECTION.md`
 - `.github/ISSUE_TEMPLATE/` (feature.md and bug.md)
