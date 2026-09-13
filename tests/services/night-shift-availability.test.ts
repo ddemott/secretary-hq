@@ -326,3 +326,122 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
     expect(result.rows[0].local_start).toContain('10:00');
   });
 });
+
+describe('Fix (20260913): book_appointment_atomic (dashboard path) — night shift', () => {
+  // The phone path (book_with_scheduling_atomic) got shift_row_covers_booking()
+  // in 20260911010000; the dashboard path was named a deliberate, separate gap
+  // in CLAUDE.md/TODO ("has never modeled night shifts by design"). Same fix,
+  // same shape, different RPC.
+  let client: Client;
+  let tenantId: string;
+  let employeeId: string;
+  let resourceId: string;
+  let customerId: string;
+  let dbAvailable = false;
+  beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
+
+  beforeAll(async () => {
+    try {
+      client = await getRootClient();
+      tenantId = await createTenant(
+        client,
+        'Dashboard Night Shift Co',
+        'auto-repair',
+        'America/Chicago'
+      );
+      resourceId = await createResource(client, tenantId, 'Bay 1');
+      employeeId = await createEmployee(client, tenantId, 'Night Worker', ['repair']);
+      customerId = await createCustomer(client, tenantId, 'Nina', '+15551119999');
+      dbAvailable = true;
+    } catch (err) {
+      console.warn('[book_appointment_atomic night-shift] DB not available:', err);
+    }
+  });
+
+  afterAll(async () => {
+    if (dbAvailable && client) await client.end();
+  });
+
+  beforeEach(async () => {
+    if (dbAvailable) await beginTestTransaction(client);
+  });
+
+  afterEach(async () => {
+    if (dbAvailable) await rollbackTestTransaction(client);
+  });
+
+  it('HAPPY: the morning half of a night shift can be booked via the dashboard path', async () => {
+    // WHO: a dashboard owner manually booking Night Worker.
+    // WHAT: a shift dated 2030-05-27 22:00-06:00 covers a 2:00-2:30 AM
+    //       booking on 2030-05-28 (the wrapped tail).
+    // WHY: pre-fix, book_appointment_atomic only ever looked for a row dated
+    //      the booking's OWN date and refused with "not on shift" here.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '22:00', '06:00');
+
+    const result = await client.query(
+      `SELECT * FROM book_appointment_atomic($1, $2, $3, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ, $6, $7, NULL, $8)`,
+      [
+        tenantId,
+        resourceId,
+        customerId,
+        '2030-05-28T02:00:00-05:00',
+        '2030-05-28T02:30:00-05:00',
+        'Post-midnight repair',
+        'call_dash_night_001',
+        employeeId,
+      ]
+    );
+
+    expect(result.rows[0].success).toBe(true);
+    expect(result.rows[0].error_message).toBeNull();
+  });
+
+  it('SAD: a day shift dated yesterday still never covers today (dashboard path)', async () => {
+    // Pins the boundary: only a genuine wrapping shift's tail reaches
+    // tomorrow — a plain day shift dated yesterday still refuses.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
+
+    const result = await client.query(
+      `SELECT * FROM book_appointment_atomic($1, $2, $3, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ, $6, $7, NULL, $8)`,
+      [
+        tenantId,
+        resourceId,
+        customerId,
+        '2030-05-28T02:00:00-05:00',
+        '2030-05-28T02:30:00-05:00',
+        'Should fail',
+        'call_dash_night_002',
+        employeeId,
+      ]
+    );
+
+    expect(result.rows[0].success).toBe(false);
+    expect(result.rows[0].error_message).toBe('Employee is not on shift during this time');
+  });
+
+  it('HAPPY: a normal day shift booking still works (no regression)', async () => {
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-05-27', '08:00', '17:00');
+
+    const result = await client.query(
+      `SELECT * FROM book_appointment_atomic($1, $2, $3, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ, $6, $7, NULL, $8)`,
+      [
+        tenantId,
+        resourceId,
+        customerId,
+        '2030-05-27T10:00:00-05:00',
+        '2030-05-27T10:30:00-05:00',
+        'Day repair',
+        'call_dash_day_001',
+        employeeId,
+      ]
+    );
+
+    expect(result.rows[0].success).toBe(true);
+  });
+});
