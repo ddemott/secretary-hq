@@ -444,15 +444,24 @@ test('edit appointment: time changes persist to DB through PUT /appointments', a
     // who isn't working") and any future cross-check that re-validates
     // existing rows against shift coverage would flag it. The test owns
     // the shift and the appointment together; both come and go together.
+    // UTC throughout, not local (setHours/getDay): the shift below is
+    // written as bare '08:00'/'17:00' TIME literals, which the update
+    // route's shift-coverage re-validation (2026-09-13) reads against the
+    // tenant's ACTUAL timezone — UTC, since this freshly-registered tenant
+    // never had one set. Using the CI runner's local wall-clock (America/
+    // Chicago) to build these times meant the appointment's real instant
+    // could land hours outside the "UTC 08:00-17:00" shift window the
+    // literal times actually describe, correctly tripping
+    // EMPLOYEE_NOT_SCHEDULED once the route started checking.
     const future = new Date();
-    future.setDate(future.getDate() + 14);
-    // Snap to next weekday in case getDate()+14 lands on a Sat/Sun.
-    while (future.getDay() === 0 || future.getDay() === 6) {
-      future.setDate(future.getDate() + 1);
+    future.setUTCDate(future.getUTCDate() + 14);
+    // Snap to next weekday in case getUTCDate()+14 lands on a Sat/Sun.
+    while (future.getUTCDay() === 0 || future.getUTCDay() === 6) {
+      future.setUTCDate(future.getUTCDate() + 1);
     }
-    future.setHours(10, 0, 0, 0);
+    future.setUTCHours(10, 0, 0, 0);
     const startIso = future.toISOString();
-    future.setHours(11, 0, 0, 0);
+    future.setUTCHours(11, 0, 0, 0);
     const endIso = future.toISOString();
     const shiftDate = future.toISOString().slice(0, 10);
 
@@ -508,9 +517,9 @@ test('edit appointment: time changes persist to DB through PUT /appointments', a
     // covered by appointment.test.tsx (component-level).
     const token = await getApiToken(page, freshTenant.email, 'password123');
     const newStart = new Date(future);
-    newStart.setHours(13, 0, 0, 0);
+    newStart.setUTCHours(13, 0, 0, 0);
     const newEnd = new Date(future);
-    newEnd.setHours(14, 0, 0, 0);
+    newEnd.setUTCHours(14, 0, 0, 0);
     const updateResp = await page.evaluate(
       async ({ token, id, tenantId, startIso, endIso, backendUrl }) => {
         const res = await fetch(`${backendUrl}/appointments/${id}/update`, {
