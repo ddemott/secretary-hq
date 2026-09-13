@@ -38,6 +38,7 @@ DECLARE
     v_start_local TIMESTAMP;
     v_end_local TIMESTAMP;
     v_on_shift BOOLEAN;
+    v_updated_id UUID;
 BEGIN
     SELECT COALESCE(t.timezone, 'UTC') INTO v_tenant_tz FROM tenants t WHERE t.tenant_id = p_tenant_id;
     IF v_tenant_tz IS NULL THEN v_tenant_tz := 'UTC'; END IF;
@@ -155,10 +156,28 @@ BEGIN
         END IF;
     END IF;
 
+    -- Copilot review, PR #446: the ownership/eligibility SELECT above and this
+    -- UPDATE are two separate statements — between them, nothing stops the
+    -- appointment from being canceled, soft-deleted, or reassigned to another
+    -- caller (or an RLS context glitch narrowing what this UPDATE can see).
+    -- The UPDATE repeats the FULL eligibility filter rather than trusting the
+    -- appointment_id alone, and RETURNING INTO a variable (not just running
+    -- the UPDATE) is how a zero-row match is DETECTED — a bare UPDATE with no
+    -- matching row raises no error, so "success" would otherwise be reported
+    -- with nothing actually changed.
     BEGIN
-        UPDATE appointments
+        UPDATE appointments a
            SET start_time = p_new_start, end_time = p_new_end, updated_at = now()
-         WHERE appointments.appointment_id = p_appointment_id;
+          FROM customers c
+         WHERE a.appointment_id = p_appointment_id
+           AND a.tenant_id = p_tenant_id
+           AND a.customer_id = c.customer_id
+           AND c.tenant_id = p_tenant_id
+           AND c.phone = p_phone
+           AND a.status = 'scheduled'
+           AND a.start_time > NOW()
+           AND (a.is_deleted IS NULL OR a.is_deleted = false)
+        RETURNING a.appointment_id INTO v_updated_id;
     EXCEPTION WHEN exclusion_violation THEN
         RETURN QUERY SELECT FALSE, NULL::UUID,
             'That time slot is already booked. Please choose a different time.'::TEXT,
@@ -166,7 +185,14 @@ BEGIN
         RETURN;
     END;
 
-    RETURN QUERY SELECT TRUE, p_appointment_id, NULL::TEXT, NULL::TEXT;
+    IF v_updated_id IS NULL THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID,
+            'I couldn''t find that appointment under your number, or it may already be past or canceled.'::TEXT,
+            'NOT_FOUND'::TEXT;
+        RETURN;
+    END IF;
+
+    RETURN QUERY SELECT TRUE, v_updated_id, NULL::TEXT, NULL::TEXT;
 END;
 $function$;
 
@@ -177,5 +203,8 @@ employee/resource/service assignment: blackout dates (BUSINESS_CLOSED),
 STRICT skill-map links still active (NO_SKILLED_RESOURCE/NO_SKILLED_EMPLOYEE),
 and night-shift-aware shift coverage via shift_row_covers_booking
 (EMPLOYEE_NOT_SCHEDULED). Does not reassign employee/resource/service — only
-the time changes. GiST exclusion constraints still catch a literal
-double-booking (TIMESLOT_OCCUPIED).';
+the time changes. The final UPDATE re-applies the full eligibility filter
+(not just appointment_id) and detects a zero-row match via RETURNING INTO,
+closing the gap between the earlier ownership SELECT and the write
+(NOT_FOUND). GiST exclusion constraints still catch a literal double-booking
+(TIMESLOT_OCCUPIED).';
