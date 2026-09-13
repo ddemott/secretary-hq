@@ -182,6 +182,7 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
   let resourceId: string;
   let employeeId: string;
   let dbAvailable = false;
+  beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
 
   beforeAll(async () => {
     try {
@@ -368,6 +369,7 @@ describe('Fix (20260913): check_coverage_gaps night-shift awareness', () => {
   let serviceId: string;
   let employeeId: string;
   let dbAvailable = false;
+  beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
 
   beforeAll(async () => {
     try {
