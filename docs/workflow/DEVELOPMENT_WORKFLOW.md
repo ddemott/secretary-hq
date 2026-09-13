@@ -63,7 +63,7 @@ npm run create-branch feat/your-descriptive-name
    ```
 4. Copy the branch checklist for local tracking:
    ```bash
-   cp docs/BRANCH_CHECKLIST.md .
+   cp docs/workflow/BRANCH_CHECKLIST.md .
    ```
    Edit `.BRANCH_CHECKLIST.md` (or the copied file) in your branch root and keep it updated.
 5. Start tracking what needs to be done (tests, docs, etc.). Consider adding an entry in `docs/planning/TODO.md`.

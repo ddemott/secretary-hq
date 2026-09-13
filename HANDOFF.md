@@ -756,7 +756,7 @@ What changed (all in the working tree):
 - `scripts/seed-question-tree-templates.ts` — the projection is now an exported `seedQuestionTreeTemplates(client)`; the CLI wrapper only runs when invoked directly.
 - `tests/questionTreeRoundTrip.test.ts` — **seeds its own fixture every run.** It previously read whatever a developer had seeded by hand: a one-clause reword of `case_intake/matter_description` in `trees.ts` produced 7 failures that read like a broken conversion, and **nothing seeds templates in CI at all**, so its own guard would have thrown there on first run.
 - `tests/services/browserCallerSession.test.ts` — pinned the literal banner string `Waiting up to 3 minutes`, which the (uncommitted) `SIM_CALL_JOIN_WAIT_MS` change had made a template. Now pins the default and the ordering, not the wording.
-- Docs: `docs/LESSONS_LEARNED.md` (the DNS lesson), root `DEVELOPMENT_WORKFLOW.md` (local voice-call rig + the resolver fix), `CLAUDE.md`.
+- Docs: `docs/workflow/LESSONS_LEARNED.md` (the DNS lesson), root `DEVELOPMENT_WORKFLOW.md` (local voice-call rig + the resolver fix), `CLAUDE.md`.
 
 **Local DB state:** `test_db` was 2 migrations behind and is now at 184. The local dev DB has templates seeded and all 3 tenants converted — `/agent-tools/tenant-config` returns 10 `question_trees` and preset `owner_for_hire_front_desk` for Thinking Hammer. Playwright's globalSetup rebuilds that DB, so re-run `npm run trees:local` after an e2e run.
 
@@ -801,7 +801,7 @@ Plus: **local was not bookable** (`npm run local:business`, new `scripts/seed-lo
 
 Live path: `tenants.checklist_preset_id` + `checklist_overrides` → `deriveChecklistRuntimeConfig` → `/agent-tools/tenant-config` → `ChecklistAgent({ runtimeConfig })`. Owners edit it on Business Settings → Call checklist.
 
-## ROADMAP (`docs/ROADMAP.md`)
+## ROADMAP (`docs/planning/ROADMAP.md`)
 
 Steps 1–10 closed in CI.
 

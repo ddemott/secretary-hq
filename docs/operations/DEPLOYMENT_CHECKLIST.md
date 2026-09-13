@@ -7,9 +7,9 @@ failed to deploy. Reference doc, not a backlog — see `docs/planning/TODO.md` f
 **Why it exists:** every step here is written from a failure that happened.
 Nothing below is precautionary.
 
-Related: `docs/DEPLOYMENT.md` (env vars, Railway service setup),
-`docs/BRANCH_CHECKLIST.md` (per-branch hygiene), `docs/RUNBOOK.md` (incidents),
-`docs/ALERTS.md` (what pages you afterwards).
+Related: `docs/operations/DEPLOYMENT.md` (env vars, Railway service setup),
+`docs/workflow/BRANCH_CHECKLIST.md` (per-branch hygiene), `docs/operations/RUNBOOK.md` (incidents),
+`docs/operations/ALERTS.md` (what pages you afterwards).
 
 ---
 
@@ -89,7 +89,7 @@ the migration.
       unresolved thread blocks the merge button with `mergeStateStatus: BLOCKED`
       even when every check is passing.
 - [ ] Roadmap status set to 🟡 IN_PROGRESS, not ✅. Per
-      `docs/PRODUCT_ROADMAP.md` §0.7, DONE means merged to `main`; a PR
+      `docs/planning/PRODUCT_ROADMAP.md` §0.7, DONE means merged to `main`; a PR
       claiming DONE is claiming a merge that has not happened.
 
 ## 3. Migration ordering (if the PR has one)
@@ -134,8 +134,8 @@ The merge is not the deploy. Check, do not assume:
 - [ ] Say plainly which parts you verified and which are covered only by tests.
       "Deployed" is not "confirmed working", and a probe you did not run is not
       evidence.
-- [ ] Update `docs/PRODUCT_ROADMAP.md` — a task is ✅ DONE only now.
-- [ ] Watch `errors_total` and the §3.10-3.12 rules in `docs/ALERTS.md` for the
+- [ ] Update `docs/planning/PRODUCT_ROADMAP.md` — a task is ✅ DONE only now.
+- [ ] Watch `errors_total` and the §3.10-3.12 rules in `docs/operations/ALERTS.md` for the
       first few minutes if the change touched the call path, reminders, or
       webhooks.
 

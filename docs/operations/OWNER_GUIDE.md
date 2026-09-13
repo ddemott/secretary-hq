@@ -4,7 +4,7 @@ A plain-language guide for business owners: what each dashboard tab does, how to
 read your call analytics, and answers to the questions owners ask most. No
 technical background needed.
 
-For operators diagnosing an outage, see `docs/RUNBOOK.md` instead.
+For operators diagnosing an outage, see `docs/operations/RUNBOOK.md` instead.
 
 ---
 

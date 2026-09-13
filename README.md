@@ -239,7 +239,7 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 ## Testing
 
 ```bash
-npm test                              # Backend/root Vitest suite (see docs/TEST_COVERAGE.md for latest status)
+npm test                              # Backend/root Vitest suite (see docs/planning/TEST_COVERAGE.md for latest status)
 cd dashboard && npx vitest run        # Dashboard Vitest suite
 cd agent && npm test                  # Agent Vitest suite
 cd dashboard && npx playwright test   # E2E (40 committed spec files)
@@ -299,7 +299,7 @@ Apply production DB migrations **before** the merge. Environment variables are s
 on the Railway services themselves; `.env.production.example` lists what each one
 needs.
 
-See `docs/DEPLOYMENT.md` for the step-by-step guide.
+See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 ---
 
@@ -390,15 +390,15 @@ See `docs/DEPLOYMENT.md` for the step-by-step guide.
 
 **Workflow & standards**
 
-| Doc                                     | Purpose                                                |
-| --------------------------------------- | ------------------------------------------------------ |
-| `docs/DEVELOPMENT_WORKFLOW.md`          | Repeatable dev process for this project                |
-| `docs/PORTABLE_DEVELOPMENT_WORKFLOW.md` | Project-agnostic version of the workflow (copyable)    |
-| `docs/ADOPTING_THE_WORKFLOW.md`         | How another project points at + adopts the workflow    |
-| `docs/CODING_STANDARDS.md`              | Naming conventions + code-style rules                  |
-| `docs/BRANCH_CHECKLIST.md`              | Checklist for starting + finishing feature-branch work |
-| `docs/LESSONS_LEARNED.md`               | Running log of hard-won debugging lessons              |
-| `docs/AGENTS.md`                        | Agent-oriented codebase brief                          |
+| Doc                                              | Purpose                                                                                                                                        |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/workflow/DEVELOPMENT_WORKFLOW.md`          | Repeatable dev process for this project                                                                                                        |
+| `docs/workflow/PORTABLE_DEVELOPMENT_WORKFLOW.md` | Project-agnostic version of the workflow (copyable)                                                                                            |
+| `docs/workflow/ADOPTING_THE_WORKFLOW.md`         | How another project points at + adopts the workflow                                                                                            |
+| `docs/workflow/CODING_STANDARDS.md`              | Naming conventions + code-style rules                                                                                                          |
+| `docs/workflow/BRANCH_CHECKLIST.md`              | Checklist for starting + finishing feature-branch work                                                                                         |
+| `docs/workflow/LESSONS_LEARNED.md`               | Running log of hard-won debugging lessons                                                                                                      |
+| `docs/workflow/AGENTS.md`                        | Agent-oriented codebase brief (root `/AGENTS.md` is a different file — the response-style rule other agent CLIs pick up, not a codebase brief) |
 
 **Subfolders**
 

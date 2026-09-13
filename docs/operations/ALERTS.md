@@ -12,7 +12,7 @@ free-forever bar); these rules remain as reference. The metric names, label keys
 label _values_ below match the live registry in `src/services/metrics.ts`
 exactly — paste them as written.
 
-**Incident response for each alert lives in `docs/RUNBOOK.md`.** An alert tells
+**Incident response for each alert lives in `docs/operations/RUNBOOK.md`.** An alert tells
 you _something broke_; the runbook tells you _what to do_. Each rule links its
 runbook section.
 
@@ -110,7 +110,7 @@ real call volume lands. Severity: **page** = wake someone; **warn** = review nex
   labels: { severity: page }
   annotations:
     summary: 'errors_total climbing ({{ $value | printf "%.2f" }}/s over 5m)'
-    runbook: 'docs/RUNBOOK.md — Backend down / DB pool saturation'
+    runbook: 'docs/operations/RUNBOOK.md — Backend down / DB pool saturation'
 ```
 
 Per-event breakout (high signal — tells you _which_ failure):
@@ -120,7 +120,7 @@ Per-event breakout (high signal — tells you _which_ failure):
   expr: rate(errors_total{event="provisioning_failed"}[15m]) > 0
   for: 5m
   labels: { severity: warn }
-  annotations: { runbook: 'docs/RUNBOOK.md — Telephony / provisioning' }
+  annotations: { runbook: 'docs/operations/RUNBOOK.md — Telephony / provisioning' }
 
 - alert: VoiceSessionsReapedSpike
   expr: rate(errors_total{event="voice_session_reaped"}[15m]) > 0.02
@@ -128,7 +128,7 @@ Per-event breakout (high signal — tells you _which_ failure):
   labels: { severity: warn }
   annotations:
     summary: 'Voice sessions being force-finalized by the reaper — agent may not be sending voice-session-end'
-    runbook: 'docs/RUNBOOK.md — Agent silent'
+    runbook: 'docs/operations/RUNBOOK.md — Agent silent'
 ```
 
 ### 3.2 HTTP 5xx rate — `page`
@@ -142,7 +142,7 @@ Per-event breakout (high signal — tells you _which_ failure):
   labels: { severity: page }
   annotations:
     summary: '>5% of requests are 5xx over 5m'
-    runbook: 'docs/RUNBOOK.md — Backend down'
+    runbook: 'docs/operations/RUNBOOK.md — Backend down'
 ```
 
 ### 3.3 p95 latency — `warn`
@@ -156,7 +156,7 @@ Per-event breakout (high signal — tells you _which_ failure):
   labels: { severity: warn }
   annotations:
     summary: 'p95 request latency >2.5s over 15m'
-    runbook: 'docs/RUNBOOK.md — DB pool saturation'
+    runbook: 'docs/operations/RUNBOOK.md — DB pool saturation'
 ```
 
 ### 3.4 Booking failure rate — `page`
@@ -172,7 +172,7 @@ Booking is the revenue path. `success` vs everything-else:
   labels: { severity: page }
   annotations:
     summary: '>50% of booking attempts failing over 15m'
-    runbook: 'docs/RUNBOOK.md — Booking failures'
+    runbook: 'docs/operations/RUNBOOK.md — Booking failures'
 ```
 
 > Note: a high `no_availability` / `employee_not_scheduled` share can be
@@ -194,7 +194,7 @@ Booking is the revenue path. `success` vs everything-else:
   labels: { severity: warn }
   annotations:
     summary: 'DB pool has waiting checkouts — approaching max=10 saturation'
-    runbook: 'docs/RUNBOOK.md — DB pool saturation'
+    runbook: 'docs/operations/RUNBOOK.md — DB pool saturation'
 ```
 
 ### 3.6 Reminder delivery regression — `warn`
@@ -208,7 +208,7 @@ Booking is the revenue path. `success` vs everything-else:
   labels: { severity: warn }
   annotations:
     summary: '>20% of reminder sends failing — check SMS/email provider creds'
-    runbook: 'docs/RUNBOOK.md — Reminders not sending'
+    runbook: 'docs/operations/RUNBOOK.md — Reminders not sending'
 
 - alert: RemindersSkippedNoConsent
   expr: rate(reminders_skipped_total{reason="no_consent"}[1h]) > 0.05
@@ -229,7 +229,7 @@ Booking is the revenue path. `success` vs everything-else:
   labels: { severity: warn }
   annotations:
     summary: 'Agent tool {{ $labels.tool }} erroring >30% over 15m'
-    runbook: 'docs/RUNBOOK.md — Agent silent'
+    runbook: 'docs/operations/RUNBOOK.md — Agent silent'
 ```
 
 ### 3.8 No traffic at all — `page` (deploy/outage canary)
@@ -265,7 +265,7 @@ are expected under burst and are retried by the worker, not incidents.
   labels: { severity: page }
   annotations:
     summary: '>20% of SMS sends failing over 15m — check TELNYX_PHONE_NUMBER is still owned'
-    runbook: 'docs/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
 ```
 
 Earlier warn tier (added 2026-09-03, T-006). 20% is where a `from` number is
@@ -282,7 +282,7 @@ rather than pages precisely so it can sit at a threshold a page could not:
   labels: { severity: warn }
   annotations:
     summary: '>5% of SMS sends failing over 30m — check for a single bad recipient or a carrier rejecting'
-    runbook: 'docs/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
 ```
 
 Cheaper companion that needs no ratio — any failed opt-out confirmation is a
@@ -295,7 +295,7 @@ compliance event, because that path persists no `communications_history` row:
   labels: { severity: page }
   annotations:
     summary: 'An opt-out confirmation SMS failed — TCPA exposure, no DB record exists'
-    runbook: 'docs/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
 ```
 
 ### 3.10 Reminder batch failing — `page`
@@ -316,7 +316,7 @@ minutes. The threshold sits above transient blips and far below a total outage.
   labels: { severity: page }
   annotations:
     summary: 'Reminder batch failing repeatedly — no reminders or confirmations are going out'
-    runbook: 'docs/RUNBOOK.md — reminder pipeline'
+    runbook: 'docs/operations/RUNBOOK.md — reminder pipeline'
 ```
 
 Pair it with a silence check: a worker that stops throwing because it stopped
@@ -338,7 +338,7 @@ need a human the same hour — the second one silently drops real traffic.
   labels: { severity: page }
   annotations:
     summary: 'Webhook signature verification failing on {{ $labels.provider }}/{{ $labels.endpoint }} — forged traffic or a half-rotated secret'
-    runbook: 'docs/RUNBOOK.md — webhook verification'
+    runbook: 'docs/operations/RUNBOOK.md — webhook verification'
 ```
 
 Tell the two causes apart by whether legitimate traffic on the SAME endpoint kept
@@ -362,7 +362,7 @@ reads fine. 3000 ms is the line — the hold line fires at 2500 ms, so a p95 abo
   labels: { severity: warn }
   annotations:
     summary: 'p95 agent turn latency above 3s over 15m — callers are sitting in silence'
-    runbook: 'docs/RUNBOOK.md — voice latency'
+    runbook: 'docs/operations/RUNBOOK.md — voice latency'
 ```
 
 **Read the buckets, not just the quantile, before acting.** The 2026-08-15 case

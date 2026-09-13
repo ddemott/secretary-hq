@@ -169,7 +169,7 @@ The `workflow.config.json` file is the single place to customize:
 
 See the original implementation in the SecretaryHQ project:
 
-- `docs/DEVELOPMENT_WORKFLOW.md`
+- `docs/workflow/DEVELOPMENT_WORKFLOW.md`
 - `workflow.config.json`
 - `scripts/` (especially `create-feature-branch.sh` and `prepare-commit.sh`)
 - `.github/` templates and protection docs
