@@ -49,6 +49,17 @@ export class TurnLatencyCollector {
   }
 
   /**
+   * The TRUE number of turns this call had — accepted samples plus dropped
+   * ones. `toPayload()` alone would undercount a pathologically long call
+   * once it crosses MAX_TURN_LATENCY_SAMPLES, and turn count (unlike the
+   * latency histogram) has no reason to be capped: it's a single integer,
+   * not an array shipped over the wire per-sample.
+   */
+  totalCount(): number {
+    return this.samples.length + this.dropped;
+  }
+
+  /**
    * The wire payload for voice-session-end, or undefined when no turn was ever
    * measured — an empty array would be a claim of "zero-latency call", and
    * omission is the honest shape for "nothing measured".

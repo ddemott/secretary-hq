@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
+\restrict GFh1SD7ZvAnwNtJwsBDmo2f5YVzJlDJBCLMC2Xjplq3dJjX3VJZ6zYOcQmrNmRL
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -2831,10 +2831,18 @@ CREATE TABLE public.ai_cost_events (
     characters_count integer DEFAULT 0 NOT NULL,
     audio_duration_ms integer DEFAULT 0 NOT NULL,
     estimated_cost_usd numeric(12,8) DEFAULT 0 NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    turn_count integer
 );
 
 ALTER TABLE ONLY public.ai_cost_events FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: COLUMN ai_cost_events.turn_count; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.ai_cost_events.turn_count IS 'Total conversational turns on the call (TurnLatencyCollector.totalCount() — accepted + dropped latency samples, so a long call is not undercounted by the latency array''s own cap). NULL for non-voice_call sources and for calls that predate this column.';
 
 
 --
@@ -6981,5 +6989,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict CH54MRfu7JmDfYyfv0A5tB1cJxhHhkZgfvy5dMLPXaiKfNhQtaHl1uchYvVVIRt
+\unrestrict GFh1SD7ZvAnwNtJwsBDmo2f5YVzJlDJBCLMC2Xjplq3dJjX3VJZ6zYOcQmrNmRL
 

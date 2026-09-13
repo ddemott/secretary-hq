@@ -62,4 +62,33 @@ describe('TurnLatencyCollector', () => {
     c.record(1100);
     expect(payload).toEqual([900]);
   });
+
+  describe('totalCount()', () => {
+    it('HAPPY: counts accepted samples', () => {
+      const c = new TurnLatencyCollector();
+      c.record(500);
+      c.record(600);
+      expect(c.totalCount()).toBe(2);
+    });
+
+    it('HAPPY: zero for a call with no measured turn', () => {
+      expect(new TurnLatencyCollector().totalCount()).toBe(0);
+    });
+
+    it("SAD: includes dropped samples — the real turn count doesn't stop at the latency cap", () => {
+      // A call with more turns than MAX_TURN_LATENCY_SAMPLES still had that
+      // many real turns; toPayload() truncates for the histogram, but the
+      // cost ledger's turn_count must not silently understate a long call.
+      const c = new TurnLatencyCollector();
+      for (let i = 0; i < MAX_TURN_LATENCY_SAMPLES + 25; i++) c.record(500);
+      expect(c.totalCount()).toBe(MAX_TURN_LATENCY_SAMPLES + 25);
+    });
+
+    it('SAD: an out-of-range sample still counts as a turn, even though it is not in the payload', () => {
+      const c = new TurnLatencyCollector();
+      c.record(-1);
+      c.record(500);
+      expect(c.totalCount()).toBe(2);
+    });
+  });
 });

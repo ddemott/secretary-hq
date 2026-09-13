@@ -601,4 +601,9 @@ export const RecordAiCostSchema = z.object({
   call_id: z.string().optional(),
   source: z.enum(['voice_call', 'kb_ingestion', 'kb_query', 'call_summary']),
   model_usage: z.array(ModelUsageItemSchema),
+  // Total conversational turns on the call (TurnLatencyCollector.totalCount()
+  // — accepted + dropped samples, so it isn't undercounted by the latency
+  // array's own cap). Only meaningful for source='voice_call'; omitted for
+  // KB ingestion/query/summary sources, which have no turns.
+  turn_count: z.number().int().nonnegative().optional(),
 });
