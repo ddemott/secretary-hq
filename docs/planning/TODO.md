@@ -113,11 +113,11 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       hybrid and the address in her first sentence; the model recorded them under invented ids
       (`role_type`, `role_title`, `role_salary_range`, `role_location`), `tracker.ts`'s `record()`
       refused each with `"<id>" is not on this call's checklist. Record only the ids the checklist
-      shows.` — which named no valid id — and the model then asked her for all of it again ("Like
+  shows.` — which named no valid id — and the model then asked her for all of it again ("Like
       I said…", twice). Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the
       refusal must hand the model the ids it CAN record, so a wrong id costs a silent retry, not
       the caller's patience. Fix: the `UnknownNodeError` now appends `Open ids you may record
-      now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
+  now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
       shape as `UnknownTreeError` on `set_purpose`. Also fixed the grader: it only checked one
       hard-coded re-ask phrasing (the caller's name), which is exactly why this scenario passed
       despite the transcript showing a real re-ask. Added a generic tripwire instead — the
@@ -462,4 +462,5 @@ Each screen below has had NO dedicated UX review (owner-judgment items). Most al
 ## 🧹 Doc hygiene (mechanical, ongoing — low priority)
 
 - [ ] Continue count-drift passes (route modules / migrations / test numbers) after any new route or migration; keep secondary docs synced. **2026-09-12 pass:** routes **32** (CLAUDE.md's own architecture-section prose still said 29 in two places — `verify-claude-md.ts` checks route-module count against `Key Directories`, not every prose mention, so this drift was NOT auto-caught; fixed both); `supabase/migrations/` **196**; dashboard loose `.tsx`/`.ts` at `components/` is **0** (the subdirectory migration TODO item above is now fully closed — was 35 on 2026-09-05); test counts refreshed in CLAUDE.md's Project Status line: backend **3,100** (260 files), dashboard **1,070** (99 files), agent **1,040** (60 files). **Lesson for the next pass:** `verify-claude-md.ts` and `npm test` totals both stay accurate only if someone re-runs them — neither is wired to fail CI on ITS OWN staleness the way the migration/route counts are; a prose count with no automated guard is exactly the kind of drift this line exists to catch.
+      **2026-09-13 pass:** routes **32** (unchanged); `supabase/migrations/` **198** (two new migrations landed same-day, `20260913000000` + `20260913010000` — CI's `verify-claude-md.ts` DID catch the `Key Directories` count going stale mid-PR on #444, proving that guard works; it does not reach the Project Status paragraph, which is where the second, unguarded copy of the same number was found stale here); e2e specs **40** (unchanged); test counts refreshed in CLAUDE.md's Project Status line: backend **3,120** (262 files, +6 from two real-DB night-shift regression suites), dashboard **1,124** (104 files, +2 from the website-rescan fix), agent **1,048** (61 files, unchanged). Confirms last pass's lesson rather than adding a new one: the Project Status paragraph is excluded from `verify-claude-md.ts` by `stripHistoricalSections()`, so it drifts silently every time a PR adds tests without someone re-running this pass by hand.
 - [ ] Trim remaining historical narrative from active docs into `planning/RESOLVED.md` when it goes cold.
