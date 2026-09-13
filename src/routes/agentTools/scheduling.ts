@@ -1328,7 +1328,13 @@ export function registerSchedulingRoutes({
             // TODAY's early morning; a row dated TODAY that wraps keeps its
             // start and caps at midnight — the rest belongs to tomorrow's
             // query, not this one.
-            const isYesterdayRow = row.shift_date !== null && row.shift_date !== args.date;
+            // `typeof === 'string'`, not a null check: mocked-pool unit tests
+            // return canned rows that predate this column and never set it
+            // (undefined, not null) — treating that as "not yesterday" keeps
+            // their fixtures' old same-day behavior instead of misreading
+            // every mocked shift as a wrapping night-shift tail.
+            const isYesterdayRow =
+              typeof row.shift_date === 'string' && row.shift_date !== args.date;
             if (isYesterdayRow) {
               shifts.push({ start_time: '00:00', end_time: row.end_time });
             } else if (row.end_time < row.start_time) {
