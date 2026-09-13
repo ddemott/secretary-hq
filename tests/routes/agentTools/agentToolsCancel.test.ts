@@ -248,9 +248,14 @@ describe('/agent-tools/reschedule-appointment', () => {
     // WHERE: src/routes/agentTools.ts reschedule-appointment toolRoute
     // WHY: Voice receptionist must be able to move an appointment for the caller
     const { app, queries } = buildApp({
-      // UPDATE returning the rescheduled row, then empty responses for fire-and-forget reminders
+      // reschedule_appointment_atomic() returning success, then empty
+      // responses for fire-and-forget reminders
       queryResponses: [
-        { rows: [{ appointment_id: APPT_ID_A }] },
+        {
+          rows: [
+            { success: true, appointment_id: APPT_ID_A, error_message: null, error_code: null },
+          ],
+        },
         { rows: [] }, // reminder cancel
         { rows: [] }, // reminder schedule (no schedules configured is fine)
       ],
@@ -287,7 +292,19 @@ describe('/agent-tools/reschedule-appointment', () => {
     // WHY: Same ownership boundary as cancel. Without this, any caller could move
     //        any appointment by supplying an arbitrary UUID.
     const { app, queries } = buildApp({
-      queryResponses: [{ rows: [] }], // zero rows = ownership mismatch
+      queryResponses: [
+        {
+          rows: [
+            {
+              success: false,
+              appointment_id: null,
+              error_message:
+                "I couldn't find that appointment under your number, or it may already be past or canceled.",
+              error_code: 'NOT_FOUND',
+            },
+          ],
+        },
+      ],
     });
 
     const res = await post(app, '/agent-tools/reschedule-appointment', {
@@ -345,44 +362,35 @@ describe('/agent-tools/reschedule-appointment', () => {
     expect(queries).toHaveLength(0);
   });
 
-  it('SAD: DB conflict (23P01 exclusion) returns slot-busy message', async () => {
+  it('SAD: occupied target slot (TIMESLOT_OCCUPIED) returns slot-busy message', async () => {
     // WHO: Caller trying to move to a slot already occupied by another appointment
-    // WHAT: Postgres throws code 23P01 (exclusion_violation) — GiST constraint fires
+    // WHAT: reschedule_appointment_atomic() catches the GiST exclusion_violation
+    //       (23P01) INSIDE the function and returns a normal success:false row —
+    //       the route no longer needs its own try/catch for this.
     // WHEN: New [start,end) overlaps an existing appointment for same employee/resource
-    // WHERE: src/routes/agentTools.ts reschedule-appointment — exclusion catch block
+    // WHERE: reschedule_appointment_atomic() (20260913020000), UPDATE's EXCEPTION block
     // WHY: Must surface a human-readable "slot is busy" instead of a 500
-    const conflictErr = Object.assign(new Error('exclusion constraint violation'), {
-      code: '23P01',
+    const { app } = buildApp({
+      queryResponses: [
+        {
+          rows: [
+            {
+              success: false,
+              appointment_id: null,
+              error_message: 'That time slot is already booked. Please choose a different time.',
+              error_code: 'TIMESLOT_OCCUPIED',
+            },
+          ],
+        },
+      ],
     });
 
-    // Build a dedicated app whose DB client always throws 23P01
-    const throwClient = {
-      query: vi.fn(async () => {
-        throw conflictErr;
-      }),
-      release: vi.fn(),
-    } as unknown as PoolClient;
-
-    const throwWithClient = async <T>(
-      _tenantId: string,
-      fn: (client: PoolClient) => Promise<T>
-    ): Promise<T> => fn(throwClient);
-
-    const getEmbedding = async () => new Array(1536).fill(0);
-    const conflictApp = Fastify({ logger: false });
-    registerAgentToolRoutes(conflictApp, {} as never, throwWithClient, getEmbedding);
-
-    const res = await conflictApp.inject({
-      method: 'POST',
-      url: '/agent-tools/reschedule-appointment',
-      headers: { 'x-agent-secret': SECRET },
-      payload: {
-        tenant_id: TENANT_ID,
-        phone: CALLER_A_PHONE,
-        appointment_id: APPT_ID_A,
-        new_start_time: FUTURE_START,
-        new_end_time: FUTURE_END,
-      },
+    const res = await post(app, '/agent-tools/reschedule-appointment', {
+      tenant_id: TENANT_ID,
+      phone: CALLER_A_PHONE,
+      appointment_id: APPT_ID_A,
+      new_start_time: FUTURE_START,
+      new_end_time: FUTURE_END,
     });
 
     expect(res.statusCode).toBe(200);

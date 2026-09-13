@@ -1763,7 +1763,12 @@ export function registerSchedulingRoutes({
 
   // reschedule-appointment — move a scheduled appointment to a new time.
   // Phone ownership verified server-side (LLM can't move another caller's appointment).
-  // GiST exclusion constraints reject double-bookings at the DB layer (23P01).
+  // reschedule_appointment_atomic() (20260913020000) re-validates the new time
+  // against the SAME business rules booking enforces — blackout dates, STRICT
+  // skill-map links, and night-shift-aware shift coverage — before writing it;
+  // the old raw UPDATE only relied on the GiST exclusion constraints to catch
+  // a literal double-booking, which said nothing about whether anyone was
+  // actually scheduled to be there.
   toolRoute(
     app,
     '/agent-tools/reschedule-appointment',
@@ -1779,42 +1784,21 @@ export function registerSchedulingRoutes({
         return fail(reply, 'New appointment time must be in the future.');
       }
 
-      try {
-        const result = await withTenantClient(args.tenant_id, async (client) => {
-          return client.query<{ appointment_id: string }>(
-            `UPDATE appointments a SET start_time = $4, end_time = $5
-             FROM customers c
-             WHERE a.appointment_id = $1
-               AND a.tenant_id = $2
-               AND a.customer_id = c.customer_id
-               AND c.tenant_id = $2
-               AND c.phone = $3
-               AND a.status = 'scheduled'
-               AND a.start_time > NOW()
-               AND (a.is_deleted IS NULL OR a.is_deleted = false)
-             RETURNING a.appointment_id`,
-            [
-              args.appointment_id,
-              args.tenant_id,
-              normalized,
-              args.new_start_time,
-              args.new_end_time,
-            ]
-          );
-        });
+      const result = await withTenantClient(args.tenant_id, async (client) => {
+        return client.query<{
+          success: boolean;
+          appointment_id: string | null;
+          error_message: string | null;
+          error_code: string | null;
+        }>(
+          `SELECT * FROM reschedule_appointment_atomic($1, $2, $3, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ)`,
+          [args.tenant_id, args.appointment_id, normalized, args.new_start_time, args.new_end_time]
+        );
+      });
 
-        if (result.rows.length === 0) {
-          return fail(
-            reply,
-            "I couldn't find that appointment under your number, or it may already be past or canceled."
-          );
-        }
-      } catch (err) {
-        const code = (err as { code?: string }).code;
-        if (code === '23P01') {
-          return fail(reply, 'That time slot is already booked. Please choose a different time.');
-        }
-        throw err;
+      const row = result.rows[0];
+      if (!row?.success) {
+        return fail(reply, row?.error_message || 'Failed to reschedule appointment');
       }
 
       // Fire-and-forget: update calendar sync + reschedule reminders.
