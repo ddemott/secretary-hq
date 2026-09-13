@@ -836,6 +836,11 @@ export default defineAgent({
                   call_id: callId,
                   source: 'voice_call',
                   model_usage: finalModelUsage,
+                  // The real driver of per-call cost is turn count, not
+                  // wall-clock length (the checklist state + tool schemas
+                  // resent every turn dominate token usage) — see totalCount()'s
+                  // own doc comment for why this isn't just turnLatency.toPayload()?.length.
+                  turn_count: turnLatency.totalCount(),
                 })
                 .catch((e: unknown) =>
                   callLog.warn(

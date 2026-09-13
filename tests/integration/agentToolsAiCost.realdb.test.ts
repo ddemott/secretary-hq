@@ -159,4 +159,63 @@ describe('record-ai-cost → real ai_cost_events rows (dynamic multi-row INSERT)
     expect(rows.rows).toHaveLength(1);
     expect(rows.rows[0].model).toBe('nova-3');
   });
+
+  it('HAPPY: turn_count is denormalized onto every row for the call', async () => {
+    // WHO: a future repricing decision that needs cost-per-turn, not just
+    //      cost-per-call — see docs/planning/TODO.md "Re-price the tiers".
+    // WHAT: turn_count travels alongside model_usage and lands on EVERY row
+    //       inserted for the call, so a query can read it off any one of them
+    //       without a join back to voice_sessions.
+    const callId = 'aicost-call-turns';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/agent-tools/record-ai-cost',
+      headers: { 'x-agent-secret': AGENT_SECRET },
+      payload: {
+        tenant_id: tenantId,
+        call_id: callId,
+        source: 'voice_call',
+        turn_count: 12,
+        model_usage: [
+          { type: 'llm_usage', provider: 'openai', model: 'gpt-4.1-mini', inputTokens: 1000 },
+          { type: 'stt_usage', provider: 'deepgram', model: 'nova-3', audioDurationMs: 4000 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const rows = await setup.query(
+      `SELECT model, turn_count FROM ai_cost_events WHERE tenant_id = $1 AND call_id = $2 ORDER BY model`,
+      [tenantId, callId]
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows.every((r) => r.turn_count === 12)).toBe(true);
+  });
+
+  it('SAD: omitting turn_count (e.g. a KB-ingestion source) stores NULL, not 0', async () => {
+    // A KB ingestion/query call has no turns at all — 0 would falsely claim
+    // "this call had zero turns" rather than "turns do not apply here".
+    const callId = 'aicost-call-no-turns';
+    const res = await app.inject({
+      method: 'POST',
+      url: '/agent-tools/record-ai-cost',
+      headers: { 'x-agent-secret': AGENT_SECRET },
+      payload: {
+        tenant_id: tenantId,
+        call_id: callId,
+        source: 'kb_ingestion',
+        model_usage: [
+          { type: 'llm_usage', provider: 'openai', model: 'text-embedding-3-small', inputTokens: 200 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const rows = await setup.query(
+      `SELECT turn_count FROM ai_cost_events WHERE tenant_id = $1 AND call_id = $2`,
+      [tenantId, callId]
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].turn_count).toBeNull();
+  });
 });

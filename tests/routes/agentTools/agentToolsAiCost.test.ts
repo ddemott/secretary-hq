@@ -126,8 +126,8 @@ describe('POST /agent-tools/record-ai-cost', () => {
     expect(body.result.recorded).toBe(3);
     expect(queries).toHaveLength(1);
     expect(queries[0].text).toContain('INSERT INTO ai_cost_events');
-    // 3 rows × 10 columns = 30 params
-    expect(queries[0].params).toHaveLength(30);
+    // 3 rows × 11 columns = 33 params
+    expect(queries[0].params).toHaveLength(33);
   });
 
   it('HAPPY: filters out interruption_usage rows', async () => {
@@ -164,8 +164,8 @@ describe('POST /agent-tools/record-ai-cost', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json<{ result: { recorded: number } }>().result.recorded).toBe(1);
-    // Only 1 row × 10 params
-    expect(queries[0].params).toHaveLength(10);
+    // Only 1 row × 11 params (10 columns + turn_count)
+    expect(queries[0].params).toHaveLength(11);
   });
 
   it('HAPPY: returns recorded:0 and skips DB when all usage is interruption type', async () => {
@@ -254,9 +254,9 @@ describe('record-ai-cost prices what the calls actually used (2026-08-13)', () =
       model_usage: usage,
     });
     expect(res.statusCode).toBe(200);
-    // estimated_cost_usd is the 10th column of each row.
+    // estimated_cost_usd is the 10th of 11 columns per row (turn_count is 11th).
     const params = queries[0].params;
-    return usage.map((_, i) => Number(params[i * 10 + 9]));
+    return usage.map((_, i) => Number(params[i * 11 + 9]));
   };
 
   const row = (over: Record<string, unknown>) => ({

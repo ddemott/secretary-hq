@@ -11,6 +11,13 @@
  * Also callable from backend KB routes for ingestion/query costs.
  * Computes estimated_cost_usd using known published rates; TTS (historical xAI rows may exist)
  * pricing is not public so that row gets 0 (chars stored for later).
+ *
+ * turn_count is denormalized onto every row inserted for a call (repeated
+ * across its LLM/STT/TTS usage rows) rather than living only in
+ * voice_sessions — a call's cost and its turn count need to answer the same
+ * question ("what did an N-turn call cost?") from one table without a join,
+ * and it's a single small integer, not something worth a schema migration
+ * to avoid repeating. Only ever set for source='voice_call'.
  */
 import { RecordAiCostSchema } from './schemas';
 import { estimateCost } from '../../services/aiCost';
@@ -53,7 +60,7 @@ export function registerAiCostRoutes({ app, withTenantClient }: AgentToolDeps): 
         }
 
         placeholders.push(
-          `($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`
+          `($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`
         );
         values.push(
           args.tenant_id,
@@ -65,7 +72,8 @@ export function registerAiCostRoutes({ app, withTenantClient }: AgentToolDeps): 
           u.outputTokens,
           u.charactersCount,
           Math.round(u.audioDurationMs),
-          estimatedCost.toFixed(8)
+          estimatedCost.toFixed(8),
+          args.turn_count ?? null
         );
       }
 
@@ -73,7 +81,8 @@ export function registerAiCostRoutes({ app, withTenantClient }: AgentToolDeps): 
         client.query(
           `INSERT INTO ai_cost_events
              (tenant_id, call_id, source, provider, model,
-              input_tokens, output_tokens, characters_count, audio_duration_ms, estimated_cost_usd)
+              input_tokens, output_tokens, characters_count, audio_duration_ms, estimated_cost_usd,
+              turn_count)
            VALUES ${placeholders.join(', ')}`,
           values
         )
