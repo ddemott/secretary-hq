@@ -59,6 +59,7 @@ let pool: Pool;
 let app: FastifyInstance;
 let dbAvailable = false;
 let tenantId: string;
+let serviceId: string;
 const tenantsToClean: string[] = [];
 
 // A fixed FUTURE date so the route's "filter past times when today" branch
@@ -96,7 +97,7 @@ beforeAll(async () => {
     await setup.query('UPDATE tenants SET default_buffer_minutes = 0 WHERE tenant_id = $1', [
       tenantId,
     ]);
-    const serviceId = await createService(setup, tenantId, 'Programming Consultation', 30, 0);
+    serviceId = await createService(setup, tenantId, 'Programming Consultation', 30, 0);
     await setup.query('UPDATE tenants SET default_service_id = $1 WHERE tenant_id = $2', [
       serviceId,
       tenantId,
@@ -310,5 +311,94 @@ describe('available-slots → real DB, non-UTC tenant, UTC session', () => {
         [tenantId, EVENING_DATE]
       );
     }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // WHO  : available-slots' DATE path — the residual named in
+  //        docs/planning/TODO.md alongside migration 20260911010000 (which
+  //        fixed the same bug class in book_with_scheduling_atomic and
+  //        availabilitySearch.ts, but deliberately left this route's
+  //        effective_shifts CTE untouched).
+  // WHAT : a night shift's employee_schedule row is dated the evening it
+  //        STARTED, so an early-morning query needs YESTERDAY's row too —
+  //        and a same-day wrapping shift's evening half must cap at
+  //        midnight rather than leak a bogus [start, end) with end < start
+  //        into the minutes-since-midnight math.
+  // WHERE: src/routes/agentTools/scheduling.ts effective_shifts CTE + the
+  //        shift-clipping loop that builds `shifts` from the query rows.
+  // WHY  : no live tenant runs night shifts today, so this was not an active
+  //        gap — but it is the same shape of bug already fixed once, and
+  //        the next overnight tenant should not walk into it.
+  // ───────────────────────────────────────────────────────────────────────
+  describe('night shift crossing midnight (DATE-path residual)', () => {
+    const NIGHT_DATE = '2027-03-15'; // Monday: employee_schedule row dated here
+    const MORNING_DATE = '2027-03-16'; // Tuesday: the wrapping shift's tail
+
+    it("HAPPY: an early-morning slot is offered from YESTERDAY's wrapping row", async () => {
+      const employeeId = await createEmployee(setup, tenantId, 'Night Shift Worker');
+      await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+      await createScheduleEntry(setup, tenantId, employeeId, NIGHT_DATE, '22:00', '06:00');
+
+      try {
+        const res = await post('/agent-tools/available-slots', {
+          tenant_id: tenantId,
+          date: MORNING_DATE,
+          service_type: 'a meeting',
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.success).toBe(true);
+        const openTimes: string[] = body.result.open_times;
+
+        // The morning tail of the overnight shift (00:00–06:00) is open.
+        expect(openTimes).toContain('12:00 AM');
+        expect(openTimes).toContain('2:00 AM');
+        // A 30-minute service can still start at 5:30 (ends exactly at 6:00);
+        // nothing at or after 6:00 belongs to this row.
+        expect(openTimes).toContain('5:30 AM');
+        expect(openTimes).not.toContain('6:00 AM');
+        expect(openTimes).not.toContain('6:30 AM');
+      } finally {
+        await setup.query(
+          `DELETE FROM employee_schedule WHERE tenant_id = $1 AND shift_date = $2::date`,
+          [tenantId, NIGHT_DATE]
+        );
+        await setup.query(`DELETE FROM service_employee WHERE employee_id = $1`, [employeeId]);
+        await setup.query(`DELETE FROM employees WHERE employee_id = $1`, [employeeId]);
+      }
+    });
+
+    it("HAPPY: that same row's evening half, queried on its OWN date, caps at midnight", async () => {
+      const employeeId = await createEmployee(setup, tenantId, 'Night Shift Worker 2');
+      await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+      await createScheduleEntry(setup, tenantId, employeeId, NIGHT_DATE, '22:00', '06:00');
+
+      try {
+        const res = await post('/agent-tools/available-slots', {
+          tenant_id: tenantId,
+          date: NIGHT_DATE,
+          service_type: 'a meeting',
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.success).toBe(true);
+        const openTimes: string[] = body.result.open_times;
+
+        // The evening half (22:00 onward) is open on the shift's own date.
+        expect(openTimes).toContain('10:00 PM');
+        expect(openTimes).toContain('11:30 PM');
+        // Nothing from the small hours leaks onto the START date — that
+        // belongs to MORNING_DATE's query, not this one.
+        expect(openTimes).not.toContain('12:00 AM');
+        expect(openTimes).not.toContain('2:00 AM');
+      } finally {
+        await setup.query(
+          `DELETE FROM employee_schedule WHERE tenant_id = $1 AND shift_date = $2::date`,
+          [tenantId, NIGHT_DATE]
+        );
+        await setup.query(`DELETE FROM service_employee WHERE employee_id = $1`, [employeeId]);
+        await setup.query(`DELETE FROM employees WHERE employee_id = $1`, [employeeId]);
+      }
+    });
   });
 });

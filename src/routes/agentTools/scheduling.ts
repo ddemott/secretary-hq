@@ -1243,6 +1243,7 @@ export function registerSchedulingRoutes({
       const data = await withTenantClient(args.tenant_id, async (client) => {
         const res = await client.query<{
           source: 'shift' | 'appointment';
+          shift_date: string | null;
           start_time: string | null;
           end_time: string | null;
           is_caller: boolean | null;
@@ -1261,14 +1262,23 @@ export function registerSchedulingRoutes({
                                AND se.employee_id = e.employee_id)
            ),
            effective_shifts AS (
-             SELECT DISTINCT es.start_time::text AS start_time, es.end_time::text AS end_time
+             -- TWO DATES, NOT ONE (2026-09-13, closing the residual named in
+             -- docs/planning/TODO.md alongside migration 20260911010000): a
+             -- night shift's row is dated the evening it STARTED, so this
+             -- date's morning needs YESTERDAY's row too. Only pulled in when
+             -- it's a WRAPPING shift (end < start) that can reach this far —
+             -- a plain day shift dated yesterday never covers today, same
+             -- guard as availabilitySearch.ts's suggest-side join.
+             SELECT DISTINCT es.shift_date::text AS shift_date,
+                    es.start_time::text AS start_time, es.end_time::text AS end_time
                FROM active_employees ae
                JOIN employee_schedule es
                  ON es.employee_id = ae.employee_id
                 AND es.tenant_id = $1
-                AND es.shift_date = $2::date
+                AND es.shift_date IN ($2::date, $2::date - 1)
                 AND es.is_off = false
                 AND es.start_time IS NOT NULL
+                AND (es.shift_date = $2::date OR es.end_time < es.start_time)
            ),
            day_appointments AS (
              -- TENANT-LOCAL WALL-CLOCK, both the filter and the rendering.
@@ -1286,7 +1296,8 @@ export function registerSchedulingRoutes({
              -- phone? "You already have 2:30 booked" and "2:30 is taken" are
              -- different answers, and only one of them stops a double-booking.
              -- $3 is server-injected (agent runtime), never model-supplied.
-             SELECT ((a.start_time AT TIME ZONE t.timezone)::time)::text AS start_time,
+             SELECT NULL::text AS shift_date,
+                    ((a.start_time AT TIME ZONE t.timezone)::time)::text AS start_time,
                     ((a.end_time   AT TIME ZONE t.timezone)::time)::text AS end_time,
                     ($3::text IS NOT NULL AND c.phone = $3::text) AS is_caller
                FROM appointments a
@@ -1296,10 +1307,10 @@ export function registerSchedulingRoutes({
                 AND (a.is_deleted IS NULL OR a.is_deleted = false)
                 AND (a.start_time AT TIME ZONE t.timezone)::date = $2::date
            )
-           SELECT 'shift'::text AS source, start_time, end_time, false AS is_caller
+           SELECT 'shift'::text AS source, shift_date, start_time, end_time, false AS is_caller
              FROM effective_shifts
            UNION ALL
-           SELECT 'appointment'::text, start_time, end_time, is_caller FROM day_appointments
+           SELECT 'appointment'::text, shift_date, start_time, end_time, is_caller FROM day_appointments
            ORDER BY source, start_time`,
           [args.tenant_id, args.date, callerPhoneNormalized, service.service_id]
         );
@@ -1308,7 +1319,23 @@ export function registerSchedulingRoutes({
           [];
         for (const row of res.rows) {
           if (row.source === 'shift' && row.start_time && row.end_time) {
-            shifts.push({ start_time: row.start_time, end_time: row.end_time });
+            // Clip a wrapping (end < start) shift row to the PORTION that
+            // actually falls on the requested date, so the minutes-since-
+            // midnight math below (which has no concept of "past midnight")
+            // never sees an interval where end < start. A row dated
+            // YESTERDAY only ever reaches this branch as a wrapping night
+            // shift (the SQL guard above), so its whole window belongs to
+            // TODAY's early morning; a row dated TODAY that wraps keeps its
+            // start and caps at midnight — the rest belongs to tomorrow's
+            // query, not this one.
+            const isYesterdayRow = row.shift_date !== null && row.shift_date !== args.date;
+            if (isYesterdayRow) {
+              shifts.push({ start_time: '00:00', end_time: row.end_time });
+            } else if (row.end_time < row.start_time) {
+              shifts.push({ start_time: row.start_time, end_time: '24:00' });
+            } else {
+              shifts.push({ start_time: row.start_time, end_time: row.end_time });
+            }
           } else if (row.source === 'appointment' && row.start_time && row.end_time) {
             appointments.push({
               start_time: row.start_time,
