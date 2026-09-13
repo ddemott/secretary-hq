@@ -57,8 +57,8 @@ describe('AI Tools: Modular Integration', () => {
 
   it('Happy Path: should book a valid slot', async () => {
     if (!dbAvailable) return;
-    const start = '2027-06-01T10:00:00Z';
-    const end = '2027-06-01T11:00:00Z';
+    const start = '2099-06-01T10:00:00Z';
+    const end = '2099-06-01T11:00:00Z';
 
     const bookRes = await client.query(
       'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8)',
@@ -77,8 +77,8 @@ describe('AI Tools: Modular Integration', () => {
 
   it('Sad Path: should fail when booking an overlapping slot', async () => {
     if (!dbAvailable) return;
-    const start = '2027-06-01T10:00:00Z';
-    const end = '2027-06-01T11:00:00Z';
+    const start = '2099-06-01T10:00:00Z';
+    const end = '2099-06-01T11:00:00Z';
 
     // Initial book
     await client.query('SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8)', [
@@ -99,8 +99,8 @@ describe('AI Tools: Modular Integration', () => {
         tenantId,
         resourceId,
         customerId,
-        '2027-06-01T10:30:00Z',
-        '2027-06-01T11:30:00Z',
+        '2099-06-01T10:30:00Z',
+        '2099-06-01T11:30:00Z',
         'Conflict',
         'call_2',
         null,
@@ -118,8 +118,8 @@ describe('AI Tools: Modular Integration', () => {
 
     const otherResourceId = await createResource(client, tenantId, 'Truck 2');
 
-    const start = '2027-06-01T10:00:00Z';
-    const end = '2027-06-01T11:00:00Z';
+    const start = '2099-06-01T10:00:00Z';
+    const end = '2099-06-01T11:00:00Z';
 
     // Book in first bay
     await client.query('SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8)', [
@@ -140,8 +140,8 @@ describe('AI Tools: Modular Integration', () => {
         tenantId,
         otherResourceId,
         customerId,
-        '2027-06-01T10:30:00Z',
-        '2027-06-01T11:30:00Z',
+        '2099-06-01T10:30:00Z',
+        '2099-06-01T11:30:00Z',
         'Second bay',
         'call_bay2',
         null,
