@@ -40,6 +40,7 @@ const EndSessionSchema = z.object({
       // Live vocabulary (agent-emitted)
       'booked',
       'transferred',
+      'job_inquiry',
       'no_availability',
       'wrong_service',
       'price',

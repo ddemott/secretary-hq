@@ -33,8 +33,9 @@ export const OUTCOME_LABELS: Record<string, string> = {
   // and the /voice/session/end Zod enum (src/routes/voice.ts) still accept a
   // legacy vocabulary, so historical rows or a non-agent writer may carry these.
   // Map them intentionally instead of letting them fall through to a grey badge.
-  // (Aligning that shared type + backend schema to the agent's live vocabulary
-  // is a separate follow-up — see docs/TODO.md.)
+  // (That shared type + backend schema were reconciled to the agent's live
+  // vocabulary 2026-09-13 — 'job_inquiry' was live here but missing from both;
+  // see shared/voiceCrm.ts's VoiceSessionOutcome comment.)
   appointment_booked: 'Booked',
   appointment_rescheduled: 'Rescheduled',
   appointment_cancelled: 'Cancelled',

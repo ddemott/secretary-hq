@@ -608,6 +608,7 @@ describe('Voice Routes — Sad Paths', () => {
   it('16b. POST /voice/session/end accepts the live agent outcome vocabulary', async () => {
     for (const outcome of [
       'booked',
+      'job_inquiry',
       'no_availability',
       'wrong_service',
       'price',
