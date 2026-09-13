@@ -189,6 +189,7 @@ export class EmailService {
 
     const businessName = await this.configService.getBusinessName(d.tenantId);
     const notificationPrefs = await this.configService.getNotificationPreferences(d.tenantId);
+    const tenantConfig = await this.configService.getTenantConfig(d.tenantId);
 
     const templateData: EmailTemplateData = {
       customerName: d.customerName || 'Valued Customer',
@@ -203,8 +204,6 @@ export class EmailService {
       notes: d.notes,
       reason: d.reason,
       hoursUntil: d.hoursUntil,
-      // Deliberately EMPTY, and not a TODO.
-      //
       // This template is a TENANT-to-CUSTOMER email: Thinking Hammer LLC
       // writing to their customer. The header belongs to the business, whose
       // name is already the masthead. Putting the SecretaryHQ mark there brands
@@ -213,10 +212,11 @@ export class EmailService {
       // The platform mark instead appears once, small, in the footer (see
       // `generateBaseTemplate`), which is the honest placement.
       //
-      // A per-tenant logo is what belongs here. That needs a `tenants.logo_url`
-      // column + upload UI + storage — tracked in docs/TODO.md, not sneaked in
-      // by pointing at the platform asset.
-      logoUrl: undefined,
+      // Per-tenant logo (2026-09-13, tenants.logo_url): a plain URL the owner
+      // pastes on Business Settings — no upload/storage, that's a separate
+      // product decision this migration didn't make. undefined for a tenant
+      // that hasn't set one, same as before.
+      logoUrl: tenantConfig?.logoUrl,
       primaryColor: undefined, // Not currently stored
       secondaryColor: undefined, // Not currently stored
     };

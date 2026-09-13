@@ -1,6 +1,23 @@
 import type { TenantConfigService } from '../tenants/index.js';
 import { formatLeadTime } from './formatLead.js';
 
+/**
+ * Escape a value for safe interpolation inside an HTML attribute
+ * (double-quoted). logoUrl and businessName both ultimately come from
+ * owner-editable tenant fields, and generateBaseTemplate interpolates
+ * them raw into `<img src="..." alt="...">` — an unescaped quote or
+ * angle bracket breaks out of the attribute (Copilot review, PR #452).
+ * The route-level validation on logo_url (src/routes/tenants.ts) is the
+ * primary defense; this is defense-in-depth for any other writer.
+ */
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export interface EmailTemplateData {
   customerName: string;
   serviceName: string;
@@ -188,7 +205,7 @@ export class EmailTemplateService {
 <body>
   <div class="container">
     <div class="header">
-      ${data.logoUrl ? `<img src="${data.logoUrl}" alt="${data.businessName}" class="logo">` : ''}
+      ${data.logoUrl ? `<img src="${escapeHtmlAttr(data.logoUrl)}" alt="${escapeHtmlAttr(data.businessName)}" class="logo">` : ''}
       <h1 class="business-name">${data.businessName}</h1>
     </div>
 

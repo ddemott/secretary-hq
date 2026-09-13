@@ -110,6 +110,24 @@ const UpdateConfigSchema = z.object({
   call_disclosure: z.string().max(600).optional().nullable(),
   // The affirmative attestation that accompanies a call_disclosure change.
   disclosure_attested: z.boolean().optional(),
+  // Owner-supplied logo URL, rendered in tenant-to-customer email headers
+  // (emailService.ts). No upload/storage — a plain URL. Blank/empty string
+  // clears it (matches call_disclosure's blank-means-revert convention).
+  // Restricted to http(s) with no quote/angle-bracket/whitespace characters:
+  // emailTemplates.ts interpolates this into an `<img src="...">` attribute,
+  // so an unrestricted string is an HTML-attribute-injection vector in every
+  // email the tenant sends (Copilot review, PR #452; emailTemplates.ts also
+  // HTML-escapes it as defense-in-depth).
+  logo_url: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === '' || /^https?:\/\/[^\s"'<>]+$/.test(v), {
+      message:
+        'Logo URL must be a plain http(s) URL with no spaces or quote/angle-bracket characters',
+    })
+    .optional()
+    .nullable(),
 });
 
 export const CreateTemplateSchema = z.object({
@@ -300,7 +318,7 @@ export function registerTenantRoutes(
           // this row and seeds its Caller Disclosure field from it. Omitting the
           // column loads a saved custom disclosure as blank, and the next save then
           // writes null over it — silent data loss. (Copilot review, PR #234.)
-          'SELECT tenant_id, name, business_type, checklist_preset_id, checklist_overrides, system_prompt, persona_name, default_service_id, voice_id, first_message, team_size, timezone, save_preferences_enabled, preferences_instructions, tts_voice, tts_speed, tts_soft, tts_cheerful, tts_formal, tts_warm, tts_concise, forward_phone, owner_phone, inbound_phone, forwarded_from_phone, default_buffer_minutes, call_disclosure, call_disclosure_attested_at, call_disclosure_attested_by FROM tenants WHERE tenant_id = $1',
+          'SELECT tenant_id, name, business_type, checklist_preset_id, checklist_overrides, system_prompt, persona_name, default_service_id, voice_id, first_message, team_size, timezone, save_preferences_enabled, preferences_instructions, tts_voice, tts_speed, tts_soft, tts_cheerful, tts_formal, tts_warm, tts_concise, forward_phone, owner_phone, inbound_phone, forwarded_from_phone, default_buffer_minutes, call_disclosure, call_disclosure_attested_at, call_disclosure_attested_by, logo_url FROM tenants WHERE tenant_id = $1',
           [id]
         )
       );
@@ -372,9 +390,10 @@ export function registerTenantRoutes(
             inbound_phone: string | null;
             default_buffer_minutes: number | null;
             call_disclosure: string | null;
+            logo_url: string | null;
             checklist_overrides: { disabled_conversation_blocks?: string[] } | null;
           }>(
-            'SELECT business_type, checklist_preset_id, checklist_overrides, system_prompt, persona_name, default_service_id, voice_id, first_message, save_preferences_enabled, preferences_instructions, tts_voice, tts_speed, tts_soft, tts_cheerful, tts_formal, tts_warm, tts_concise, forward_phone, owner_phone, forwarded_from_phone, inbound_phone, default_buffer_minutes, call_disclosure FROM tenants WHERE tenant_id = $1 FOR UPDATE',
+            'SELECT business_type, checklist_preset_id, checklist_overrides, system_prompt, persona_name, default_service_id, voice_id, first_message, save_preferences_enabled, preferences_instructions, tts_voice, tts_speed, tts_soft, tts_cheerful, tts_formal, tts_warm, tts_concise, forward_phone, owner_phone, forwarded_from_phone, inbound_phone, default_buffer_minutes, call_disclosure, logo_url FROM tenants WHERE tenant_id = $1 FOR UPDATE',
             [id]
           );
           const prior = priorRes.rows[0];
@@ -491,6 +510,12 @@ export function registerTenantRoutes(
               : 'keep';
           const attestingUserId = req.auth?.user_id ?? null;
 
+          // Blank clears the logo (matches call_disclosure's blank-means-revert
+          // convention); undefined (field omitted) keeps the stored value.
+          const priorLogoUrl = prior?.logo_url ?? null;
+          const finalLogoUrl =
+            body.logo_url !== undefined ? (body.logo_url ? body.logo_url : null) : priorLogoUrl;
+
           // Loop guard: a transfer target equal to the forwarded-from line or
           // the AI's own DID would forward the call straight back into the AI.
           if (phonesWouldLoop(finalForwardPhone, finalForwardedFromPhone, prior?.inbound_phone)) {
@@ -502,7 +527,8 @@ export function registerTenantRoutes(
             `UPDATE tenants SET system_prompt = $1, voice_id = $2, business_type = $3, checklist_preset_id = $4, first_message = $5, save_preferences_enabled = $6, preferences_instructions = $7, tts_voice = $8, tts_speed = $9, tts_soft = $10, tts_cheerful = $11, tts_formal = $12, tts_warm = $13, tts_concise = $14, forward_phone = $15, owner_phone = $16, forwarded_from_phone = $17, persona_name = $18, default_service_id = $19, default_buffer_minutes = $20, call_disclosure = $21,
                call_disclosure_attested_at = CASE $22::text WHEN 'stamp' THEN NOW() WHEN 'clear' THEN NULL ELSE call_disclosure_attested_at END,
                call_disclosure_attested_by = CASE $22::text WHEN 'stamp' THEN $23::uuid WHEN 'clear' THEN NULL ELSE call_disclosure_attested_by END,
-               checklist_overrides = $25::jsonb
+               checklist_overrides = $25::jsonb,
+               logo_url = $26
              WHERE tenant_id = $24 RETURNING tenant_id`,
             [
               finalSystemPrompt,
@@ -530,6 +556,7 @@ export function registerTenantRoutes(
               attestMode === 'stamp' ? attestingUserId : null,
               id,
               JSON.stringify(persistedOverrides),
+              finalLogoUrl,
             ]
           );
 
