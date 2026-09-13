@@ -3,7 +3,7 @@
  *
  * WHO: every destructive-action button across the dashboard (cancel
  *   appointment, delete employee/resource/service, remove a mapping, etc.)
- *   — 19 components share this ONE hook for "are you sure?" state.
+ *   — many components share this ONE hook for "are you sure?" state.
  * WHAT: confirm() opens the dialog with the caller's copy + callback;
  *   close() resets it; a second confirm() while one is already open
  *   REPLACES the pending action rather than stacking dialogs.
@@ -89,8 +89,8 @@ describe('useConfirm — confirm()', () => {
     // WHAT: the hook holds exactly ONE ConfirmState — the second confirm()
     //       call must fully overwrite the first, so confirming the dialog
     //       never fires the FIRST action against the SECOND item's copy
-    // WHY: this is the one behavior every one of the 19 call sites relies
-    //      on implicitly and none of them test individually
+    // WHY: this is the one behavior every call site relies on implicitly
+    //      and none of them test individually
     const firstAction = vi.fn();
     const secondAction = vi.fn();
     const { result } = renderHook(() => useConfirm());
