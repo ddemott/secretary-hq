@@ -20,12 +20,32 @@ import { join } from 'node:path';
 
 const SCRIPT = join(__dirname, 'fresh-clone-smoke.sh');
 
+/**
+ * `process.env` with every `GIT_*` variable stripped.
+ *
+ * When this suite runs as a descendant of a real git hook (git push ->
+ * husky pre-push -> npm test -> vitest -> this file), git has already set
+ * GIT_DIR/GIT_WORK_TREE in the ambient environment. Without this, the
+ * "non-git location" test below would find the REAL repo's remote via the
+ * leaked GIT_DIR instead of the empty-remote condition it exists to test,
+ * fall through into a real `git clone` of this repo, and time out — same
+ * root cause as the fix in scripts/git-hooks/pre-push.test.ts.
+ */
+function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+}
+
 function runScript(
   args: string[],
   opts: { timeoutMs?: number } = {}
 ): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
+    env: cleanGitEnv(),
     timeout: opts.timeoutMs ?? 10_000,
   });
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
@@ -130,6 +150,7 @@ describe('fresh-clone-smoke.sh — remote-URL resolution', () => {
       const result = spawnSync('bash', [isolatedScript], {
         cwd: isolatedDir,
         encoding: 'utf8',
+        env: cleanGitEnv(),
         timeout: 5_000,
       });
       expect(result.status).toBe(1);
@@ -152,6 +173,7 @@ describe('fresh-clone-smoke.sh — remote-URL resolution', () => {
     //      real network round-trip
     const result = spawnSync('bash', [SCRIPT, '--remote', 'https://127.0.0.1:1/never-exists.git'], {
       encoding: 'utf8',
+      env: cleanGitEnv(),
       timeout: 10_000,
     });
     // Arg-parse + URL-resolution succeeded ⇒ NOT exit 2 (usage error)
