@@ -145,6 +145,20 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       regenerated (`npm run db:baseline`). Tag columns (`employees.skills`,
       `services.required_skills`) NOT dropped — `book_with_scheduling_atomic` still reads them for
       callers that omit `p_service_id`; retiring them is still open, not part of this fix.
+      **Audited 2026-09-13 — KEEP, not dead code.** Probed prod directly: 53 employees carry
+      non-empty `skills`, 106 services carry non-empty `required_skills`, 104 carry
+      `required_resources` — but 0 of the 22 appointments booked in the last 90 days had a NULL
+      `service_id`, meaning the tag-based fallback branch in `book_with_scheduling_atomic`
+      (`p_service_id IS NULL`) has fired on exactly zero real bookings in that window; every live
+      booking now goes through the STRICT skill-map path. That does NOT make the columns dead,
+      though: `SkillManagementView.tsx` is a live dashboard tab an owner uses to name and assign
+      skills, `availabilitySearch.ts` still reads `emp.skills` for its suggestion tie-break sort
+      and (when no service is given) its skill filter, and `QuickBookPanel.tsx` sorts on skill
+      count. Dropping the columns would break real, currently-reachable dashboard UI for a
+      booking-time fallback path that just happens to see no traffic because every current tenant
+      always names a service. Closing this as: retire the DEAD branch someday if the skill-map
+      model fully replaces free-text booking, but the columns themselves stay — they back a
+      product feature (per-employee/per-service tagging), not a stale migration artifact.
 
 ## 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
 
