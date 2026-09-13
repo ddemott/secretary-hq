@@ -63,8 +63,8 @@ describe('TDD: Schema and Atomic Booking (Refactored)', () => {
     //      prevents a regression in either layer from going unnoticed
     if (!dbAvailable) return;
 
-    const startTime = new Date('2026-03-01T10:00:00Z');
-    const endTime = new Date('2026-03-01T11:00:00Z');
+    const startTime = new Date('2027-03-01T10:00:00Z');
+    const endTime = new Date('2027-03-01T11:00:00Z');
 
     const result = await client.query(
       'SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8);',
@@ -107,8 +107,8 @@ describe('TDD: Schema and Atomic Booking (Refactored)', () => {
       tenantId,
       resourceId,
       customerId,
-      new Date('2026-03-01T10:00:00Z'),
-      new Date('2026-03-01T11:00:00Z'),
+      new Date('2027-03-01T10:00:00Z'),
+      new Date('2027-03-01T11:00:00Z'),
       'First',
       'call_1',
       null,
@@ -120,8 +120,8 @@ describe('TDD: Schema and Atomic Booking (Refactored)', () => {
         tenantId,
         resourceId,
         customerId,
-        new Date('2026-03-01T10:30:00Z'),
-        new Date('2026-03-01T11:30:00Z'),
+        new Date('2027-03-01T10:30:00Z'),
+        new Date('2027-03-01T11:30:00Z'),
         'Overlap',
         'call_002',
         null,

@@ -143,8 +143,8 @@ describe('Medium Bug Fixes', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-15T10:00:00Z'),
-          new Date('2026-04-15T11:00:00Z'),
+          new Date('2027-04-14T10:00:00Z'),
+          new Date('2027-04-14T11:00:00Z'),
           'Test malformed assignment',
           'test-call-malformed',
           null,
@@ -158,8 +158,8 @@ describe('Medium Bug Fixes', () => {
     test('accepts valid integer assignment_id', async () => {
       if (!dbAvailable) return;
       const empId = await createEmployee(client, tenantId, 'BugTest Employee');
-      // 2026-04-15 is a Wednesday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(client, tenantId, empId, '2026-04-15', '08:00', '20:00');
+      // 2027-04-14 is a Wednesday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(client, tenantId, empId, '2027-04-14', '08:00', '20:00');
 
       const res = await client.query(
         `SELECT * FROM book_appointment_atomic($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -167,8 +167,8 @@ describe('Medium Bug Fixes', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-15T14:00:00Z'),
-          new Date('2026-04-15T15:00:00Z'),
+          new Date('2027-04-14T14:00:00Z'),
+          new Date('2027-04-14T15:00:00Z'),
           'Valid integer assignment',
           'test-call-valid-int',
           null,
@@ -194,8 +194,8 @@ describe('Medium Bug Fixes', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-16T10:00:00Z'),
-          new Date('2026-04-16T11:00:00Z'),
+          new Date('2027-04-15T10:00:00Z'),
+          new Date('2027-04-15T11:00:00Z'),
           'Valid UUID assignment',
           'test-call-valid-uuid',
           null,

@@ -364,3 +364,72 @@ describe('the person must actually be working', () => {
     }
   });
 });
+
+describe('book_appointment_atomic (dashboard path) gets the same two rules', () => {
+  // 2026-09-13: book_appointment_atomic never got the PAST_TIME or
+  // BUSINESS_CLOSED guards the phone path (book_with_scheduling_atomic)
+  // enforces above — a front-desk API caller, or a bug in the dashboard UI,
+  // could book yesterday or book a day the owner explicitly closed for.
+  // Same tenant/employee/resource fixture as the file's outer beforeAll.
+
+  /** ISO instant N hours from now, snapped to a 15-min boundary (the
+   *  appointments_end_time_15min check constraint rejects arbitrary times). */
+  function hoursFromNow(h: number): string {
+    const QUARTER = 900_000;
+    const t = Math.round((Date.now() + h * 3_600_000) / QUARTER) * QUARTER;
+    return new Date(t).toISOString();
+  }
+
+  async function bookViaDashboard(
+    startsAt: string
+  ): Promise<{ success: boolean; error_message: string | null }> {
+    const resourceRes = await setup.query<{ resource_id: string }>(
+      `SELECT resource_id FROM resources WHERE tenant_id = $1 LIMIT 1`,
+      [tenantId]
+    );
+    const resourceId = resourceRes.rows[0].resource_id;
+    const res = await setup.query<{ success: boolean; error_message: string | null }>(
+      `SELECT success, error_message FROM book_appointment_atomic(
+         p_tenant_id => $1,
+         p_resource_id => $2,
+         p_customer_phone => '+15555550199',
+         p_customer_name => 'Dashboard Caller',
+         p_start_time => $3::timestamptz,
+         p_end_time => $3::timestamptz + interval '30 minutes',
+         p_description => 'dashboard booking'
+       )`,
+      [tenantId, resourceId, startsAt]
+    );
+    return res.rows[0];
+  }
+
+  it('SAD: a start time hours ago is refused (PAST_TIME)', async () => {
+    const r = await bookViaDashboard(hoursFromNow(-3));
+    expect(r.success).toBe(false);
+    expect(r.error_message).toMatch(/already passed/i);
+  });
+
+  it('HAPPY: a future time books normally (no regression from the new guards)', async () => {
+    const r = await bookViaDashboard(hoursFromNow(4));
+    expect(r.success).toBe(true);
+  });
+
+  it('SAD: a blackout date is refused (BUSINESS_CLOSED)', async () => {
+    const blackoutIso = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    const blackoutDate = blackoutIso.slice(0, 10);
+    await setup.query(
+      `INSERT INTO blackout_dates (tenant_id, blackout_date, reason) VALUES ($1, $2::date, 'Test holiday')`,
+      [tenantId, blackoutDate]
+    );
+    try {
+      const r = await bookViaDashboard(`${blackoutDate}T15:00:00Z`);
+      expect(r.success).toBe(false);
+      expect(r.error_message).toMatch(/closed/i);
+    } finally {
+      await setup.query(
+        `DELETE FROM blackout_dates WHERE tenant_id = $1 AND blackout_date = $2::date`,
+        [tenantId, blackoutDate]
+      );
+    }
+  });
+});

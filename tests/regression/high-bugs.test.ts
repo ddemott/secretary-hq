@@ -150,8 +150,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Tire install',
           'call_cap_001',
           null,
@@ -200,8 +200,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Tire install',
           'call_cap_002',
           null,
@@ -220,8 +220,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       const resourceId = await createResource(root, tenantId, 'Bay 1');
       const customerId = await createCustomerFull(root, tenantId, '+15550001111', 'Alice');
       const employeeId = await createEmployee(root, tenantId, 'Bob', ['oil-change']);
-      // 2026-04-01 is a Wednesday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-04-01', '08:00', '18:00');
+      // 2027-04-07 is a Wednesday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, employeeId, '2027-04-07', '08:00', '18:00');
 
       const serviceId = (
         await root.query(
@@ -243,8 +243,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Tire install',
           'call_skill_001',
           null,
@@ -310,8 +310,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           null,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Walk-in',
           'call_upsert_001',
           null,
@@ -346,8 +346,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           null,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Return visit',
           'call_upsert_002',
           null,
@@ -379,8 +379,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           null,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'No customer',
           'call_upsert_003',
           null,
@@ -455,11 +455,11 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
 
       await root.query(
         "INSERT INTO appointments (tenant_id, resource_id, customer_id, start_time, end_time, description) VALUES ($1, $2, $3, $4, $5, 'A appt')",
-        [tenantA, resA, custA, '2026-04-01T10:00:00Z', '2026-04-01T11:00:00Z']
+        [tenantA, resA, custA, '2027-04-07T10:00:00Z', '2027-04-07T11:00:00Z']
       );
       await root.query(
         "INSERT INTO appointments (tenant_id, resource_id, customer_id, start_time, end_time, description) VALUES ($1, $2, $3, $4, $5, 'B appt')",
-        [tenantB, resB, custB, '2026-04-01T10:00:00Z', '2026-04-01T11:00:00Z']
+        [tenantB, resB, custB, '2027-04-07T10:00:00Z', '2027-04-07T11:00:00Z']
       );
 
       await api.query('SELECT set_tenant_context($1::UUID)', [tenantA]);
@@ -483,8 +483,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
         'tire-install',
         'oil-change',
       ]);
-      // 2026-04-01 is a Wednesday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-04-01', '08:00', '18:00');
+      // 2027-04-07 is a Wednesday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, employeeId, '2027-04-07', '08:00', '18:00');
 
       const serviceId = (
         await root.query(
@@ -507,8 +507,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Tire install',
           'call_skill_pass',
           null,
@@ -552,8 +552,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Tire install unassigned',
           'call_skill_noemp',
           null,
@@ -697,8 +697,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Diagnostic test',
           'call_diag_001',
           null,
@@ -724,8 +724,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
       const resourceId = await createResource(root, tenantId, 'Bay 1');
       const customerId = await createCustomerFull(root, tenantId, '+15550005555', 'Diag Alice');
       const employeeId = await createEmployee(root, tenantId, 'Junior', ['sweeping']);
-      // 2026-04-01 is a Wednesday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-04-01', '08:00', '18:00');
+      // 2027-04-07 is a Wednesday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, employeeId, '2027-04-07', '08:00', '18:00');
 
       const serviceId = (
         await root.query(
@@ -746,8 +746,8 @@ describe('High Bug Fixes (BUG-007, BUG-008, BUG-009, BUG-010, BUG-011, BUG-012, 
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-04-01T10:00:00Z'),
-          new Date('2026-04-01T11:00:00Z'),
+          new Date('2027-04-07T10:00:00Z'),
+          new Date('2027-04-07T11:00:00Z'),
           'Skill check',
           'call_diag_002',
           null,
