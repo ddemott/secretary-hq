@@ -183,7 +183,7 @@ describe('useFocusTrap — outside dismiss', () => {
 
     // The listener attaches on the NEXT tick specifically so the opening
     // click itself can't immediately close the overlay — wait past that.
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 0));
     fireEvent.mouseDown(screen.getByTestId('outside'));
 
     expect(onOutsideDismiss).toHaveBeenCalledOnce();
@@ -194,13 +194,19 @@ describe('useFocusTrap — outside dismiss', () => {
     render(<TestModal isOpen={true} onOutsideDismiss={onOutsideDismiss} />);
     await waitFor(() => expect(screen.getByTestId('first')).toHaveFocus());
 
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 0));
     fireEvent.mouseDown(screen.getByTestId('middle'));
 
     expect(onOutsideDismiss).not.toHaveBeenCalled();
   });
 
-  test('SAD: without onOutsideDismiss, an outside click is a no-op (no listener attached)', async () => {
+  test('SAD: without onOutsideDismiss, no mousedown listener is ever attached', async () => {
+    // Copilot review, PR #437: the earlier version of this test only
+    // asserted the click doesn't throw — that would pass even if a
+    // listener WERE attached, since the handler uses optional chaining
+    // on a callback that happens to be undefined. Spy on
+    // addEventListener directly so this actually guards the omit-path.
+    const addSpy = vi.spyOn(document, 'addEventListener');
     render(
       <div>
         <button data-testid="outside">Outside</button>
@@ -208,7 +214,8 @@ describe('useFocusTrap — outside dismiss', () => {
       </div>
     );
     await waitFor(() => expect(screen.getByTestId('first')).toHaveFocus());
-    await new Promise((r) => setTimeout(r, 10));
-    expect(() => fireEvent.mouseDown(screen.getByTestId('outside'))).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(addSpy).not.toHaveBeenCalledWith('mousedown', expect.any(Function));
   });
 });
