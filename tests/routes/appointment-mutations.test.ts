@@ -80,10 +80,10 @@ describe('Appointment Update & Cancel', () => {
         'INSERT INTO service_employee (tenant_id, service_id, employee_id) VALUES ($1, $2, $3)',
         [tenantId, svcId, empId]
       );
-      // 2026-03-16 is the booking date (Monday). Booking RPCs
+      // 2027-03-15 is the booking date (Monday). Booking RPCs
       // read only employee_schedule.
       await client.query(
-        "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, start_time, end_time, is_off) VALUES ($1, $2, '2026-03-16', '08:00', '17:00', false)",
+        "INSERT INTO employee_schedule (tenant_id, employee_id, shift_date, start_time, end_time, is_off) VALUES ($1, $2, '2027-03-15', '08:00', '17:00', false)",
         [tenantId, empId]
       );
     }
@@ -94,8 +94,8 @@ describe('Appointment Update & Cancel', () => {
         tenantId,
         resourceId,
         customerId,
-        '2026-03-16T10:00:00Z',
-        '2026-03-16T10:30:00Z',
+        '2027-03-15T10:00:00Z',
+        '2027-03-15T10:30:00Z',
         'Oil Change',
         'test',
         null,
@@ -182,8 +182,8 @@ describe('Appointment Update & Cancel', () => {
       [
         appointmentId,
         tenantId,
-        '2026-03-16T11:00:00Z',
-        '2026-03-16T11:30:00Z',
+        '2027-03-15T11:00:00Z',
+        '2027-03-15T11:30:00Z',
         'Tire Rotation',
         '456 Oak Ave',
         'Alice Updated',
@@ -213,8 +213,8 @@ describe('Appointment Update & Cancel', () => {
       [
         appointmentId,
         tenantId,
-        '2026-03-16T10:00:00Z',
-        '2026-03-16T10:30:00Z',
+        '2027-03-15T10:00:00Z',
+        '2027-03-15T10:30:00Z',
         'Oil Change',
         null,
         'Alice Renamed',
@@ -238,8 +238,8 @@ describe('Appointment Update & Cancel', () => {
       [
         '00000000-0000-0000-0000-000000000000',
         tenantId,
-        '2026-03-16T10:00:00Z',
-        '2026-03-16T10:30:00Z',
+        '2027-03-15T10:00:00Z',
+        '2027-03-15T10:30:00Z',
         'Test',
         null,
         'Nobody',
@@ -284,8 +284,8 @@ describe('Appointment Update & Cancel', () => {
         tenantId,
         resourceId,
         customerId,
-        '2026-03-16T10:00:00Z',
-        '2026-03-16T10:30:00Z',
+        '2027-03-15T10:00:00Z',
+        '2027-03-15T10:30:00Z',
         'Oil Change Rebooking',
         'test',
         null,

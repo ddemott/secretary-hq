@@ -81,7 +81,7 @@ describe('Low Bug Fixes', () => {
 
     test('auto-calculates end_time when NULL and service_id provided', async () => {
       if (!dbAvailable) return;
-      const startTime = new Date('2026-05-01T10:00:00Z');
+      const startTime = new Date('2027-05-01T10:00:00Z');
       const res = await client.query(
         `SELECT * FROM book_appointment_atomic($1, $2, $3, $4, NULL, $5, $6, NULL, NULL, $7)`,
         [
@@ -114,7 +114,7 @@ describe('Low Bug Fixes', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-05-02T10:00:00Z'),
+          new Date('2027-05-02T10:00:00Z'),
           'LowBug no-end no-service',
           'low-bug-040-2',
         ]
@@ -131,8 +131,8 @@ describe('Low Bug Fixes', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-05-03T10:00:00Z'),
-          new Date('2026-05-03T11:30:00Z'),
+          new Date('2027-05-03T10:00:00Z'),
+          new Date('2027-05-03T11:30:00Z'),
           'LowBug explicit end',
           'low-bug-040-3',
         ]

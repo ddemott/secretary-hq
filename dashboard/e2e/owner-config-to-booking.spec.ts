@@ -175,8 +175,8 @@ test('owner-config-happy: fresh tenant configures employee + shifts + service, t
 
     // Use a controlled Monday as the anchor so day-of-week math and coverage
     // are deterministic regardless of when the test runs.
-    // 2026-06-01 is a Monday.
-    const startDate = '2026-06-01';
+    // 2027-06-07 is a Monday.
+    const startDate = '2027-06-07';
 
     // 1. Create employee (the thing the owner actually cares about)
     const empId = await createEmployeeViaApi(request, tenant.token, tenant.tenantId, 'New', 'Tech');
@@ -194,8 +194,8 @@ test('owner-config-happy: fresh tenant configures employee + shifts + service, t
     const resId = await createResourceViaApi(request, tenant.token, tenant.tenantId, 'New Bay');
 
     // 4. Book on the first Monday (covered 09:00-17:00) — guaranteed to be in the expanded window.
-    const startTime = '2026-06-01T10:00:00.000Z';
-    const endTime = '2026-06-01T10:30:00.000Z';
+    const startTime = '2027-06-07T10:00:00.000Z';
+    const endTime = '2027-06-07T10:30:00.000Z';
 
     // We need a customer too
     const custRes = await request.post(`${BACKEND_URL}/customers/create`, {

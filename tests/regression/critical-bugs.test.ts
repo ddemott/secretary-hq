@@ -81,8 +81,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
       const resourceId = await createResource(root, tenantId, 'Bay 1');
       const customerId = await createCustomerFull(root, tenantId, '+15550001111', 'Alice');
       const employeeId = await createEmployee(root, tenantId, 'Mike', ['oil-change']);
-      // 2026-03-02 is a Monday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-03-02', '09:00', '17:00');
+      // 2027-03-01 is a Monday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, employeeId, '2027-03-01', '09:00', '17:00');
 
       // Book for Monday 10 AM - 11 AM Eastern (= 15:00 - 16:00 UTC)
       const result = await root.query(
@@ -91,8 +91,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-03-02T15:00:00Z'),
-          new Date('2026-03-02T16:00:00Z'),
+          new Date('2027-03-01T15:00:00Z'),
+          new Date('2027-03-01T16:00:00Z'),
           'Oil change',
           'call_tz_001',
           null,
@@ -125,8 +125,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
       const resourceId = await createResource(root, tenantId, 'Bay 1');
       const customerId = await createCustomerFull(root, tenantId, '+15550001111', 'Alice');
       const employeeId = await createEmployee(root, tenantId, 'Mike', ['oil-change']);
-      // 2026-03-02 is a Monday. Booking RPCs read only employee_schedule.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-03-02', '09:00', '17:00');
+      // 2027-03-01 is a Monday. Booking RPCs read only employee_schedule.
+      await createScheduleEntry(root, tenantId, employeeId, '2027-03-01', '09:00', '17:00');
 
       // Book for Monday 6 PM Eastern (= 23:00 UTC) — OUTSIDE shift
       const result = await root.query(
@@ -135,8 +135,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-03-02T23:00:00Z'),
-          new Date('2026-03-03T00:00:00Z'),
+          new Date('2027-03-01T23:00:00Z'),
+          new Date('2027-03-02T00:00:00Z'),
           'Late oil change',
           'call_tz_002',
           null,
@@ -161,8 +161,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
       // WHY: BUG-001 edge case — a naive timezone implementation that
       //      compared the booking's UTC date against employee_schedule
       //      rows would miss the right shift_date. This test pins
-      //      that the conversion uses the LOCAL date (2026-03-02)
-      //      rather than the UTC date (2026-03-03) for the lookup
+      //      that the conversion uses the LOCAL date (2027-03-01)
+      //      rather than the UTC date (2027-03-02) for the lookup
       if (!dbAvailable) return;
 
       const tenantId = await createTenant(
@@ -174,9 +174,9 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
       const resourceId = await createResource(root, tenantId, 'Bay 1');
       const customerId = await createCustomerFull(root, tenantId, '+15550001111', 'Alice');
       const employeeId = await createEmployee(root, tenantId, 'Steve', ['tire-install']);
-      // Booking is local 2026-03-02 (Monday 8 PM Pacific). Seed
+      // Booking is local 2027-03-01 (Monday 8 PM Pacific). Seed
       // employee_schedule for that local date.
-      await createScheduleEntry(root, tenantId, employeeId, '2026-03-02', '09:00', '21:00');
+      await createScheduleEntry(root, tenantId, employeeId, '2027-03-01', '09:00', '21:00');
 
       // Book for Monday 8 PM Pacific = Tuesday 4 AM UTC
       const result = await root.query(
@@ -185,8 +185,8 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
           tenantId,
           resourceId,
           customerId,
-          new Date('2026-03-03T04:00:00Z'),
-          new Date('2026-03-03T05:00:00Z'),
+          new Date('2027-03-02T04:00:00Z'),
+          new Date('2027-03-02T05:00:00Z'),
           'Late tire install',
           'call_tz_003',
           null,

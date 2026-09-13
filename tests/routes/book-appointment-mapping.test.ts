@@ -112,7 +112,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const customerId = await createCustomerFull(root, tenantId, '+15555550101', 'Alice');
     await assignEmployeeToService(root, tenantId, svcId, empId);
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
       tenant_id: tenantId,
@@ -120,8 +120,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: empId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(true);
@@ -146,7 +146,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     // Only Mike is mapped — Dana is not.
     await assignEmployeeToService(root, tenantId, svcId, mike);
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, dana, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, dana, '2027-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
       tenant_id: tenantId,
@@ -154,8 +154,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: dana,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(false);
@@ -178,7 +178,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const svcId = await createService(root, tenantId, 'Inspection', 30);
     const customerId = await createCustomerFull(root, tenantId, '+15555550103', 'Cara');
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
     // No assignEmployeeToService — service has zero mapping rows. STRICT
     // (20260911000000): no active link means refused, not fall-open.
 
@@ -188,8 +188,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: empId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T14:30:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T14:30:00-05:00',
     });
 
     expect(result.success).toBe(false);
@@ -222,7 +222,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       [svcId]
     );
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
 
     const result = await bookAppointment({
       tenant_id: tenantId,
@@ -230,8 +230,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: empId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     // Refused, but on the STRICT "no active link" reason — never on the
@@ -260,7 +260,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const customerId = await createCustomerFull(root, tenantId, '+15555550106', 'Gia');
     await assignEmployeeToService(root, tenantId, svcId, empId);
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
     // The link row is untouched — only the employee is deactivated, the way
     // an owner removes someone who left without remembering to clean up
     // every service they were ever linked to.
@@ -272,8 +272,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: empId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(false);
@@ -298,7 +298,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const customerId = await createCustomerFull(root, tenantId, '+15555550107', 'Hank');
     await assignEmployeeToService(root, tenantId, svcId, empId);
     await assignResourceToService(root, tenantId, svcId, resourceId);
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
     // Soft-deleted, not deactivated — the other half of "active + not
     // deleted" the STRICT check must enforce.
     await root.query('UPDATE resources SET is_deleted = true WHERE resource_id = $1', [
@@ -311,8 +311,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       customer_id: customerId,
       employee_id: empId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(false);
@@ -330,7 +330,7 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
     const resourceId = await createResource(root, tenantId, 'Bay 1');
     const empId = await createEmployee(root, tenantId, 'Mike');
     const customerId = await createCustomerFull(root, tenantId, '+15555550105', 'Eli');
-    await createScheduleEntry(root, tenantId, empId, '2026-07-01', '08:00', '17:00');
+    await createScheduleEntry(root, tenantId, empId, '2027-07-01', '08:00', '17:00');
     // No service_id passed; even though there's no mapping anywhere, the call should succeed.
 
     const result = await bookAppointment({
@@ -338,8 +338,8 @@ describe('book_appointment_atomic — service_employee mapping enforcement', () 
       resource_id: resourceId,
       customer_id: customerId,
       employee_id: empId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
       description: 'Walk-in tire check',
     });
 
@@ -372,8 +372,8 @@ describe('book_appointment_atomic — service_resource mapping enforcement', () 
       resource_id: bay3, // operator picked the wrong bay
       customer_id: customerId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(false);
@@ -394,8 +394,8 @@ describe('book_appointment_atomic — service_resource mapping enforcement', () 
       resource_id: bay1,
       customer_id: customerId,
       service_id: svcId,
-      start_time: '2026-07-01T14:00:00-05:00',
-      end_time: '2026-07-01T15:00:00-05:00',
+      start_time: '2027-07-01T14:00:00-05:00',
+      end_time: '2027-07-01T15:00:00-05:00',
     });
 
     expect(result.success).toBe(false);

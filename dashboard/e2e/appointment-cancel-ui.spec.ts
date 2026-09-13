@@ -177,8 +177,7 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
   try {
     tenant = await registerFreshTenant(request);
     // Use *today* so the List view (which queries the scheduler's current
-    // selectedDate) shows the appointment without extra date-nav clicks. 14:00
-    // is safely inside seeded shifts.
+    // selectedDate) shows the appointment without extra date-nav clicks.
     //
     // NB: must be the browser-LOCAL today, not UTC. The scheduler defaults
     // selectedDate to `new Date()` (rendered in local time), while
@@ -187,14 +186,25 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
     // day the List isn't showing → the row never appears (the historical
     // "known flake"). en-CA gives a YYYY-MM-DD string in local time.
     const date = new Date().toLocaleDateString('en-CA');
+    // Widen the shift to the whole local day, and shift the clock-time
+    // forward from NOW rather than pinning a fixed "14:00Z" — the rebook
+    // step below now goes through book_appointment_atomic's PAST_TIME guard
+    // (2026-09-13), and a fixed UTC clock-time is only "safely inside
+    // today's shift" for part of the day; run this suite late enough in the
+    // UTC day and a hardcoded 14:00Z is already in the past. now()+15min
+    // (rounded to the booking grid) is always in the future and, at a
+    // 15-minute remove, essentially never crosses local midnight.
     const seed = await seedBookingScenario(request, pool, tenant.token, tenant.tenantId, {
       employees: ['Test Tech'],
       resources: ['Test Bay'],
       shiftDates: [date],
+      shiftHours: { start: '00:00', end: '23:45' },
     });
 
-    const startTime = `${date}T14:00:00.000Z`;
-    const endTime = `${date}T14:30:00.000Z`;
+    const QUARTER_MS = 900_000;
+    const startMs = Math.ceil((Date.now() + 15 * 60_000) / QUARTER_MS) * QUARTER_MS;
+    const startTime = new Date(startMs).toISOString();
+    const endTime = new Date(startMs + 30 * 60_000).toISOString();
     apptId = await seedAppointment(pool, tenant.tenantId, {
       resourceId: seed.resourceIds[0],
       customerId: seed.customerId,
