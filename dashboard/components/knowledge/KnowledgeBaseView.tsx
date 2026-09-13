@@ -168,26 +168,24 @@ export default function KnowledgeBaseView() {
     setMessage(null);
     try {
       const res = await Api.knowledge.importWebsite(tenantId, scanUrl);
-      if (res?.success && Array.isArray(res.extracted)) {
-        let filled = 0;
-        for (const item of res.extracted) {
-          const q = POLICY_QUESTIONS.find((pq) => pq.id === item.questionId);
-          if (q && item.answer) {
-            await Api.knowledge.add(tenantId, {
-              question: item.question || q.question,
-              answer: item.answer,
-              category: q.category,
-              source: 'website-scan',
-            });
-            filled++;
-          }
+      if (res?.success) {
+        // The scan STAGES everything as a suggestion server-side (nothing is
+        // auto-confirmed into the live KB) — so this refreshes the suggestion
+        // count and points the owner at the review flow, rather than writing
+        // to the KB a second time itself (Copilot review on #442: the
+        // earlier version of this called Api.knowledge.add per item, which
+        // both duplicated the staged suggestion and bypassed the approve
+        // step entirely).
+        const total = (res.confirmed ?? 0) + (res.suggestions ?? 0);
+        const suggestionsRes = await Api.knowledge.suggestions(tenantId);
+        if (suggestionsRes?.success) {
+          setSuggestionCount(suggestionsRes.suggestions?.length ?? 0);
         }
-        await fetchDocs();
         setMessage({
           type: 'success',
-          text: filled
-            ? `Scanned your site and saved ${filled} answer${filled === 1 ? '' : 's'}. Review them in Teach Your AI.`
-            : 'Scan completed but no matching answers were found — you can still answer manually.',
+          text: total
+            ? `Scanned your site and found ${total} answer${total === 1 ? '' : 's'} to review. Check the Suggestions tab to approve them.`
+            : 'Scan completed but nothing matched your questionnaire — you can still answer manually.',
         });
         setScanUrl('');
       } else {

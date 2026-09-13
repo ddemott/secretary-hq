@@ -107,20 +107,21 @@ describe('KnowledgeBaseView prefill + provenance', () => {
 describe('KnowledgeBaseView website re-scan', () => {
   // WHO: an owner who already onboarded and wants to re-scan an updated site.
   // WHAT: the "Import policies from your website" box (previously an unwired
-  //       placeholder) actually calls the scan + saves the extracted answers.
-  // WHEN: 2026-09-13, wiring the TODO left in place since the initial ship.
+  //       placeholder) actually calls the scan.
+  // WHEN: 2026-09-13, wiring the TODO left in place since the initial ship;
+  //       reworked after Copilot review on #442 caught that import-website
+  //       STAGES everything as a suggestion server-side (nothing is
+  //       auto-confirmed into the live KB) — the first version of this also
+  //       called Api.knowledge.add per item, which duplicated the staged
+  //       suggestion and skipped the review/approve step entirely.
   // WHERE: KnowledgeBaseView handleWebsiteScan.
-  // WHY: the box told owners a real feature existed; it did nothing.
-  test('HAPPY: scanning a URL saves matched answers and refreshes the list', async () => {
-    mockImportWebsite.mockResolvedValue({
+  // WHY: the box told owners a real feature existed; it did nothing, and the
+  //      fix must route through Suggestions, not write the KB directly.
+  test('HAPPY: scanning a URL refreshes the suggestion count and points at Suggestions', async () => {
+    mockImportWebsite.mockResolvedValue({ success: true, confirmed: 1, suggestions: 1 });
+    mockSuggestions.mockResolvedValue({
       success: true,
-      extracted: [
-        {
-          questionId: 'business-location',
-          question: 'Where are you located?',
-          answer: '456 Oak Ave.',
-        },
-      ],
+      suggestions: [{ id: 's1' }, { id: 's2' }],
     });
 
     render(<KnowledgeBaseView />);
@@ -133,24 +134,21 @@ describe('KnowledgeBaseView website re-scan', () => {
     await waitFor(() =>
       expect(mockImportWebsite).toHaveBeenCalledWith(mockTenantId, 'https://example.com')
     );
-    await waitFor(() =>
-      expect(mockAdd).toHaveBeenCalledWith(mockTenantId, {
-        question: 'Where are you located?',
-        answer: '456 Oak Ave.',
-        category: 'Business Hours & Location',
-        source: 'website-scan',
-      })
-    );
-    // Refetches the doc list after saving so the questionnaire tab reflects it.
-    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.getByText(/saved 1 answer/i)).toBeInTheDocument());
+    // Never writes to the KB directly — import-website already staged it.
+    expect(mockAdd).not.toHaveBeenCalled();
+    // Suggestion count badge reflects the refreshed list (2, from the second
+    // mockSuggestions call this test set up above).
+    const suggestionsTab = screen.getByRole('button', { name: /suggestions/i });
+    await waitFor(() => expect(suggestionsTab.textContent).toContain('2'));
+    await waitFor(() => expect(screen.getByText(/found 2 answers to review/i)).toBeInTheDocument());
   });
 
-  test('SAD: a failed scan shows an error and never calls add', async () => {
+  test('SAD: a failed scan shows an error and never touches suggestions or the KB', async () => {
     mockImportWebsite.mockResolvedValue({ success: false, error: 'Could not reach that site.' });
 
     render(<KnowledgeBaseView />);
     await waitFor(() => expect(mockList).toHaveBeenCalled());
+    const suggestionsCallsBefore = mockSuggestions.mock.calls.length;
 
     fireEvent.change(screen.getByPlaceholderText('https://www.yourbusiness.com'), {
       target: { value: 'https://dead-site.example' },
@@ -159,5 +157,6 @@ describe('KnowledgeBaseView website re-scan', () => {
 
     await waitFor(() => expect(screen.getByText('Could not reach that site.')).toBeInTheDocument());
     expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockSuggestions.mock.calls.length).toBe(suggestionsCallsBefore);
   });
 });
