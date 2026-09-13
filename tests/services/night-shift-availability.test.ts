@@ -444,4 +444,36 @@ describe('Fix (20260913): book_appointment_atomic (dashboard path) — night shi
 
     expect(result.rows[0].success).toBe(true);
   });
+
+  it('SAD: a booking exactly N weeks long (same weekday, different date) is still refused', async () => {
+    // WHO: a dashboard owner fat-fingering an end date.
+    // WHAT: 2030-05-27 (Monday) 10:00 -> 2030-06-03 (the FOLLOWING Monday)
+    //       10:30 — same weekday at both ends, 7 calendar days apart.
+    // WHY: Copilot review on PR #444 — the multi-day guard compared
+    //      EXTRACT(DOW), which only detects a WEEKDAY change. A booking any
+    //      whole number of weeks long lands on the same weekday at both
+    //      ends and slipped straight through, undermining the very
+    //      single-calendar-day assumption the night-shift coverage check
+    //      below it relies on. Fixed to compare the local DATE directly.
+    if (!dbAvailable) return;
+
+    const result = await client.query(
+      `SELECT * FROM book_appointment_atomic($1, $2, $3, $4::TIMESTAMPTZ, $5::TIMESTAMPTZ, $6, $7, NULL, $8)`,
+      [
+        tenantId,
+        resourceId,
+        customerId,
+        '2030-05-27T10:00:00-05:00',
+        '2030-06-03T10:30:00-05:00',
+        'Should fail — spans a full week',
+        'call_dash_dow_bug_001',
+        employeeId,
+      ]
+    );
+
+    expect(result.rows[0].success).toBe(false);
+    expect(result.rows[0].error_message).toBe(
+      'Appointment spans multiple days and cannot be validated against shifts'
+    );
+  });
 });

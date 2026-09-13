@@ -210,7 +210,14 @@ BEGIN
         v_start_local := p_start_time AT TIME ZONE v_tenant_tz;
         v_end_local := v_effective_end AT TIME ZONE v_tenant_tz;
 
-        IF EXTRACT(DOW FROM v_start_local) <> EXTRACT(DOW FROM v_end_local) THEN
+        -- DATE, not DOW (Copilot review, PR #444): EXTRACT(DOW) only detects
+        -- a WEEKDAY change, so a booking exactly 7 (or 14, 21, ...) days long
+        -- landed on the same weekday at both ends and slipped this guard —
+        -- pre-existing since this check was first written, surfaced now
+        -- because the night-shift coverage call below assumes the guard
+        -- actually guarantees a single calendar day (p_slot_end_wraps is
+        -- passed as a hardcoded FALSE on that assumption).
+        IF v_start_local::DATE <> v_end_local::DATE THEN
             RETURN QUERY SELECT FALSE, NULL::UUID, 'Appointment spans multiple days and cannot be validated against shifts'::TEXT;
             RETURN;
         END IF;
