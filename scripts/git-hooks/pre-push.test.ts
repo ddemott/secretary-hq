@@ -36,6 +36,28 @@ import { join } from 'node:path';
 const HOOK = join(__dirname, 'pre-push');
 
 /**
+ * `process.env` with every `GIT_*` variable stripped.
+ *
+ * When this suite itself runs as a descendant of a real git hook invocation
+ * (e.g. `git push` → husky's pre-push → `npm test` → vitest → this file),
+ * git has already set `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE` etc. in
+ * the ambient environment so hooks know which repo invoked them. Every
+ * `spawnSync('git', ...)` call below used to inherit that env wholesale, so
+ * `git init`/`git config`/`git commit` against the THROWAWAY tmpdir repo
+ * were silently operating on the REAL enclosing repo instead — confirmed by
+ * finding the real repo's `.git/config` corrupted with this test's own fake
+ * identity (`user.email=test@test`, `user.name=Test`) after a nested run.
+ * `cwd` alone does not protect against this: an explicit `GIT_DIR` wins.
+ */
+function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+}
+
+/**
  * Create a fresh test directory with:
  *   - an initialized git repo (with a `main` branch + an initial commit)
  *   - a bin/ directory containing fake `gh` (and optionally `jq`) shims
@@ -55,20 +77,22 @@ function makeTestRepo(opts: {
   const dir = mkdtempSync(join(tmpdir(), 'pre-push-test-'));
   const binDir = join(dir, 'bin');
   mkdirSync(binDir);
+  const gitEnv = cleanGitEnv();
 
   // Initialize a git repo with one commit so HEAD has something to point at.
-  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
-  spawnSync('git', ['config', 'user.email', 'test@test'], { cwd: dir });
-  spawnSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
-  spawnSync('git', ['commit', '--allow-empty', '-q', '-m', 'init'], { cwd: dir });
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir, env: gitEnv });
+  spawnSync('git', ['config', 'user.email', 'test@test'], { cwd: dir, env: gitEnv });
+  spawnSync('git', ['config', 'user.name', 'Test'], { cwd: dir, env: gitEnv });
+  spawnSync('git', ['commit', '--allow-empty', '-q', '-m', 'init'], { cwd: dir, env: gitEnv });
 
   if (opts.detached) {
     // Move HEAD to the commit SHA directly — git symbolic-ref then fails.
     const sha = spawnSync('git', ['rev-parse', 'HEAD'], {
       cwd: dir,
+      env: gitEnv,
       encoding: 'utf8',
     }).stdout.trim();
-    spawnSync('git', ['checkout', '-q', sha], { cwd: dir });
+    spawnSync('git', ['checkout', '-q', sha], { cwd: dir, env: gitEnv });
   }
 
   // Symlink the tools we want to expose to the hook. Anything NOT symlinked
@@ -96,7 +120,7 @@ function makeTestRepo(opts: {
     dir,
     binDir,
     env: {
-      ...process.env,
+      ...cleanGitEnv(),
       PATH: binDir, // ONLY binDir on PATH — the real /usr/bin is invisible
       HOME: dir, // isolate from real ~/.gitconfig
       GIT_CONFIG_NOSYSTEM: '1',
