@@ -12,6 +12,7 @@ import { useVocabulary, useVocabularyRefresh } from '@/lib/VocabularyContext';
 import { type EffectiveShift } from '../../lib/types';
 import { showToast } from '../ui/Toast';
 import { AssistantNameCard } from '../settings/AssistantNameCard';
+import { EmailBrandingCard } from '../settings/EmailBrandingCard';
 import { CalendarSyncCard } from '../settings/CalendarSyncCard';
 import { MyAvailabilityCard } from '../settings/MyAvailabilityCard';
 import { DataExportCard } from '../settings/DataExportCard';
@@ -26,6 +27,9 @@ export default function BusinessSettingsView() {
   const [personaName, setPersonaName] = useState('');
   const [savedPersonaName, setSavedPersonaName] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [savedLogoUrl, setSavedLogoUrl] = useState('');
+  const [savingLogoUrl, setSavingLogoUrl] = useState(false);
   const [presetRefreshToken, setPresetRefreshToken] = useState(0);
 
   const [shifts, setShifts] = useState<EffectiveShift[]>([]);
@@ -54,6 +58,8 @@ export default function BusinessSettingsView() {
       setTeamSize(config.team_size ?? null);
       setPersonaName(config.persona_name ?? '');
       setSavedPersonaName(config.persona_name ?? '');
+      setLogoUrl(config.logo_url ?? '');
+      setSavedLogoUrl(config.logo_url ?? '');
     } catch {
       setTeamSize(null);
     }
@@ -98,6 +104,26 @@ export default function BusinessSettingsView() {
       showToast('Could not save the assistant name. Please try again.', 'error');
     } finally {
       setSavingName(false);
+    }
+  }
+
+  async function saveLogoUrl() {
+    if (!tenantId) return;
+    setSavingLogoUrl(true);
+    try {
+      const trimmed = logoUrl.trim();
+      const res = await Api.tenants.updateConfig(tenantId, { logo_url: trimmed || null });
+      if (!res.success) {
+        showToast(res.error || 'Could not save the logo URL. Please try again.', 'error');
+        return;
+      }
+      setSavedLogoUrl(trimmed);
+      setLogoUrl(trimmed);
+      showToast(trimmed ? 'Email logo saved.' : 'Email logo cleared.', 'success');
+    } catch {
+      showToast('Could not save the logo URL. Please try again.', 'error');
+    } finally {
+      setSavingLogoUrl(false);
     }
   }
 
@@ -147,6 +173,18 @@ export default function BusinessSettingsView() {
           savingName={savingName}
           onNameChange={setPersonaName}
           onSave={() => void saveAssistantName()}
+        />
+
+        {/* ─── EMAIL BRANDING ─── Owner-supplied logo URL, rendered in the
+            header of tenant-to-customer emails (emailService.ts). Stored on
+            tenants.logo_url. No upload/storage — a plain URL the owner
+            pastes here. */}
+        <EmailBrandingCard
+          logoUrl={logoUrl}
+          savedLogoUrl={savedLogoUrl}
+          saving={savingLogoUrl}
+          onLogoUrlChange={setLogoUrl}
+          onSave={() => void saveLogoUrl()}
         />
 
         {/* ─── BUSINESS TYPE ─── Set once during the wizard; rarely revisited.

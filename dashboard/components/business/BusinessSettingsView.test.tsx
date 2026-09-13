@@ -255,11 +255,42 @@ describe('BusinessSettingsView', () => {
       render(<BusinessSettingsView />);
       const input = await screen.findByLabelText('Assistant name');
       fireEvent.change(input, { target: { value: 'Beth' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      // Two cards on this page now have their own "Save" button (Assistant
+      // Name and Email Branding) — the assistant-name one renders first.
+      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
       await waitFor(() =>
         expect(mockExportToast).toHaveBeenCalledWith('That name is too long.', 'error')
       );
       expect(mockExportToast).not.toHaveBeenCalledWith('Assistant name set to "Beth".', 'success');
+    });
+
+    test('HAPPY: saving the email logo URL calls updateConfig with logo_url', async () => {
+      // WHO: an owner branding their appointment emails. WHAT: pastes a logo
+      // URL and saves. WHERE: EmailBrandingCard / saveLogoUrl. WHY: this is
+      // the plumbing that feeds emailService.ts's previously-hardcoded
+      // logoUrl: undefined (tenants.logo_url, 20260913050000).
+      render(<BusinessSettingsView />);
+      const input = await screen.findByLabelText('Logo URL');
+      fireEvent.change(input, { target: { value: 'https://example.com/logo.png' } });
+      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+      await waitFor(() =>
+        expect(mockUpdateConfig).toHaveBeenCalledWith('test-tenant-123', {
+          logo_url: 'https://example.com/logo.png',
+        })
+      );
+      await waitFor(() =>
+        expect(mockExportToast).toHaveBeenCalledWith('Email logo saved.', 'success')
+      );
+    });
+
+    test('SAD: a failed logo URL save shows an error toast, not a false success', async () => {
+      mockUpdateConfig.mockResolvedValue({ success: false, error: 'Invalid URL.' });
+      render(<BusinessSettingsView />);
+      const input = await screen.findByLabelText('Logo URL');
+      fireEvent.change(input, { target: { value: 'not-a-url' } });
+      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+      await waitFor(() => expect(mockExportToast).toHaveBeenCalledWith('Invalid URL.', 'error'));
+      expect(mockExportToast).not.toHaveBeenCalledWith('Email logo saved.', 'success');
     });
 
     test('SAD: a failed calendar disconnect shows an error toast', async () => {

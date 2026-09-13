@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict GFh1SD7ZvAnwNtJwsBDmo2f5YVzJlDJBCLMC2Xjplq3dJjX3VJZ6zYOcQmrNmRL
+\restrict CMpGAyQUij0xo2Cb1HPJLuO79BBogRQ92foKyc88x9aowJhccfgcvdFp2pcaZ1y
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -275,6 +275,33 @@ BEGIN
         RETURN;
     END IF;
 
+    -- RULE: NO BOOKING IN THE PAST (2026-09-13, catching this RPC up to
+    -- book_with_scheduling_atomic / 20260909210000, which added it after a
+    -- live prod probe booked 1:00 PM at 6:52 PM the same day). One minute of
+    -- grace, same as the shift-boundary slack: a caller (or a front-desk
+    -- user) who means "right now" should not be refused on a rounding edge.
+    IF p_start_time < (now() - INTERVAL '1 minute') THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 'That time has already passed'::TEXT;
+        RETURN;
+    END IF;
+
+    -- TENANT-WIDE CLOSURE (2026-09-13, catching this RPC up to
+    -- book_with_scheduling_atomic / 20260903000000). Checked BEFORE any
+    -- employee/resource search, same ordering rule as the phone path: a
+    -- closed day is "we're closed," never "no one is scheduled" — with the
+    -- guard further down, a tenant with no staff that date would otherwise
+    -- get EMPLOYEE_NOT_SCHEDULED, a true fact that answers the wrong
+    -- question. availabilitySearch.ts already carries the matching
+    -- exclusion for the suggest side.
+    IF EXISTS (
+        SELECT 1 FROM blackout_dates bd
+         WHERE bd.tenant_id = p_tenant_id
+           AND bd.blackout_date = (p_start_time AT TIME ZONE v_tenant_tz)::DATE
+    ) THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID, 'The business is closed on that date'::TEXT;
+        RETURN;
+    END IF;
+
     IF p_assignment_id IS NOT NULL AND p_assignment_id <> '' THEN
         IF NOT is_uuid(p_assignment_id) THEN
             RETURN QUERY SELECT FALSE, NULL::UUID,
@@ -395,21 +422,44 @@ BEGIN
         v_start_local := p_start_time AT TIME ZONE v_tenant_tz;
         v_end_local := v_effective_end AT TIME ZONE v_tenant_tz;
 
+        -- DATE, not DOW (Copilot review, PR #444): EXTRACT(DOW) only detects
+        -- a WEEKDAY change, so a booking exactly 7 (or 14, 21, ...) days long
+        -- landed on the same weekday at both ends and slipped this guard —
+        -- pre-existing since this check was first written, surfaced now
+        -- because the night-shift coverage call below assumes the guard
+        -- actually guarantees a single calendar day (p_slot_end_wraps is
+        -- passed as a hardcoded FALSE on that assumption).
+        IF v_start_local::DATE <> v_end_local::DATE THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID, 'Appointment spans multiple days and cannot be validated against shifts'::TEXT;
+            RETURN;
+        END IF;
+
+        -- TWO DATES, NOT ONE (2026-09-13): a night shift's row is dated the
+        -- evening it STARTED, so an early-morning booking needs YESTERDAY's
+        -- row too. shift_row_covers_booking() (20260911010000) decides
+        -- whether a candidate row actually reaches this booking; the IN
+        -- clause just stops excluding it upfront. p_slot_end_wraps is FALSE
+        -- because the guard above already refused any booking that itself
+        -- spans two calendar days.
         SELECT EXISTS (
-            SELECT 1 FROM employee_schedule
-            WHERE employee_id = v_employee_id
-              AND tenant_id = p_tenant_id
-              AND shift_date = v_start_local::DATE
-              AND is_off = false
-              AND start_time <= v_start_local::TIME
-              AND end_time >= v_end_local::TIME
+            SELECT 1 FROM employee_schedule es
+            WHERE es.employee_id = v_employee_id
+              AND es.tenant_id = p_tenant_id
+              AND es.shift_date IN (v_start_local::DATE, v_start_local::DATE - 1)
+              AND es.is_off = false
+              AND (es.shift_date = v_start_local::DATE OR es.end_time < es.start_time)
+              AND public.shift_row_covers_booking(
+                    es.shift_date,
+                    v_start_local::DATE,
+                    es.start_time,
+                    es.end_time,
+                    v_start_local::TIME,
+                    v_end_local::TIME,
+                    FALSE
+                  )
         ) INTO v_on_shift;
 
         IF NOT v_on_shift THEN
-            IF EXTRACT(DOW FROM v_start_local) <> EXTRACT(DOW FROM v_end_local) THEN
-                RETURN QUERY SELECT FALSE, NULL::UUID, 'Appointment spans multiple days and cannot be validated against shifts'::TEXT;
-                RETURN;
-            END IF;
             RETURN QUERY SELECT FALSE, NULL::UUID, 'Employee is not on shift during this time'::TEXT;
             RETURN;
         END IF;
@@ -455,13 +505,20 @@ $$;
 
 COMMENT ON FUNCTION public.book_appointment_atomic(p_tenant_id uuid, p_resource_id uuid, p_customer_id uuid, p_start_time timestamp with time zone, p_end_time timestamp with time zone, p_description text, p_call_id text, p_location text, p_assignment_id text, p_service_id uuid, p_customer_phone text, p_customer_name text, p_buffer_minutes integer) IS 'Atomic booking, dashboard path. p_buffer_minutes (default 0) pads appointment-overlap
 checks to enforce a minimum gap between back-to-back bookings.
+No booking in the past (2026-09-13, one minute of grace) and no booking on a
+blackout_dates day (2026-09-13), checked before any staffing search — both
+match book_with_scheduling_atomic (20260909210000 / 20260903000000).
 STRICT service links (2026-09-11): when p_service_id is given, only ACTIVE
 service_employee / service_resource links decide who and where — the
 required_skills / required_resources tag arrays are never consulted, and a
 service with no active linked resource (or, when an employee is being
 assigned, no active linked employee) is refused before any other check.
-Matches book_with_scheduling_atomic (20260909210000). p_service_id = NULL
-skips the whole block, unchanged.';
+Night-shift aware (2026-09-13): shift coverage is checked via
+shift_row_covers_booking() against both the booking''s own date and the day
+before, so a shift dated the evening it started still covers an early-
+morning booking the next calendar day. A booking that itself spans two
+calendar days is still refused outright (unchanged) — only the covering
+shift may wrap midnight.';
 
 
 --
@@ -1051,9 +1108,9 @@ DECLARE
     v_resource_free BOOLEAN;
     v_staff_available BOOLEAN;
     v_shift_date DATE;
-    v_day_of_week INTEGER;
     v_start_tod TIME;
     v_end_tod TIME;
+    v_end_wraps BOOLEAN;
     v_buffer INTERVAL;
 BEGIN
     v_buffer := (GREATEST(COALESCE(p_buffer_minutes, 0), 0) || ' minutes')::INTERVAL;
@@ -1064,9 +1121,12 @@ BEGIN
 
     v_display_tz := COALESCE(p_customer_tz, v_tenant_tz);
     v_shift_date := (p_start_time AT TIME ZONE v_tenant_tz)::DATE;
-    v_day_of_week := EXTRACT(DOW FROM p_start_time AT TIME ZONE v_tenant_tz)::INTEGER;
     v_start_tod := (p_start_time AT TIME ZONE v_tenant_tz)::TIME;
     v_end_tod := (p_end_time AT TIME ZONE v_tenant_tz)::TIME;
+    -- Does the REQUESTED range itself cross local midnight? Same fact
+    -- shift_row_covers_booking's other callers compute — a slot that wraps
+    -- into a third day is never covered by any single row.
+    v_end_wraps := (p_end_time AT TIME ZONE v_tenant_tz)::DATE <> v_shift_date;
 
     SELECT NOT EXISTS (
         SELECT 1 FROM appointments
@@ -1078,6 +1138,12 @@ BEGIN
         AND end_time > p_start_time - v_buffer
     ) INTO v_resource_free;
 
+    -- TWO DATES, NOT ONE: a night shift's row is dated the evening it
+    -- started, so a request for the early morning needs YESTERDAY's row
+    -- too. shift_row_covers_booking() (20260911010000) decides whether a
+    -- candidate row actually reaches this request; the guard below just
+    -- stops excluding it upfront (a plain day shift dated yesterday never
+    -- covers today).
     SELECT EXISTS (
         SELECT 1 FROM employees emp
         INNER JOIN employee_schedule es ON es.employee_id = emp.employee_id
@@ -1085,13 +1151,13 @@ BEGIN
         AND emp.is_active = true
         AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
         AND es.tenant_id = p_tenant_id
-        AND es.shift_date = v_shift_date
+        AND es.shift_date IN (v_shift_date, v_shift_date - 1)
         AND es.is_off = false
-        AND (
-            (es.start_time <= es.end_time AND es.start_time <= v_start_tod AND es.end_time >= v_end_tod)
-            OR
-            (es.start_time > es.end_time AND (v_start_tod >= es.start_time OR v_end_tod <= es.end_time))
-        )
+        AND (es.shift_date = v_shift_date OR es.end_time < es.start_time)
+        AND public.shift_row_covers_booking(
+              es.shift_date, v_shift_date, es.start_time, es.end_time,
+              v_start_tod, v_end_tod, v_end_wraps
+            )
     ) INTO v_staff_available;
 
     RETURN QUERY SELECT
@@ -1101,6 +1167,18 @@ BEGIN
         to_char(p_end_time AT TIME ZONE v_display_tz, 'YYYY-MM-DD HH24:MI');
 END;
 $$;
+
+
+--
+-- Name: FUNCTION check_availability_with_tz(p_tenant_id uuid, p_resource_id uuid, p_start_time timestamp with time zone, p_end_time timestamp with time zone, p_customer_tz text, p_buffer_minutes integer); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.check_availability_with_tz(p_tenant_id uuid, p_resource_id uuid, p_start_time timestamp with time zone, p_end_time timestamp with time zone, p_customer_tz text, p_buffer_minutes integer) IS 'Superseded by get_available_slots / book_with_scheduling on every live call
+(agent/src/tools/reachability.ts) — still real code with a real caller
+(/agent-tools/check-availability), so it stays correct rather than
+deleted. Night-shift aware (2026-09-13): staff coverage is checked via
+shift_row_covers_booking() against both the request''s own date and the day
+before, and against whether the REQUESTED range itself wraps midnight.';
 
 
 --
@@ -1122,6 +1200,13 @@ BEGIN
         FROM generate_series(p_start_date, p_end_date, '1 day'::INTERVAL) AS d
     ),
     hourly_coverage AS (
+        -- Point-in-shift, not range-vs-range (see header comment for why
+        -- shift_row_covers_booking doesn't fit here). TWO CANDIDATE DATES
+        -- per probe: a row dated ds.check_date covers hour H normally (day
+        -- shift) or from H>=start onward (a wrapping shift's evening half);
+        -- a row dated the day BEFORE only ever matters if it's a wrapping
+        -- shift, and then only covers H<end (its morning half, read into
+        -- today).
         SELECT
             ts.sid,
             ds.check_date,
@@ -1133,14 +1218,20 @@ BEGIN
                 JOIN employee_schedule sch
                     ON sch.employee_id = e.employee_id
                     AND sch.tenant_id = p_tenant_id
-                    AND sch.shift_date = ds.check_date
+                    AND sch.shift_date IN (ds.check_date, ds.check_date - 1)
                     AND sch.is_off = false
                 WHERE se.service_id = ts.sid
                   AND e.tenant_id = p_tenant_id
                   AND e.is_active = true
                   AND (e.is_deleted IS NULL OR e.is_deleted = false)
-                  AND sch.start_time <= make_time(h.hr, 0, 0)
-                  AND sch.end_time > make_time(h.hr, 0, 0)
+                  AND (
+                    (sch.shift_date = ds.check_date AND sch.end_time > sch.start_time
+                       AND sch.start_time <= make_time(h.hr, 0, 0) AND sch.end_time > make_time(h.hr, 0, 0))
+                    OR (sch.shift_date = ds.check_date AND sch.end_time < sch.start_time
+                       AND make_time(h.hr, 0, 0) >= sch.start_time)
+                    OR (sch.shift_date = ds.check_date - 1 AND sch.end_time < sch.start_time
+                       AND make_time(h.hr, 0, 0) < sch.end_time)
+                  )
             ) THEN true ELSE false END AS is_covered
         FROM tenant_services ts
         CROSS JOIN date_series ds
@@ -1157,13 +1248,19 @@ BEGIN
             JOIN employee_schedule sch
                 ON sch.employee_id = e.employee_id
                 AND sch.tenant_id = p_tenant_id
-                AND sch.shift_date = ds.check_date
+                AND sch.shift_date IN (ds.check_date, ds.check_date - 1)
                 AND sch.is_off = false
             WHERE e.tenant_id = p_tenant_id
               AND e.is_active = true
               AND (e.is_deleted IS NULL OR e.is_deleted = false)
-              AND sch.start_time <= make_time(h.hr, 0, 0)
-              AND sch.end_time > make_time(h.hr, 0, 0)
+              AND (
+                (sch.shift_date = ds.check_date AND sch.end_time > sch.start_time
+                   AND sch.start_time <= make_time(h.hr, 0, 0) AND sch.end_time > make_time(h.hr, 0, 0))
+                OR (sch.shift_date = ds.check_date AND sch.end_time < sch.start_time
+                   AND make_time(h.hr, 0, 0) >= sch.start_time)
+                OR (sch.shift_date = ds.check_date - 1 AND sch.end_time < sch.start_time
+                   AND make_time(h.hr, 0, 0) < sch.end_time)
+              )
         )
     ),
     service_coverage AS (
@@ -1204,6 +1301,19 @@ BEGIN
     ORDER BY sc.check_date, ts.sname;
 END;
 $$;
+
+
+--
+-- Name: FUNCTION check_coverage_gaps(p_tenant_id uuid, p_start_date date, p_end_date date); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.check_coverage_gaps(p_tenant_id uuid, p_start_date date, p_end_date date) IS 'Coverage-bars data source (dashboard + Setup Wizard dry-run). Night-shift
+aware (2026-09-13): each hour is checked with a direct point-in-shift test
+against both the day''s own employee_schedule rows and a wrapping shift
+dated the day before (NOT shift_row_covers_booking — that function is
+range-vs-range and misreads a plain day shift''s hour 23 as uncovered when
+forced into a per-hour probe shape), so a night shift''s hours read as
+covered on both sides of midnight instead of reading as a permanent gap.';
 
 
 --
@@ -1992,6 +2102,197 @@ END;
 -- be hijacked (an attacker-created object shadowing an unqualified name would run
 -- with the definer's rights). pg_catalog first so built-ins can't be shadowed.
 $$;
+
+
+--
+-- Name: reschedule_appointment_atomic(uuid, uuid, text, timestamp with time zone, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.reschedule_appointment_atomic(p_tenant_id uuid, p_appointment_id uuid, p_phone text, p_new_start timestamp with time zone, p_new_end timestamp with time zone) RETURNS TABLE(success boolean, appointment_id uuid, error_message text, error_code text)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_employee_id UUID;
+    v_resource_id UUID;
+    v_service_id UUID;
+    v_tenant_tz TEXT;
+    v_start_local TIMESTAMP;
+    v_end_local TIMESTAMP;
+    v_on_shift BOOLEAN;
+    v_updated_id UUID;
+BEGIN
+    SELECT COALESCE(t.timezone, 'UTC') INTO v_tenant_tz FROM tenants t WHERE t.tenant_id = p_tenant_id;
+    IF v_tenant_tz IS NULL THEN v_tenant_tz := 'UTC'; END IF;
+
+    -- Ownership + eligibility, same WHERE the old raw UPDATE used: phone
+    -- match (the LLM can never move another caller's appointment even if it
+    -- hallucinates a UUID), still scheduled, still in the future, not soft-
+    -- deleted. Reads the CURRENT assignment so the checks below validate the
+    -- new time against who/where this appointment is ALREADY staffed for —
+    -- rescheduling never reassigns employee/resource/service.
+    SELECT a.employee_id, a.resource_id, a.service_id
+      INTO v_employee_id, v_resource_id, v_service_id
+      FROM appointments a
+      JOIN customers c ON a.customer_id = c.customer_id
+     WHERE a.appointment_id = p_appointment_id
+       AND a.tenant_id = p_tenant_id
+       AND c.tenant_id = p_tenant_id
+       AND c.phone = p_phone
+       AND a.status = 'scheduled'
+       AND a.start_time > NOW()
+       AND (a.is_deleted IS NULL OR a.is_deleted = false);
+
+    IF NOT FOUND THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID,
+            'I couldn''t find that appointment under your number, or it may already be past or canceled.'::TEXT,
+            'NOT_FOUND'::TEXT;
+        RETURN;
+    END IF;
+
+    v_start_local := p_new_start AT TIME ZONE v_tenant_tz;
+    v_end_local := p_new_end AT TIME ZONE v_tenant_tz;
+
+    -- Closed-day guard (20260903000000) — checked BEFORE any staffing search,
+    -- same ordering rule as the booking RPCs: a closed day is "we're closed
+    -- that day," never "no one is scheduled."
+    IF EXISTS (
+        SELECT 1 FROM blackout_dates bd
+         WHERE bd.tenant_id = p_tenant_id AND bd.blackout_date = v_start_local::DATE
+    ) THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID,
+            'The business is closed on that date.'::TEXT, 'BUSINESS_CLOSED'::TEXT;
+        RETURN;
+    END IF;
+
+    -- STRICT skill-map re-check (20260909210000 / 20260911000000): the
+    -- staffing valid at BOOKING time must still be valid NOW — a service can
+    -- be unlinked from its employee/resource in between. Tags are never
+    -- consulted here, matching every other STRICT call site.
+    IF v_service_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM service_resource sr
+              JOIN resources res ON res.resource_id = sr.resource_id
+             WHERE sr.service_id = v_service_id
+               AND sr.resource_id = v_resource_id
+               AND sr.tenant_id = p_tenant_id
+               AND res.is_active = true
+               AND (res.is_deleted IS NULL OR res.is_deleted = false)
+        ) THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'That room or line is no longer set up for this kind of appointment.'::TEXT,
+                'NO_SKILLED_RESOURCE'::TEXT;
+            RETURN;
+        END IF;
+
+        IF v_employee_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM service_employee se
+              JOIN employees emp ON emp.employee_id = se.employee_id
+             WHERE se.service_id = v_service_id
+               AND se.employee_id = v_employee_id
+               AND se.tenant_id = p_tenant_id
+               AND emp.is_active = true
+               AND (emp.is_deleted IS NULL OR emp.is_deleted = false)
+        ) THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'That person is no longer set up to take this kind of appointment.'::TEXT,
+                'NO_SKILLED_EMPLOYEE'::TEXT;
+            RETURN;
+        END IF;
+    END IF;
+
+    -- Shift coverage, night-shift aware (shift_row_covers_booking,
+    -- 20260911010000) — same DATE-not-DOW multi-day guard as
+    -- book_appointment_atomic (20260913010000): a reschedule spanning two
+    -- calendar days is refused outright, so p_slot_end_wraps is always FALSE.
+    IF v_employee_id IS NOT NULL THEN
+        IF v_start_local::DATE <> v_end_local::DATE THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'Appointment spans multiple days and cannot be validated against shifts.'::TEXT,
+                'INVALID_PARAMS'::TEXT;
+            RETURN;
+        END IF;
+
+        SELECT EXISTS (
+            SELECT 1 FROM employee_schedule es
+             WHERE es.employee_id = v_employee_id
+               AND es.tenant_id = p_tenant_id
+               AND es.shift_date IN (v_start_local::DATE, v_start_local::DATE - 1)
+               AND es.is_off = false
+               AND (es.shift_date = v_start_local::DATE OR es.end_time < es.start_time)
+               AND public.shift_row_covers_booking(
+                     es.shift_date,
+                     v_start_local::DATE,
+                     es.start_time,
+                     es.end_time,
+                     v_start_local::TIME,
+                     v_end_local::TIME,
+                     FALSE
+                   )
+        ) INTO v_on_shift;
+
+        IF NOT v_on_shift THEN
+            RETURN QUERY SELECT FALSE, NULL::UUID,
+                'Employee is not on shift during this time.'::TEXT, 'EMPLOYEE_NOT_SCHEDULED'::TEXT;
+            RETURN;
+        END IF;
+    END IF;
+
+    -- Copilot review, PR #446: the ownership/eligibility SELECT above and this
+    -- UPDATE are two separate statements — between them, nothing stops the
+    -- appointment from being canceled, soft-deleted, or reassigned to another
+    -- caller (or an RLS context glitch narrowing what this UPDATE can see).
+    -- The UPDATE repeats the FULL eligibility filter rather than trusting the
+    -- appointment_id alone, and RETURNING INTO a variable (not just running
+    -- the UPDATE) is how a zero-row match is DETECTED — a bare UPDATE with no
+    -- matching row raises no error, so "success" would otherwise be reported
+    -- with nothing actually changed.
+    BEGIN
+        UPDATE appointments a
+           SET start_time = p_new_start, end_time = p_new_end, updated_at = now()
+          FROM customers c
+         WHERE a.appointment_id = p_appointment_id
+           AND a.tenant_id = p_tenant_id
+           AND a.customer_id = c.customer_id
+           AND c.tenant_id = p_tenant_id
+           AND c.phone = p_phone
+           AND a.status = 'scheduled'
+           AND a.start_time > NOW()
+           AND (a.is_deleted IS NULL OR a.is_deleted = false)
+        RETURNING a.appointment_id INTO v_updated_id;
+    EXCEPTION WHEN exclusion_violation THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID,
+            'That time slot is already booked. Please choose a different time.'::TEXT,
+            'TIMESLOT_OCCUPIED'::TEXT;
+        RETURN;
+    END;
+
+    IF v_updated_id IS NULL THEN
+        RETURN QUERY SELECT FALSE, NULL::UUID,
+            'I couldn''t find that appointment under your number, or it may already be past or canceled.'::TEXT,
+            'NOT_FOUND'::TEXT;
+        RETURN;
+    END IF;
+
+    RETURN QUERY SELECT TRUE, v_updated_id, NULL::TEXT, NULL::TEXT;
+END;
+$$;
+
+
+--
+-- Name: FUNCTION reschedule_appointment_atomic(p_tenant_id uuid, p_appointment_id uuid, p_phone text, p_new_start timestamp with time zone, p_new_end timestamp with time zone); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.reschedule_appointment_atomic(p_tenant_id uuid, p_appointment_id uuid, p_phone text, p_new_start timestamp with time zone, p_new_end timestamp with time zone) IS 'Atomic reschedule for /agent-tools/reschedule-appointment. Verifies phone
+ownership, then re-validates the NEW time against the appointment''s EXISTING
+employee/resource/service assignment: blackout dates (BUSINESS_CLOSED),
+STRICT skill-map links still active (NO_SKILLED_RESOURCE/NO_SKILLED_EMPLOYEE),
+and night-shift-aware shift coverage via shift_row_covers_booking
+(EMPLOYEE_NOT_SCHEDULED). Does not reassign employee/resource/service — only
+the time changes. The final UPDATE re-applies the full eligibility filter
+(not just appointment_id) and detects a zero-row match via RETURNING INTO,
+closing the gap between the earlier ownership SELECT and the write
+(NOT_FOUND). GiST exclusion constraints still catch a literal double-booking
+(TIMESLOT_OCCUPIED).';
 
 
 --
@@ -4179,6 +4480,7 @@ CREATE TABLE public.tenants (
     booking_mechanics text,
     checklist_preset_id text,
     checklist_overrides jsonb DEFAULT '{}'::jsonb NOT NULL,
+    logo_url text,
     CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text]))))
 );
 
@@ -4337,6 +4639,16 @@ COMMENT ON COLUMN public.tenants.checklist_preset_id IS 'Optional explicit check
 --
 
 COMMENT ON COLUMN public.tenants.checklist_overrides IS 'Safe checklist tweaks. Shape: { disabled_conversation_blocks?: string[], booking_mode?: offer_once|prefer|never, message_mode?: always|fallback_only, optional_node_ids?: string[] }. Invalid entries are ignored on read and rejected on write.';
+
+
+--
+-- Name: COLUMN tenants.logo_url; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.logo_url IS 'Owner-supplied URL to their own logo image, rendered in the header of
+tenant-to-customer emails (appointment confirmations/reminders/etc via
+emailService.ts). NULL/blank = no logo (current default for all tenants).
+Plain URL string only — no upload/storage is provided by the platform.';
 
 
 --
@@ -6989,5 +7301,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict GFh1SD7ZvAnwNtJwsBDmo2f5YVzJlDJBCLMC2Xjplq3dJjX3VJZ6zYOcQmrNmRL
+\unrestrict CMpGAyQUij0xo2Cb1HPJLuO79BBogRQ92foKyc88x9aowJhccfgcvdFp2pcaZ1y
 

@@ -39,6 +39,10 @@ export interface TenantConfig {
   phone?: string;
   inboundPhone?: string;
   timezone?: string;
+  /** Owner-supplied logo image URL, rendered in tenant-to-customer email
+   *  headers (emailService.ts). No upload/storage — a plain URL the owner
+   *  pastes on Business Settings. undefined/blank = no logo (default). */
+  logoUrl?: string;
   settings?: {
     smsEnabled?: boolean;
     emailEnabled?: boolean;
@@ -187,6 +191,7 @@ export class PostgresTenantConfigService implements TenantConfigService {
     timezone: string | null;
     sms_enabled: boolean;
     email_enabled: boolean;
+    logo_url?: string | null;
   }): TenantConfig {
     return {
       tenantId: row.tenant_id,
@@ -194,6 +199,7 @@ export class PostgresTenantConfigService implements TenantConfigService {
       phone: row.owner_phone ?? undefined,
       inboundPhone: row.inbound_phone ?? undefined,
       timezone: row.timezone || 'America/Chicago',
+      logoUrl: row.logo_url ?? undefined,
       settings: {
         smsEnabled: row.sms_enabled !== false,
         emailEnabled: row.email_enabled !== false,
@@ -211,7 +217,7 @@ export class PostgresTenantConfigService implements TenantConfigService {
 
     return this.withClient(async (client) => {
       const result = await client.query(
-        `SELECT tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled
+        `SELECT tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled, logo_url
          FROM tenants WHERE tenant_id = $1`,
         [tenantId]
       );
@@ -230,7 +236,7 @@ export class PostgresTenantConfigService implements TenantConfigService {
   async getTenantConfigs(): Promise<TenantConfig[]> {
     return this.withClient(async (client) => {
       const result = await client.query(
-        `SELECT tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled
+        `SELECT tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled, logo_url
          FROM tenants ORDER BY name`
       );
 
@@ -269,6 +275,10 @@ export class PostgresTenantConfigService implements TenantConfigService {
         fields.push(`timezone = $${paramIndex++}`);
         values.push(updates.timezone);
       }
+      if (updates.logoUrl !== undefined) {
+        fields.push(`logo_url = $${paramIndex++}`);
+        values.push(updates.logoUrl || null);
+      }
 
       if (fields.length === 0) {
         return this.getTenantConfig(tenantId);
@@ -278,7 +288,7 @@ export class PostgresTenantConfigService implements TenantConfigService {
       const result = await client.query(
         `UPDATE tenants SET ${fields.join(', ')}
          WHERE tenant_id = $${paramIndex}
-         RETURNING tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled`,
+         RETURNING tenant_id, name, owner_phone, inbound_phone, timezone, sms_enabled, email_enabled, logo_url`,
         values
       );
 

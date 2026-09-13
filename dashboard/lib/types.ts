@@ -121,6 +121,10 @@ export interface Tenant {
   call_disclosure?: string | null;
   call_disclosure_attested_at?: string | null;
   call_disclosure_attested_by?: string | null;
+  // Owner-supplied logo image URL, rendered in tenant-to-customer email
+  // headers (emailService.ts). No upload/storage — a plain URL the owner
+  // pastes here. NULL/blank = no logo (default for every existing tenant).
+  logo_url?: string | null;
 }
 
 export interface BusinessTemplate {

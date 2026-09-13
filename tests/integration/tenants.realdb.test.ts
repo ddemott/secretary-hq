@@ -398,6 +398,67 @@ describe('POST /tenants/:id/update-config → real DB', () => {
       expect(read.json().call_disclosure).toBe('Round-trip line.');
     });
   });
+
+  describe('per-tenant email logo (tenants.logo_url, 20260913050000)', () => {
+    it('HAPPY: a save persists logo_url and GET /config round-trips it', async () => {
+      const id = await freshTenant('Logo Happy');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tenants/${id}/update-config`,
+        headers: hdr(id),
+        payload: { logo_url: 'https://example.com/logo.png' },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const row = await setup.query('SELECT logo_url FROM tenants WHERE tenant_id = $1', [id]);
+      expect(row.rows[0].logo_url).toBe('https://example.com/logo.png');
+
+      const read = await app.inject({
+        method: 'GET',
+        url: `/tenants/${id}/config`,
+        headers: hdr(id),
+      });
+      expect(read.json().logo_url).toBe('https://example.com/logo.png');
+    });
+
+    it('PARTIAL-UPDATE: omitting logo_url keeps the prior value', async () => {
+      const id = await freshTenant('Logo Partial');
+      await setup.query(
+        `UPDATE tenants SET logo_url = 'https://example.com/keep.png' WHERE tenant_id = $1`,
+        [id]
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tenants/${id}/update-config`,
+        headers: hdr(id),
+        payload: { default_buffer_minutes: 20 },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const row = await setup.query('SELECT logo_url FROM tenants WHERE tenant_id = $1', [id]);
+      expect(row.rows[0].logo_url).toBe('https://example.com/keep.png');
+    });
+
+    it('CLEARING to blank sets logo_url back to NULL', async () => {
+      const id = await freshTenant('Logo Clear');
+      await setup.query(
+        `UPDATE tenants SET logo_url = 'https://example.com/old.png' WHERE tenant_id = $1`,
+        [id]
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tenants/${id}/update-config`,
+        headers: hdr(id),
+        payload: { logo_url: '' },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const row = await setup.query('SELECT logo_url FROM tenants WHERE tenant_id = $1', [id]);
+      expect(row.rows[0].logo_url).toBeNull();
+    });
+  });
 });
 
 describe('GET /templates/full → real DB', () => {
