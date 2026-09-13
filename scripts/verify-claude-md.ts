@@ -181,10 +181,30 @@ export function collectExpectedUnreachable(content: string): Set<string> {
 
 // ─── Production wiring ─────────────────────────────────────────────────────
 
+/**
+ * Resolve `branch` to a ref that actually exists in this checkout. A
+ * pull_request CI run (`actions/checkout` with `fetch-depth: 0`) fetches
+ * every branch's history but only checks out the PR's own ref as a local
+ * branch — `main` itself never gets a local ref, only `origin/main` does.
+ * `git merge-base --is-ancestor <sha> main` then fails with "not a valid
+ * object name", which this script reported as "not reachable from main"
+ * even for a commit that plainly is (verified 2026-09-13, PR #453: local
+ * clones have `main`, CI checkouts of a PR branch do not).
+ */
+export function resolveBranchRef(branch: string): string {
+  try {
+    execSync(`git rev-parse --verify ${branch}`, { stdio: 'ignore' });
+    return branch;
+  } catch {
+    return `origin/${branch}`;
+  }
+}
+
 /** Returns true if `sha` resolves to a commit AND is an ancestor of `main`. */
 function gitIsCommitReachable(sha: string, branch: string = 'main'): boolean {
+  const ref = resolveBranchRef(branch);
   try {
-    execSync(`git merge-base --is-ancestor ${sha} ${branch}`, { stdio: 'ignore' });
+    execSync(`git merge-base --is-ancestor ${sha} ${ref}`, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
