@@ -113,11 +113,11 @@ Voice/Telnyx go-live ops detail + incident recovery: `docs/RUNBOOK.md` §7.
       hybrid and the address in her first sentence; the model recorded them under invented ids
       (`role_type`, `role_title`, `role_salary_range`, `role_location`), `tracker.ts`'s `record()`
       refused each with `"<id>" is not on this call's checklist. Record only the ids the checklist
-  shows.` — which named no valid id — and the model then asked her for all of it again ("Like
+      shows.` — which named no valid id — and the model then asked her for all of it again ("Like
       I said…", twice). Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the
       refusal must hand the model the ids it CAN record, so a wrong id costs a silent retry, not
       the caller's patience. Fix: the `UnknownNodeError` now appends `Open ids you may record
-  now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
+      now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
       shape as `UnknownTreeError` on `set_purpose`. Also fixed the grader: it only checked one
       hard-coded re-ask phrasing (the caller's name), which is exactly why this scenario passed
       despite the transcript showing a real re-ask. Added a generic tripwire instead — the
