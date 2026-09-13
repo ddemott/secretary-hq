@@ -44,9 +44,9 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 **Layering:**
 
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
-- **Tools**: 26 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (12 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
+- **Tools**: 27 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (13 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
 - **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 202 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)
+- **DB**: Postgres + pgvector on Supabase, 202 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -57,7 +57,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 /
 ├── src/                          Fastify backend (Node)
 │   ├── index.ts                  Entry — registers 29 top-level route modules + `agentTools/` dir (~420 lines)
-│   ├── middleware.ts             withHandler, tenantMiddleware, registerJwtAuthHook, generateToken, AppError, logEvent
+│   ├── middleware/                fastify-middleware.ts — withHandler, tenantMiddleware, registerJwtAuthHook, generateToken, AppError, logEvent
 │   ├── routes/                   29 route modules + routeHelpers.ts
 │   ├── services/                 flat files (calendar sync, OAuth, name/token/SMS utilities) + communications/ (Telnyx-only SMS + delivery webhooks), reminders/, tenants/, usage/ subdirs
 │   └── database/                 getPool() singleton + createWithTenantClient(pool) factory + DatabaseService adapter
@@ -421,7 +421,7 @@ Releases the Telnyx number via the API and clears `telnyx_phone_number_id`, `inb
 
 29 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
 
-### 9.2 Middleware layer (`src/middleware.ts`)
+### 9.2 Middleware layer (`src/middleware/fastify-middleware.ts`)
 
 - **`withHandler(fn)`** — Decorator wrapping every route handler. Catches thrown `AppError`, converts to consistent `{ success: false, error, details? }` response. Logs request + response with structured fields.
 - **`registerJwtAuthHook(app, pool)`** — onRequest hook that decodes Bearer tokens, rejects expired/forged ones with 401, and rejects tokens issued before the user's `password_changed_at` (so a password rotation invalidates outstanding sessions). Public routes bypass.
