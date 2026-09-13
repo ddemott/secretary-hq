@@ -500,22 +500,58 @@ export function registerAppointmentRoutes(
         try {
           let effectiveStartTime = body.start_time ?? null;
           let effectiveEndTime = body.end_time ?? null;
-          if (body.start_time || body.end_time) {
-            const existing = await client.query<{ start_time: string; end_time: string }>(
-              'SELECT start_time::text AS start_time, end_time::text AS end_time FROM appointments WHERE appointment_id = $1 AND tenant_id = $2 AND is_deleted = false',
-              [id, body.tenant_id]
-            );
-            if (existing.rows.length === 0) {
-              await client.query('ROLLBACK');
-              shortCircuited = true;
-              void reply.status(404).send({ success: false, error: 'Appointment not found' });
-              return;
-            }
-            effectiveStartTime = body.start_time ?? existing.rows[0].start_time;
-            effectiveEndTime = body.end_time ?? existing.rows[0].end_time;
-            if (body.start_time && body.start_time !== existing.rows[0].start_time) {
-              startTimeChanged = true;
-            }
+
+          // Explicit undefined checks, not truthiness: an empty-string
+          // start_time/end_time is a value the caller DID provide (Zod's
+          // z.string().optional() lets '' through) and must still be
+          // validated and rejected — `Boolean('' || undefined)` would have
+          // read as "nothing changed" and silently no-op'd instead (Copilot
+          // review, PR #448).
+          const timeChanged = body.start_time !== undefined || body.end_time !== undefined;
+          const resourceChanged = body.resource_id !== undefined;
+          const employeeProvided = body.employee_id !== undefined;
+          const normalizedNewEmployeeId =
+            body.employee_id === null || body.employee_id === undefined
+              ? null
+              : body.employee_id.toString();
+
+          // Always read the current row — needed both as the fallback for an
+          // unchanged start_time/end_time AND to know what's being reassigned
+          // (existing employee/resource/service) for the checks below. This
+          // also means a not-found/soft-deleted appointment now 404s on every
+          // update, not just time changes, which the raw fields-only UPDATE
+          // further down never filtered on `is_deleted` at all.
+          const existing = await client.query<{
+            start_time: string;
+            end_time: string;
+            employee_id: string | null;
+            resource_id: string;
+            service_id: string | null;
+          }>(
+            'SELECT start_time::text AS start_time, end_time::text AS end_time, employee_id, resource_id, service_id FROM appointments WHERE appointment_id = $1 AND tenant_id = $2 AND is_deleted = false',
+            [id, body.tenant_id]
+          );
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            shortCircuited = true;
+            void reply.status(404).send({ success: false, error: 'Appointment not found' });
+            return;
+          }
+          const existingRow = existing.rows[0];
+
+          effectiveStartTime = body.start_time ?? existingRow.start_time;
+          effectiveEndTime = body.end_time ?? existingRow.end_time;
+          if (body.start_time && body.start_time !== existingRow.start_time) {
+            startTimeChanged = true;
+          }
+          const employeeChanged =
+            employeeProvided && normalizedNewEmployeeId !== existingRow.employee_id;
+          const effectiveEmployeeId = employeeProvided
+            ? normalizedNewEmployeeId
+            : existingRow.employee_id;
+          const effectiveResourceId = body.resource_id ?? existingRow.resource_id;
+
+          if (timeChanged) {
             const timeValidationError = validateAppointmentTimeRange(
               effectiveStartTime,
               effectiveEndTime
@@ -527,6 +563,144 @@ export function registerAppointmentRoutes(
                 success: false,
                 error: timeValidationError.error,
                 error_code: timeValidationError.code,
+              });
+              return;
+            }
+          }
+
+          // STRICT skill-map re-check (2026-09-13): reassigning the resource
+          // or employee on an existing appointment must obey the same rule
+          // book_appointment_atomic enforces at CREATE time — a service links
+          // to specific people/rooms, and tags are never consulted. Without
+          // this, editing an appointment was the one door left where
+          // "Person -> Role -> Resource" (Dale, 20260911000000) didn't hold.
+          if (existingRow.service_id) {
+            if (resourceChanged) {
+              const linked = await client.query(
+                `SELECT 1 FROM service_resource sr
+                   JOIN resources res ON res.resource_id = sr.resource_id
+                  WHERE sr.service_id = $1 AND sr.resource_id = $2 AND sr.tenant_id = $3
+                    AND res.is_active = true AND (res.is_deleted IS NULL OR res.is_deleted = false)`,
+                [existingRow.service_id, effectiveResourceId, body.tenant_id]
+              );
+              if (linked.rows.length === 0) {
+                await client.query('ROLLBACK');
+                shortCircuited = true;
+                void reply.status(400).send({
+                  success: false,
+                  error: 'Resource is not assigned to perform this service',
+                  error_code: 'NO_SKILLED_RESOURCE',
+                });
+                return;
+              }
+            }
+            if (employeeChanged && effectiveEmployeeId) {
+              const linked = await client.query(
+                `SELECT 1 FROM service_employee se
+                   JOIN employees emp ON emp.employee_id = se.employee_id
+                  WHERE se.service_id = $1 AND se.employee_id = $2 AND se.tenant_id = $3
+                    AND emp.is_active = true AND (emp.is_deleted IS NULL OR emp.is_deleted = false)`,
+                [existingRow.service_id, effectiveEmployeeId, body.tenant_id]
+              );
+              if (linked.rows.length === 0) {
+                await client.query('ROLLBACK');
+                shortCircuited = true;
+                void reply.status(400).send({
+                  success: false,
+                  error: 'Employee is not assigned to perform this service',
+                  error_code: 'NO_SKILLED_EMPLOYEE',
+                });
+                return;
+              }
+            }
+          }
+
+          // Shift coverage + blackout re-check (2026-09-13), same rules
+          // book_appointment_atomic enforces at CREATE time — a time change
+          // must still land on a day the business is open, and (if an
+          // employee is assigned) an hour that employee is on shift.
+          // Night-shift aware via shift_row_covers_booking (20260911010000).
+          // Blackout applies to every time change, employee or not — a
+          // resource-only booking is just as closed on a holiday. Shift
+          // coverage only makes sense once someone is assigned, and only
+          // needs re-checking when the employee/time PAIR actually changed —
+          // an appointment untouched on both axes is not re-validated
+          // against rules that may have tightened since it was booked.
+          let tz = 'UTC';
+          if (timeChanged || (employeeChanged && effectiveEmployeeId)) {
+            const tzRes = await client.query<{ timezone: string }>(
+              `SELECT COALESCE(timezone, 'UTC') AS timezone FROM tenants WHERE tenant_id = $1`,
+              [body.tenant_id]
+            );
+            tz = tzRes.rows[0]?.timezone || 'UTC';
+          }
+
+          if (timeChanged) {
+            const blackoutRes = await client.query(
+              `SELECT 1 FROM blackout_dates
+                WHERE tenant_id = $1 AND blackout_date = ($2::timestamptz AT TIME ZONE $3)::date`,
+              [body.tenant_id, effectiveStartTime, tz]
+            );
+            if (blackoutRes.rows.length > 0) {
+              await client.query('ROLLBACK');
+              shortCircuited = true;
+              void reply.status(400).send({
+                success: false,
+                error: 'The business is closed on that date',
+                error_code: 'BUSINESS_CLOSED',
+              });
+              return;
+            }
+          }
+
+          if ((timeChanged || employeeChanged) && effectiveEmployeeId) {
+            const dateCheck = await client.query<{ start_date: string; end_date: string }>(
+              `SELECT ($1::timestamptz AT TIME ZONE $3)::date::text AS start_date,
+                      ($2::timestamptz AT TIME ZONE $3)::date::text AS end_date`,
+              [effectiveStartTime, effectiveEndTime, tz]
+            );
+            if (dateCheck.rows[0].start_date !== dateCheck.rows[0].end_date) {
+              await client.query('ROLLBACK');
+              shortCircuited = true;
+              void reply.status(400).send({
+                success: false,
+                error: 'Appointment spans multiple days and cannot be validated against shifts',
+                error_code: 'INVALID_PARAMS',
+              });
+              return;
+            }
+
+            const shiftRes = await client.query<{ on_shift: boolean }>(
+              `SELECT EXISTS (
+                 SELECT 1 FROM employee_schedule es
+                  WHERE es.employee_id = $1
+                    AND es.tenant_id = $2
+                    AND es.shift_date IN ($3::date, $3::date - 1)
+                    AND es.is_off = false
+                    AND (es.shift_date = $3::date OR es.end_time < es.start_time)
+                    AND public.shift_row_covers_booking(
+                          es.shift_date, $3::date, es.start_time, es.end_time,
+                          ($4::timestamptz AT TIME ZONE $5)::time,
+                          ($6::timestamptz AT TIME ZONE $5)::time,
+                          FALSE
+                        )
+               ) AS on_shift`,
+              [
+                effectiveEmployeeId,
+                body.tenant_id,
+                dateCheck.rows[0].start_date,
+                effectiveStartTime,
+                tz,
+                effectiveEndTime,
+              ]
+            );
+            if (!shiftRes.rows[0]?.on_shift) {
+              await client.query('ROLLBACK');
+              shortCircuited = true;
+              void reply.status(400).send({
+                success: false,
+                error: 'Employee is not on shift during this time',
+                error_code: 'EMPLOYEE_NOT_SCHEDULED',
               });
               return;
             }

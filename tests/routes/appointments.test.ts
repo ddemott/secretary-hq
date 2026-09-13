@@ -1115,6 +1115,8 @@ describe('POST /appointments/:id/update', () => {
     handle.queryResponses.push({
       rows: [{ start_time: '2026-04-15T15:00:00Z', end_time: '2026-04-15T16:00:00Z' }],
     }); // SELECT existing
+    handle.queryResponses.push({ rows: [{ timezone: 'UTC' }] }); // tenant timezone (time changed)
+    handle.queryResponses.push({ rows: [] }); // blackout_dates check — not closed
     handle.queryResponses.push({ rows: [] }); // UPDATE appointments
     handle.queryResponses.push({ rows: [] }); // COMMIT
 
@@ -1136,10 +1138,12 @@ describe('POST /appointments/:id/update', () => {
     );
     expect(dataQueries[0].text).toBe('BEGIN');
     expect(dataQueries[1].text).toContain('SELECT start_time::text AS start_time');
-    expect(dataQueries[2].text).toContain('UPDATE appointments SET');
-    expect(dataQueries[2].text).toContain('start_time =');
-    expect(dataQueries[2].text).toContain('description =');
-    expect(dataQueries[3].text).toBe('COMMIT');
+    // dataQueries[2] = tenant timezone lookup, dataQueries[3] = blackout_dates
+    // check — both fire on any time change (2026-09-13 revalidation).
+    expect(dataQueries[4].text).toContain('UPDATE appointments SET');
+    expect(dataQueries[4].text).toContain('start_time =');
+    expect(dataQueries[4].text).toContain('description =');
+    expect(dataQueries[5].text).toBe('COMMIT');
     expect(syncAppointmentToAll).toHaveBeenCalledWith(
       handle.mockPool,
       TENANT_ID,
@@ -1159,6 +1163,7 @@ describe('POST /appointments/:id/update', () => {
     //       reasons; the route accepts both kinds of edits in one call
     //       so the dashboard doesn't need two round-trips
     handle.queryResponses.push({ rows: [] }); // BEGIN
+    handle.queryResponses.push({ rows: [{}] }); // SELECT existing (always runs now)
     handle.queryResponses.push({ rows: [] }); // UPDATE appointments (no fields → 0 statements actually) — wait, the description does count
     handle.queryResponses.push({ rows: [{ customer_id: CUSTOMER_ID }] }); // SELECT customer_id
     handle.queryResponses.push({ rows: [] }); // UPDATE customers
@@ -1204,6 +1209,7 @@ describe('POST /appointments/:id/update', () => {
     //       always sent name + phone together, masking ordering bugs.
     handle.queryResponses.push(
       { rows: [] }, // BEGIN
+      { rows: [{}] }, // SELECT existing (always runs now)
       { rows: [] }, // UPDATE appointments (description-only field set)
       { rows: [{ customer_id: CUSTOMER_ID }] }, // SELECT customer_id
       { rows: [] }, // UPDATE customers
@@ -1251,6 +1257,7 @@ describe('POST /appointments/:id/update', () => {
     //       Pinning the skip behavior makes the contract explicit.
     handle.queryResponses.push(
       { rows: [] }, // BEGIN
+      { rows: [{}] }, // SELECT existing (always runs now)
       { rows: [] }, // UPDATE appointments
       { rows: [{ customer_id: null }] }, // SELECT customer_id — orphan
       { rows: [] } // COMMIT (no UPDATE customers in between)
@@ -1408,6 +1415,7 @@ describe('POST /appointments/:id/update', () => {
       role: 'owner',
     };
     handle.queryResponses.push({ rows: [] }); // BEGIN
+    handle.queryResponses.push({ rows: [{}] }); // SELECT existing (always runs now)
     handle.queryResponses.push({ rows: [] }); // UPDATE appointments
     handle.queryResponses.push({ rows: [] }); // COMMIT
 
@@ -1455,6 +1463,8 @@ describe('POST /appointments/:id/update', () => {
     handle.queryResponses.push({
       rows: [{ start_time: '2026-04-15T14:00:00Z', end_time: '2026-04-15T15:00:00Z' }],
     }); // SELECT prior
+    handle.queryResponses.push({ rows: [{ timezone: 'UTC' }] }); // tenant timezone (time changed)
+    handle.queryResponses.push({ rows: [] }); // blackout_dates check — not closed
     handle.queryResponses.push({ rows: [] }); // UPDATE appointments
     handle.queryResponses.push({ rows: [] }); // COMMIT
 
@@ -1496,7 +1506,8 @@ describe('POST /appointments/:id/update', () => {
     //      sees zero scheduled rows for the appointment (mid-reschedule
     //      race). The guard pins the no-op case.
     handle.queryResponses.push({ rows: [] }); // BEGIN
-    handle.queryResponses.push({ rows: [] }); // UPDATE appointments (no SELECT — no start_time in payload)
+    handle.queryResponses.push({ rows: [{}] }); // SELECT existing (always runs now)
+    handle.queryResponses.push({ rows: [] }); // UPDATE appointments
     handle.queryResponses.push({ rows: [] }); // COMMIT
 
     const res = await app.inject({
@@ -1533,6 +1544,8 @@ describe('POST /appointments/:id/update', () => {
     handle.queryResponses.push({
       rows: [{ start_time: '2026-04-15T14:00:00Z', end_time: '2026-04-15T15:00:00Z' }],
     }); // SELECT prior
+    handle.queryResponses.push({ rows: [{ timezone: 'UTC' }] }); // tenant timezone (time "changed" — same value resubmitted)
+    handle.queryResponses.push({ rows: [] }); // blackout_dates check — not closed
     handle.queryResponses.push({ rows: [] }); // UPDATE appointments
     handle.queryResponses.push({ rows: [] }); // COMMIT
 
