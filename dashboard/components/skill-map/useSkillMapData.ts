@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { Api } from '../../lib/api';
+import { showToast } from '../ui/Toast';
 
 export type NodeType = 'employee' | 'skill' | 'resource';
 export type CoverageLevel = 'full' | 'partial' | 'uncovered';
@@ -357,6 +358,7 @@ export function useSkillMapData(
         onDataChanged?.();
       } catch (err) {
         console.error('Failed to create connection:', err);
+        showToast('Mapping update failed', 'error');
       } finally {
         setSaving(false);
         setLinking(null);
@@ -403,6 +405,7 @@ export function useSkillMapData(
         await fetchMappings();
       } catch (err) {
         console.error('Failed to disconnect:', err);
+        showToast('Mapping update failed', 'error');
       } finally {
         setSaving(false);
       }
