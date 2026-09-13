@@ -61,16 +61,24 @@ export interface CustomerContext {
 export type VoiceSessionStatus = 'active' | 'completed' | 'failed' | 'transferred';
 
 // The live vocabulary is whatever the agent actually writes on
-// /agent-tools/voice-session-end: `booked`/`transferred` (callOutcome.ts) and
-// the "why" classes `no_availability`/`wrong_service`/`price`/`message`/`info`
-// (callClassify.ts), or null when unclassified. The `appointment_*`/`info_provided`/
-// `voicemail`/`abandoned`/`other` members below are the LEGACY vocabulary — the
-// agent never emits them, but they're kept for backward-compat (older rows, the
-// VoiceCallsView alias maps, and the /voice/session/end enum). Do not drop them.
+// /agent-tools/voice-session-end: `booked`/`transferred`/`job_inquiry`
+// (callOutcome.ts) and the "why" classes
+// `no_availability`/`wrong_service`/`price`/`message`/`info` (callClassify.ts),
+// or null when unclassified. `job_inquiry` was added to callOutcome.ts
+// 2026-07-30 (capture_job_inquiry) but never added here or to the
+// /voice/session/end enum below — found during the 2026-09-13 vocabulary
+// audit; dashboard/components/voice/outcome.tsx's OUTCOME_LABELS already
+// mapped it (so the UI rendered it fine), but this type and the manual-entry
+// endpoint's z.enum did not know it existed. The `appointment_*`/
+// `info_provided`/`voicemail`/`abandoned`/`other` members below are the
+// LEGACY vocabulary — the agent never emits them, but they're kept for
+// backward-compat (older rows, the VoiceCallsView alias maps, and the
+// /voice/session/end enum). Do not drop them.
 export type VoiceSessionOutcome =
   // Live vocabulary (agent-emitted)
   | 'booked'
   | 'transferred'
+  | 'job_inquiry'
   | 'no_availability'
   | 'wrong_service'
   | 'price'
