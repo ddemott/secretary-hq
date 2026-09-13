@@ -255,9 +255,7 @@ describe('BusinessSettingsView', () => {
       render(<BusinessSettingsView />);
       const input = await screen.findByLabelText('Assistant name');
       fireEvent.change(input, { target: { value: 'Beth' } });
-      // Two cards on this page now have their own "Save" button (Assistant
-      // Name and Email Branding) — the assistant-name one renders first.
-      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() =>
         expect(mockExportToast).toHaveBeenCalledWith('That name is too long.', 'error')
       );
@@ -272,7 +270,7 @@ describe('BusinessSettingsView', () => {
       render(<BusinessSettingsView />);
       const input = await screen.findByLabelText('Logo URL');
       fireEvent.change(input, { target: { value: 'https://example.com/logo.png' } });
-      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+      fireEvent.click(screen.getByRole('button', { name: 'Save logo' }));
       await waitFor(() =>
         expect(mockUpdateConfig).toHaveBeenCalledWith('test-tenant-123', {
           logo_url: 'https://example.com/logo.png',
@@ -288,7 +286,7 @@ describe('BusinessSettingsView', () => {
       render(<BusinessSettingsView />);
       const input = await screen.findByLabelText('Logo URL');
       fireEvent.change(input, { target: { value: 'not-a-url' } });
-      fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[1]);
+      fireEvent.click(screen.getByRole('button', { name: 'Save logo' }));
       await waitFor(() => expect(mockExportToast).toHaveBeenCalledWith('Invalid URL.', 'error'));
       expect(mockExportToast).not.toHaveBeenCalledWith('Email logo saved.', 'success');
     });

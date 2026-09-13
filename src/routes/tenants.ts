@@ -113,7 +113,21 @@ const UpdateConfigSchema = z.object({
   // Owner-supplied logo URL, rendered in tenant-to-customer email headers
   // (emailService.ts). No upload/storage — a plain URL. Blank/empty string
   // clears it (matches call_disclosure's blank-means-revert convention).
-  logo_url: z.string().trim().max(2000).optional().nullable(),
+  // Restricted to http(s) with no quote/angle-bracket/whitespace characters:
+  // emailTemplates.ts interpolates this into an `<img src="...">` attribute,
+  // so an unrestricted string is an HTML-attribute-injection vector in every
+  // email the tenant sends (Copilot review, PR #452; emailTemplates.ts also
+  // HTML-escapes it as defense-in-depth).
+  logo_url: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === '' || /^https?:\/\/[^\s"'<>]+$/.test(v), {
+      message:
+        'Logo URL must be a plain http(s) URL with no spaces or quote/angle-bracket characters',
+    })
+    .optional()
+    .nullable(),
 });
 
 export const CreateTemplateSchema = z.object({

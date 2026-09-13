@@ -458,6 +458,36 @@ describe('POST /tenants/:id/update-config → real DB', () => {
       const row = await setup.query('SELECT logo_url FROM tenants WHERE tenant_id = $1', [id]);
       expect(row.rows[0].logo_url).toBeNull();
     });
+
+    it('SAD: a logo_url with an injection-shaped character is rejected 400, row untouched', async () => {
+      // WHY: emailTemplates.ts interpolates logoUrl into `<img src="...">`.
+      // A quote or angle bracket in the value would break out of the
+      // attribute in every email this tenant sends (Copilot review, PR
+      // #452) — reject it at the write boundary rather than trust the
+      // render-time escaping alone.
+      const id = await freshTenant('Logo Injection');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tenants/${id}/update-config`,
+        headers: hdr(id),
+        payload: { logo_url: 'https://example.com/logo.png" onerror="alert(1)' },
+      });
+      expect(res.statusCode).toBe(400);
+
+      const row = await setup.query('SELECT logo_url FROM tenants WHERE tenant_id = $1', [id]);
+      expect(row.rows[0].logo_url).toBeNull();
+    });
+
+    it('SAD: a non-http(s) logo_url (e.g. javascript:) is rejected 400', async () => {
+      const id = await freshTenant('Logo Scheme');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/tenants/${id}/update-config`,
+        headers: hdr(id),
+        payload: { logo_url: 'javascript:alert(1)' },
+      });
+      expect(res.statusCode).toBe(400);
+    });
   });
 });
 

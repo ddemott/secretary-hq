@@ -42,7 +42,7 @@ export function EmailBrandingCard({
           isLoading={saving}
           disabled={logoUrl.trim() === savedLogoUrl.trim()}
         >
-          Save
+          Save logo
         </Button>
       </div>
     </Card>
