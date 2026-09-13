@@ -13,6 +13,8 @@ import {
   createResource,
   createCustomer,
   createAppointment,
+  createService,
+  assignEmployeeToService,
   beginTestTransaction,
   rollbackTestTransaction,
   skipIfDbDown,
@@ -180,6 +182,7 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
   let resourceId: string;
   let employeeId: string;
   let dbAvailable = false;
+  beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
 
   beforeAll(async () => {
     try {
@@ -324,6 +327,139 @@ describe('Fix #32: check_availability_with_tz with employee_schedule', () => {
 
     expect(result.rows[0].tenant_timezone).toBe('America/Chicago');
     expect(result.rows[0].local_start).toContain('10:00');
+  });
+
+  it("HAPPY (20260913): available during the morning half of a night shift (yesterday's row)", async () => {
+    // WHO: caller asking about 2:00 AM, an employee scheduled 22:00->06:00
+    //      the evening BEFORE (row dated 2030-08-19).
+    // WHAT: check_availability_with_tz must find yesterday's wrapping row
+    //       and say available=true — before this fix it only ever looked
+    //       for a row dated the SAME day as the request.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-08-19', '22:00', '06:00');
+
+    const result = await client.query(
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-08-20T02:00:00-05:00'::TIMESTAMPTZ, '2030-08-20T02:30:00-05:00'::TIMESTAMPTZ)",
+      [tenantId, resourceId]
+    );
+
+    expect(result.rows[0].available).toBe(true);
+  });
+
+  it("SAD (20260913): a day shift dated yesterday still never covers today's early morning", async () => {
+    // Pins the boundary: only a genuine wrapping shift's tail reaches
+    // tomorrow — a plain day shift dated yesterday still refuses.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2030-08-21', '08:00', '17:00');
+
+    const result = await client.query(
+      "SELECT * FROM check_availability_with_tz($1, $2, '2030-08-22T02:00:00-05:00'::TIMESTAMPTZ, '2030-08-22T02:30:00-05:00'::TIMESTAMPTZ)",
+      [tenantId, resourceId]
+    );
+
+    expect(result.rows[0].available).toBe(false);
+  });
+});
+
+describe('Fix (20260913): check_coverage_gaps night-shift awareness', () => {
+  let client: Client;
+  let tenantId: string;
+  let serviceId: string;
+  let employeeId: string;
+  let dbAvailable = false;
+  beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
+
+  beforeAll(async () => {
+    try {
+      client = await getRootClient();
+      tenantId = await createTenant(client, 'Coverage Gaps Co', 'auto-repair', 'UTC');
+      serviceId = await createService(client, tenantId, 'Overnight Service', 30);
+      employeeId = await createEmployee(client, tenantId, 'Night Shift Nadia');
+      await assignEmployeeToService(client, tenantId, serviceId, employeeId);
+      dbAvailable = true;
+    } catch (err) {
+      console.warn('[coverage-gaps night-shift] DB not available:', err);
+    }
+  });
+
+  afterAll(async () => {
+    if (dbAvailable && client) await client.end();
+  });
+
+  beforeEach(async () => {
+    if (dbAvailable) await beginTestTransaction(client);
+  });
+
+  afterEach(async () => {
+    if (dbAvailable) await rollbackTestTransaction(client);
+  });
+
+  it('HAPPY: a night shift (22:00->06:00) reads as covered on BOTH sides of midnight', async () => {
+    // WHO: the dashboard coverage bars / Setup Wizard dry-run
+    // WHAT: an employee_schedule row dated 2027-09-01, 22:00->06:00, must
+    //       show hours 22-23 covered on 2027-09-01 AND hours 0-5 covered on
+    //       2027-09-02 — the pre-fix version showed ALL of it as a gap:
+    //       even the same-day evening hours read as uncovered (naive
+    //       start<=hr<end comparison doesn't know end<start means "wraps",
+    //       not "backwards"), and the morning hours were never checked
+    //       against yesterday's row at all.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2027-09-01', '22:00', '06:00');
+
+    const result = await client.query(
+      `SELECT check_date, gap_hours, covered_hours FROM check_coverage_gaps($1, '2027-09-01'::date, '2027-09-02'::date) ORDER BY check_date`,
+      [tenantId]
+    );
+
+    expect(result.rows).toHaveLength(2);
+    const day1 = result.rows.find((r) => r.check_date.toISOString().startsWith('2027-09-01'));
+    const day2 = result.rows.find((r) => r.check_date.toISOString().startsWith('2027-09-02'));
+    expect(day1.gap_hours).toEqual([]);
+    expect(day1.covered_hours).toEqual([22, 23]);
+    expect(day2.gap_hours).toEqual([]);
+    expect(day2.covered_hours).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('SAD: hour 23 of a plain DAY shift is still covered (no regression from the night-shift fix)', async () => {
+    // Pins the boundary the fix itself almost broke: framing each hour as
+    // a synthetic hr:00->hr+1:00 slot and running it through
+    // shift_row_covers_booking() makes hour 23's synthetic slot wrap into
+    // the next day, and that function's DAY-shift branch treats ANY
+    // wrapping slot as never covered — which would have shown hour 23 as
+    // a gap for every ordinary late-closing shift. Caught before shipping;
+    // pinned here so it can't come back.
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2027-09-03', '08:00', '23:59');
+
+    const result = await client.query(
+      `SELECT check_date, gap_hours, covered_hours FROM check_coverage_gaps($1, '2027-09-03'::date, '2027-09-03'::date)`,
+      [tenantId]
+    );
+
+    expect(result.rows[0].gap_hours).toEqual([]);
+    expect(result.rows[0].covered_hours).toEqual([
+      8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    ]);
+  });
+
+  it('SAD: a day shift dated yesterday does not leak coverage into the morning', async () => {
+    if (!dbAvailable) return;
+
+    await createScheduleEntry(client, tenantId, employeeId, '2027-09-05', '08:00', '17:00');
+
+    const result = await client.query(
+      `SELECT check_date, gap_hours, covered_hours FROM check_coverage_gaps($1, '2027-09-06'::date, '2027-09-06'::date)`,
+      [tenantId]
+    );
+
+    // No shift on the 6th at all → nothing open, nothing covered, nothing
+    // gapped (an unstaffed hour is only a "gap" relative to open_hours).
+    expect(result.rows[0].covered_hours).toEqual([]);
+    expect(result.rows[0].gap_hours).toEqual([]);
   });
 });
 
