@@ -395,8 +395,25 @@ describe('resolveBranchRef', () => {
   // would pass even if the real git command line were malformed.
   it('HAPPY: returns the branch name unchanged when a local ref exists', () => {
     // WHO: a normal local clone / a push-to-main CI run, where `main` is a
-    //      real local branch
-    expect(resolveBranchRef('main')).toBe('main');
+    //      real local branch. Built in its own temp repo, deliberately NOT
+    //      asserted against the ambient repo running this test suite —
+    //      that's exactly the assumption that broke this test in CI on its
+    //      first version (the CI checkout has no local `main`, which is the
+    //      bug being guarded against, not a property this test may lean on).
+    const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
+    const originalCwd = process.cwd();
+    try {
+      execSync('git init -q -b main .', { cwd: dir });
+      execSync('git config user.email test@example.com', { cwd: dir });
+      execSync('git config user.name test', { cwd: dir });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir });
+
+      process.chdir(dir);
+      expect(resolveBranchRef('main')).toBe('main');
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('SAD: falls back to origin/<branch> when no local ref exists', () => {
