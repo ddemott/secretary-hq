@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-05 for filesystem/package facts (32 top-level route modules, 192 migrations, 26 defined agent tools in `tools.ts`, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5). Test-pass counts below remain the 2026-08-14 full-suite snapshot until re-run.
+**Last verified:** 2026-09-13 for filesystem/package facts (29 top-level route modules, 202 migrations, 27 defined agent tools in `tools.ts`, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5) — the 2026-09-05 pass had drifted (32/184-192/26 were wrong; see CLAUDE.md's Project Status for current test counts). Test-pass counts below remain the 2026-08-14 full-suite snapshot until re-run.
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -45,8 +45,8 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 26 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (12 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
-- **API**: Fastify (32 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 192 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)
+- **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
+- **DB**: Postgres + pgvector on Supabase, 202 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -56,9 +56,9 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 ```
 /
 ├── src/                          Fastify backend (Node)
-│   ├── index.ts                  Entry — registers 32 top-level route modules + `agentTools/` dir (~420 lines)
+│   ├── index.ts                  Entry — registers 29 top-level route modules + `agentTools/` dir (~420 lines)
 │   ├── middleware.ts             withHandler, tenantMiddleware, registerJwtAuthHook, generateToken, AppError, logEvent
-│   ├── routes/                   32 route modules + routeHelpers.ts
+│   ├── routes/                   29 route modules + routeHelpers.ts
 │   ├── services/                 flat files (calendar sync, OAuth, name/token/SMS utilities) + communications/ (Telnyx-only SMS + delivery webhooks), reminders/, tenants/, usage/ subdirs
 │   └── database/                 getPool() singleton + createWithTenantClient(pool) factory + DatabaseService adapter
 ├── dashboard/                    Next.js 16 App Router
@@ -70,7 +70,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
 │   └── 92 Vitest test files      React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               184 SQL migrations
+│   ├── migrations/               202 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts
@@ -122,7 +122,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
                                 ▼
                     ┌─────────────────────┐
                     │  Fastify Backend    │  secretary-hq-production.up.railway.app
-                    │  32 route modules   │  Railway (Nixpacks, Node 22)
+                    │  29 route modules   │  Railway (Nixpacks, Node 22)
                     └──────────┬──────────┘
                                │
           ┌────────────────────┼─────────────────────┐
@@ -325,22 +325,22 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 - **`isResolved()` is the goodbye gate.** `finish_call` refuses to close the call while any selected node is unresolved. **This gate replaced book-first sequencing**: a stated goal cannot be forgotten because the call cannot END on it. Callers may answer out of order, in any order.
 - **The model has three jobs:** `set_purpose` (choose trees off a menu), `record_answer` (fill anything it hears), and call the action tool when the checklist says `[ACTION NOW]`. Plus `answer_question` (RAG) at any moment.
 
-**Presets decide what a call CAN do (added 2026-08-12/13, ROADMAP Steps 7–9).** `tenants.checklist_preset_id` + `tenants.checklist_overrides` → `deriveChecklistRuntimeConfig` → `/agent-tools/tenant-config` (`checklist_runtime_config`) → `ChecklistAgent({ runtimeConfig })`. Five presets: `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk` (shared front-desk tree set), `owner_for_hire_front_desk`, which adds `job` for solo professionals whose line takes work offers, and `law_firm_front_desk` (2026-08-14), which adds `case_intake` — the only tree whose intake ends in a human take-or-decline decision rather than a booking. **`ChecklistOverrides` can only SUBTRACT** (`disabled_conversation_blocks`, `booking_mode`, `message_mode`, `optional_node_ids`, `required_node_ids`) — there is no ADD verb, so **a tree missing from the preset is unreachable by that tenant no matter what the model asks for.** That is not theoretical: `job` sat in `forbidden_trees` on all three original presets, and two recruiter calls on 2026-08-13 to a line advertising the owner for hire wrote zero `job_inquiries` rows (`CALL1.md` / `CALL2.md`). `presetCatalog.test.ts` now fails CI on any orphaned platform tree; `fix_computer` is the single declared exception.
+**Presets decide what a call CAN do (added 2026-08-12/13, ROADMAP Steps 7–9).** `tenants.checklist_preset_id` + `tenants.checklist_overrides` → `deriveChecklistRuntimeConfig` → `/agent-tools/tenant-config` (`checklist_runtime_config`) → `ChecklistAgent({ runtimeConfig })`. **33 presets as of #388 (2026-08-31) — this doc said "Five" for two weeks after that shipped.** The original 5: `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk` (shared front-desk tree set), `owner_for_hire_front_desk`, which adds `job` for solo professionals whose line takes work offers, and `law_firm_front_desk` (2026-08-14), which adds `case_intake` — the only tree whose intake ends in a human take-or-decline decision rather than a booking. Plus **28 more** from `agent/src/checklist/verticalIntakeTrees.ts` (`VERTICAL_INTAKE_PRESETS`) — a dedicated front-desk preset for each of 28 more business verticals, each pairing with its own slot-filling intake tree (30 total new trees; auto_shop/salon reuse their original preset instead of getting a second one). `shared/checklistPresetDerivation.ts`'s `CHECKLIST_PRESET_IDS` is the runtime-checked full id list; `presetCatalogConstraint.test.ts` fails CI if it drifts from the `tenants.checklist_preset_id` CHECK constraint or `PRESET_LIBRARY`. **`ChecklistOverrides` can only SUBTRACT** (`disabled_conversation_blocks`, `booking_mode`, `message_mode`, `optional_node_ids`, `required_node_ids`) — there is no ADD verb, so **a tree missing from the preset is unreachable by that tenant no matter what the model asks for.** That is not theoretical: `job` sat in `forbidden_trees` on all three original presets, and two recruiter calls on 2026-08-13 to a line advertising the owner for hire wrote zero `job_inquiries` rows (`CALL1.md` / `CALL2.md`). `presetCatalog.test.ts` now fails CI on any orphaned platform tree; `fix_computer` is the single declared exception.
 
-**Consequence for anyone changing call behaviour:** a tenant's `system_prompt` is **never passed to the model** on a live call — `ChecklistAgent` receives a one-line persona. Editing `src/services/scripts/blocks.ts` or reinstalling a tenant script changes nothing. Behaviour changes go in `agent/src/checklist/trees.ts`, and whether a tenant can reach them goes in the preset. Full design: `docs/QUESTION_TREE_ARCHITECTURE.md`.
+**Consequence for anyone changing call behaviour:** a tenant's `system_prompt` is **never passed to the model** on a live call — `ChecklistAgent` receives a one-line persona. Editing `src/services/scripts/blocks.ts` or reinstalling a tenant script changes nothing. Behaviour changes go in `agent/src/checklist/trees.ts`, and whether a tenant can reach them goes in the preset. Full design: `docs/voice/QUESTION_TREE_ARCHITECTURE.md`.
 
 ---
 
 ## 7. Voice AI Tools Catalog
 
-`agent/src/tools.ts` defines **26** real tools, implemented as POST routes under `src/routes/agentTools/` (a DIRECTORY since 2026-07-11 — split from a single 2,517-line file).
+`agent/src/tools.ts` defines **27** real tools (this doc undercounted it as 26 for weeks — missing `capture_case_inquiry`, the `case_intake` tree's action tool, added 2026-08-14 alongside the `law_firm_front_desk` preset), implemented as POST routes under `src/routes/agentTools/` (a DIRECTORY since 2026-07-11 — split from a single 2,517-line file).
 
-**But defining a tool does not put it in front of the model.** Under question trees, `selectedTools()` (`agent/src/checklist/checklistTools.ts`) rebuilds the toolset from the currently selected trees, and presents **12 base tools**, plus **3 identity tools whenever the `identity` tree is selected** (which is true on goal-bearing calls, so most real calls see 15):
+**But defining a tool does not put it in front of the model.** Under question trees, `selectedTools()` (`agent/src/checklist/checklistTools.ts`) rebuilds the toolset from the currently selected trees, and presents **13 base tools**, plus **3 identity tools whenever the `identity` tree is selected** (which is true on goal-bearing calls, so most real calls see 16):
 
 | Group | Tools |
 |---|---|
 | Base (always) | `set_purpose`, `record_answer`, `finish_call`, `answer_question` (wraps `get_company_policy_answer` — RAG under another name) |
-| Action nodes (per selected tree) | `book_with_scheduling`, `take_message`, `capture_job_inquiry`, `cancel_appointment`, `reschedule_appointment` |
+| Action nodes (per selected tree) | `book_with_scheduling`, `take_message`, `capture_job_inquiry`, `cancel_appointment`, `reschedule_appointment`, `capture_case_inquiry` |
 | Passthrough (per selected tree) | `get_available_slots`, `get_service_catalog`, `get_my_appointments` |
 | Identity add-ons (when `identity` is selected) | `get_customer_context`, `send_verification_code`, `verify_phone_code` |
 
@@ -417,9 +417,9 @@ Releases the Telnyx number via the API and clears `telnyx_phone_number_id`, `inb
 
 ## 9. Backend API (Fastify)
 
-### 9.1 Route modules (32 + `agentTools/` dir)
+### 9.1 Route modules (29 + `agentTools/` dir)
 
-32 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
+29 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
 
 ### 9.2 Middleware layer (`src/middleware.ts`)
 

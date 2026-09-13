@@ -250,7 +250,7 @@ export function runAllChecks(content: string, repoRoot: string): Drift[] {
   return [
     ...checkCount({
       content: currentState,
-      pattern: /(\d+) route modules?/g,
+      pattern: /(\d+) (?:top-level )?route modules?/g,
       actualCount: routeCount,
       label: 'route modules',
       checkName: 'route-count',

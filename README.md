@@ -38,7 +38,7 @@ Below is a full list of its features:
 - Quick-book panel for walk-ins
 - Coverage gap indicators across scheduler, services list, skill map, and setup wizard
 - 8 UI themes: light, dark, midnight, nord, sunset, forest, high-contrast, solarized
-- Per-business vocabulary: "Bays / Technicians" for tire shops, "Chairs / Stylists" for salons, and so on across 29 business types
+- Per-business vocabulary: "Bays / Technicians" for tire shops, "Chairs / Stylists" for salons, and so on across 31 business types
 
 **CRM & Customer Records**
 
@@ -92,7 +92,7 @@ Below is a full list of its features:
 | **Dashboard** | Live at `https://www.secretaryhq.com` (Railway origin `dashboard-production-cee3.up.railway.app`); set `DASHBOARD_URL` on backend Railway service for Stripe/OAuth redirects                                                                                                                                                                                          |
 | **Voice AI**  | Live — Telnyx → LiveKit Cloud → Deepgram Nova-3 (STT) + OpenAI GPT-4.1-mini (LLM) + Deepgram Aura (TTS). Call flow = question trees (`agent/src/checklist/`). PSTN inbound reaches the agent (confirmed 2026-06-30); the booking + transfer legs still need a live different-carrier call — see `docs/planning/TODO.md` (P0 Voice) + `docs/operations/RUNBOOK.md` §7. |
 | **Phone**     | `+1 630-822-9086` (current). Previous `+1 630-866-1960` (purchased 2026-06-02) dead. Test verification number `+1 630-822-9086`. Old `+1-630-937-9478` dead.                                                                                                                                                                                                          |
-| **Tests**     | Root `npm test` green: 3029 passing. Dashboard + agent suites green. See `docs/planning/TEST_COVERAGE.md` for exact output.                                                                                                                                                                                                                                           |
+| **Tests**     | Root `npm test` green: 3,144 passing. Dashboard + agent suites green. See `docs/planning/TEST_COVERAGE.md` for exact output.                                                                                                                                                                                                                                          |
 | **E2E**       | 40 committed Playwright spec files                                                                                                                                                                                                                                                                                                                                    |
 
 **Quick status commands** (see `scripts/simulate.sh`):
@@ -135,25 +135,25 @@ Telnyx (carrier + SIP trunk) --> LiveKit Cloud (SIP ingress)
                                 — OpenAI GPT-4.1-mini (LLM)
                                 — Deepgram Aura (TTS, streaming)
                                           |
-                                Fastify backend (32 route modules + agentTools dir; agent calls /agent-tools/*)
+                                Fastify backend (29 route modules + agentTools dir; agent calls /agent-tools/*)
                                           |
                                 PostgreSQL + pgvector (RLS multi-tenancy)
                                           |
                                 Next.js 16 Dashboard
 ```
 
-| Layer             | Tech                                                                                                                                                                                                                                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Voice**         | Telnyx (carrier + SIP trunk), LiveKit Cloud (orchestrator), Deepgram Nova-3 (STT), OpenAI GPT-4.1-mini (voice LLM; 4o-mini for summaries/classify), Deepgram Aura (TTS, streaming, per-tenant voice via dashboard AI Persona page; `tts_speed` is inert under Aura)                                      |
-| **Backend**       | Fastify 5.x, 32 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                                  |
-| **Frontend**      | Next.js 16 (App Router), React 19, Tailwind CSS 3.4, TypeScript, Lucide icons                                                                                                                                                                                                                            |
-| **Database**      | PostgreSQL + pgvector, 192 migrations, Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `CODING_STANDARDS.md`)                                                       |
-| **Agent runtime** | LiveKit Agents (Node) on Railway as `secretary-hq-agent`. Call flow = **question trees** (`agent/src/checklist/`): host-owned checklist, purpose-selected trees, goodbye gate. 26 tools are defined in `agent/src/tools.ts`; the live question-tree path offers a subset — see `docs/ARCHITECTURE.md` §7 |
-| **Async**         | Inline in Fastify routes (post-call summaries, calendar sync, SMS)                                                                                                                                                                                                                                       |
-| **Billing**       | Stripe Checkout route + subscription gate exist in code; pricing is provisional and the webhook endpoint is not yet registered                                                                                                                                                                           |
-| **Security**      | @fastify/helmet, @fastify/rate-limit, CORS restriction, bcrypt, FORCE RLS                                                                                                                                                                                                                                |
+| Layer             | Tech                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Voice**         | Telnyx (carrier + SIP trunk), LiveKit Cloud (orchestrator), Deepgram Nova-3 (STT), OpenAI GPT-4.1-mini (voice LLM; 4o-mini for summaries/classify), Deepgram Aura (TTS, streaming, per-tenant voice via dashboard AI Persona page; `tts_speed` is inert under Aura)                                                   |
+| **Backend**       | Fastify 5.x, 29 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware/fastify-middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                            |
+| **Frontend**      | Next.js 16 (App Router), React 19, Tailwind CSS 3.4, TypeScript, Lucide icons                                                                                                                                                                                                                                         |
+| **Database**      | PostgreSQL + pgvector, 202 migrations, Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)                                                      |
+| **Agent runtime** | LiveKit Agents (Node) on Railway as `secretary-hq-agent`. Call flow = **question trees** (`agent/src/checklist/`): host-owned checklist, purpose-selected trees, goodbye gate. 27 tools are defined in `agent/src/tools.ts`; the live question-tree path offers a subset — see `docs/architecture/ARCHITECTURE.md` §7 |
+| **Async**         | Inline in Fastify routes (post-call summaries, calendar sync, SMS)                                                                                                                                                                                                                                                    |
+| **Billing**       | Stripe Checkout route + subscription gate exist in code; pricing is provisional and the webhook endpoint is not yet registered                                                                                                                                                                                        |
+| **Security**      | @fastify/helmet, @fastify/rate-limit, CORS restriction, bcrypt, FORCE RLS                                                                                                                                                                                                                                             |
 
-See `docs/ARCHITECTURE.md` for the full technical deep-dive.
+See `docs/architecture/ARCHITECTURE.md` for the full technical deep-dive.
 
 ---
 
@@ -215,9 +215,9 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 ```
 /
 ├── src/                    Fastify backend
-│   ├── index.ts            Entry point (32 top-level route registrations + agentTools dir)
-│   ├── middleware.ts        withHandler, tenant middleware, structured logging
-│   ├── routes/             32 route modules + shared helpers (routeHelpers.ts, versionHistoryHelpers.ts, crmRouteScaffold.ts)
+│   ├── index.ts            Entry point (29 top-level route registrations + agentTools dir)
+│   ├── middleware/          withHandler, tenant middleware, structured logging (fastify-middleware.ts)
+│   ├── routes/             29 route modules + shared helpers (routeHelpers.ts, versionHistoryHelpers.ts, crmRouteScaffold.ts)
 │   ├── services/           Square CRM sync, calendar sync, communications (Telnyx-only for SMS + delivery receipts), reminders, token management, telnyxNumbers + telnyxSms (Telnyx is now the sole provider)
 │   └── database/           DatabaseService interface + Postgres implementation
 ├── agent/                  LiveKit Agents worker (Node) — Deepgram STT + OpenAI LLM + Deepgram Aura TTS; call flow in agent/src/checklist/
@@ -227,7 +227,7 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 │   ├── lib/                API client, hooks, types, SessionContext
 │   └── e2e/                Playwright tests
 ├── supabase/
-│   ├── migrations/         192 SQL migrations
+│   ├── migrations/         202 SQL migrations
 │   └── seed.sql            Platform admin + Bella's Hair Studio demo tenant
 ├── shared/                 Cross-runtime code (embeddings, scheduling, voice CRM types + prompt formatter)
 ├── scripts/                Automation (bootstrap, setup-db, seed-db, deploy, QA)
@@ -249,7 +249,7 @@ cd dashboard && npx playwright test   # E2E (40 committed spec files)
 
 | Area                              | Tests |
 | --------------------------------- | ----- |
-| Backend routes (32 modules)       | ~700  |
+| Backend routes (29 modules)       | ~700  |
 | Backend services                  | ~570  |
 | Middleware, scheduling, constants | ~500  |
 | Dashboard components + views      | ~747  |
@@ -307,7 +307,7 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 | Feature                | Details                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------- |
-| 29 business types      | 6 categories with per-type vocabulary                                                 |
+| 31 business types      | 6 categories with per-type vocabulary                                                 |
 | Scheduler              | Staff swimlanes, resource columns, list view, calendar, quick book                    |
 | Skill relationship map | Interactive 3-column employee > service > resource view                               |
 | 7-step setup wizard    | Repeatable, re-enterable, live coverage feedback, phone activation                    |
@@ -323,7 +323,7 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 ## Documentation
 
-`docs/README.md` is the in-folder index. Full inventory below (verified 2026-07-04).
+`docs/README.md` is the in-folder index. Full inventory below (re-verified 2026-09-13 — the 2026-07-04 pass had gone stale: `docs/` was reorganized into subdirectories by PR #401, 2026-09-04, and most links below still pointed at the old flat paths for over a week).
 
 **Root**
 
@@ -352,41 +352,41 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 | `docs/planning/TODO.md`          | The one backlog — all open work, prioritized (GAPS + IMPROVEMENT_IDEAS + go-live folded in 2026-07-05) |
 | `docs/planning/RESOLVED.md`      | Completed phases + historical bug tracker + session-notes archive (incl. the folded-doc snapshots)     |
 | `docs/planning/TEST_COVERAGE.md` | Test coverage status and gaps                                                                          |
-| `docs/TEST_DB_AUDIT.md`          | Mocked-DB vs real-SQL coverage map                                                                     |
+| `docs/planning/TEST_DB_AUDIT.md` | Mocked-DB vs real-SQL coverage map                                                                     |
 
 **Voice AI**
 
-| Doc                                  | Purpose                                                             |
-| ------------------------------------ | ------------------------------------------------------------------- |
-| `docs/VOICE_AGENT_PLAYBOOK.md`       | Authoritative rulebook for building customer voice scripts          |
-| `docs/VOICE_DEADAIR_RESEARCH.md`     | Dead-air / latency research findings (mostly shipped)               |
-| `docs/AIASSISTANT_PERSONA_DRAFT.md`  | Thinking Hammer persona + call-flow draft                           |
-| `docs/aiassistant-knowledge-base.md` | Source content for the Thinking Hammer AI assistant's KB            |
-| `docs/FRAMEWORK_MIGRATIONS.md`       | Voice-stack migration history (Vapi→LiveKit, Grok→OpenAI TTS, etc.) |
+| Doc                                        | Purpose                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------- |
+| `docs/voice/VOICE_AGENT_PLAYBOOK.md`       | Authoritative rulebook for building customer voice scripts          |
+| `docs/voice/VOICE_DEADAIR_RESEARCH.md`     | Dead-air / latency research findings (mostly shipped)               |
+| `docs/voice/AIASSISTANT_PERSONA_DRAFT.md`  | Thinking Hammer persona + call-flow draft                           |
+| `docs/voice/aiassistant-knowledge-base.md` | Source content for the Thinking Hammer AI assistant's KB            |
+| `docs/voice/FRAMEWORK_MIGRATIONS.md`       | Voice-stack migration history (Vapi→LiveKit, Grok→OpenAI TTS, etc.) |
 
 **Onboarding & operations**
 
-| Doc                       | Purpose                                               |
-| ------------------------- | ----------------------------------------------------- |
-| `docs/BETA_ONBOARDING.md` | First-day / first-week guide for new beta customers   |
-| `docs/OWNER_GUIDE.md`     | Plain-language guide to each dashboard tab for owners |
-| `docs/TICKET_SUPPORT.md`  | Telnyx support ticket status + escalation             |
+| Doc                                  | Purpose                                               |
+| ------------------------------------ | ----------------------------------------------------- |
+| `docs/operations/BETA_ONBOARDING.md` | First-day / first-week guide for new beta customers   |
+| `docs/operations/OWNER_GUIDE.md`     | Plain-language guide to each dashboard tab for owners |
+| `docs/operations/TICKET_SUPPORT.md`  | Telnyx support ticket status + escalation             |
 
 **Product & strategy**
 
-| Doc                             | Purpose                                         |
-| ------------------------------- | ----------------------------------------------- |
-| `docs/MISSION_STATEMENT.md`     | Product mission and goals                       |
-| `docs/STRATEGY.md`              | Product + competitive strategy (positioning)    |
-| `docs/COMPETITOR_WEAKPOINTS.md` | Competitor attack map                           |
-| `docs/SECRETARYHQ_FEATURES.md`  | Organized capability outline with status legend |
+| Doc                                     | Purpose                                         |
+| --------------------------------------- | ----------------------------------------------- |
+| `docs/product/MISSION_STATEMENT.md`     | Product mission and goals                       |
+| `docs/product/STRATEGY.md`              | Product + competitive strategy (positioning)    |
+| `docs/product/COMPETITOR_WEAKPOINTS.md` | Competitor attack map                           |
+| `docs/product/SECRETARYHQ_FEATURES.md`  | Organized capability outline with status legend |
 
 **Design**
 
-| Doc                      | Purpose                                           |
-| ------------------------ | ------------------------------------------------- |
-| `docs/DESIGN_HANDOFF.md` | Visual brand system + design decisions (frozen)   |
-| `docs/UI_UX_DESIGN.md`   | Living design brief — interaction + UX principles |
+| Doc                             | Purpose                                           |
+| ------------------------------- | ------------------------------------------------- |
+| `docs/design/DESIGN_HANDOFF.md` | Visual brand system + design decisions (frozen)   |
+| `docs/design/UI_UX_DESIGN.md`   | Living design brief — interaction + UX principles |
 
 **Workflow & standards**
 
