@@ -37,6 +37,11 @@ import {
   createResource,
   createCustomerFull,
   createAppointment,
+  createEmployee,
+  createScheduleEntry,
+  createService,
+  assignEmployeeToService,
+  assignResourceToService,
   skipIfDbDown,
 } from '../utils';
 import { createWithTenantClient } from '../../src/database';
@@ -131,7 +136,6 @@ beforeAll(async () => {
 
     dbAvailable = true;
   } catch (err) {
-     
     console.warn('[agentToolsCancelReschedule.realdb.test] DB not available, skipping', err);
   }
 });
@@ -269,5 +273,145 @@ describe('reschedule-appointment → real DB', () => {
     expect(res.json().success).toBe(false);
     expect(String(res.json().error).toLowerCase()).toContain('booked');
     expect((await apptRow(a))!.start_time.toISOString()).toBe(aFrom);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// reschedule_appointment_atomic() (20260913020000) — the raw UPDATE this
+// route used to run had NO re-validation against blackout dates, shift
+// coverage, or the STRICT skill-map, unlike the booking RPCs. This tenant is
+// created with the default UTC timezone (createTenant with no tz arg,
+// tenants.timezone DEFAULT 'UTC'), so the literal Z timestamps below ARE the
+// tenant-local wall clock — no offset arithmetic needed. Dates are fixed,
+// far-future (2027), and distinct per test so they never collide with the
+// hoursFromNow(...)-based fixtures above on the shared `resourceId`.
+// ─────────────────────────────────────────────────────────────────────────
+describe('reschedule-appointment → business-rule guards (real DB)', () => {
+  it('SAD: rescheduling onto a blackout date is refused (BUSINESS_CLOSED)', async () => {
+    const blackoutDate = '2027-04-12';
+    await setup.query(
+      `INSERT INTO blackout_dates (tenant_id, blackout_date, reason) VALUES ($1, $2::date, 'Test holiday')`,
+      [tenantId, blackoutDate]
+    );
+    try {
+      const originalFrom = hoursFromNow(120);
+      const id = await ownerAppt(originalFrom, hoursFromNow(121));
+      const res = await post('/agent-tools/reschedule-appointment', {
+        tenant_id: tenantId,
+        phone: OWNER_PHONE_RAW,
+        appointment_id: id,
+        new_start_time: `${blackoutDate}T10:00:00.000Z`,
+        new_end_time: `${blackoutDate}T11:00:00.000Z`,
+      });
+      expect(res.json().success).toBe(false);
+      expect(String(res.json().error)).toMatch(/closed/i);
+      expect((await apptRow(id))!.start_time.toISOString()).toBe(originalFrom);
+    } finally {
+      await setup.query(
+        `DELETE FROM blackout_dates WHERE tenant_id = $1 AND blackout_date = $2::date`,
+        [tenantId, blackoutDate]
+      );
+    }
+  });
+
+  it('SAD: rescheduling an employee-assigned appointment onto an unstaffed time is refused (EMPLOYEE_NOT_SCHEDULED)', async () => {
+    const employeeId = await createEmployee(setup, tenantId, 'Unscheduled Eddie');
+    const originalFrom = hoursFromNow(130);
+    const id = await createAppointment(
+      setup,
+      tenantId,
+      resourceId,
+      ownerCustomerId,
+      originalFrom,
+      hoursFromNow(131),
+      'owner appt with employee',
+      undefined,
+      employeeId
+    );
+    // Deliberately NO employee_schedule row on 2027-04-15 — nobody is on shift.
+    const res = await post('/agent-tools/reschedule-appointment', {
+      tenant_id: tenantId,
+      phone: OWNER_PHONE_RAW,
+      appointment_id: id,
+      new_start_time: '2027-04-15T10:00:00.000Z',
+      new_end_time: '2027-04-15T11:00:00.000Z',
+    });
+    expect(res.json().success).toBe(false);
+    expect(String(res.json().error)).toMatch(/not on shift/i);
+    expect((await apptRow(id))!.start_time.toISOString()).toBe(originalFrom);
+  });
+
+  it('HAPPY: rescheduling into the morning half of a night shift succeeds (night-shift aware)', async () => {
+    // WHO: an owner-assigned employee who works 22:00->06:00, schedule row
+    //      dated 2027-04-19 (the evening it starts).
+    // WHAT: moving the appointment to 2027-04-20 02:00-02:30 — the wrapped
+    //       tail of the 04-19 shift — must succeed via
+    //       shift_row_covers_booking(), the same fix already proven for
+    //       get_available_slots and book_appointment_atomic.
+    const employeeId = await createEmployee(setup, tenantId, 'Night Shift Nadia');
+    await createScheduleEntry(setup, tenantId, employeeId, '2027-04-19', '22:00', '06:00');
+    const originalFrom = hoursFromNow(140);
+    const id = await createAppointment(
+      setup,
+      tenantId,
+      resourceId,
+      ownerCustomerId,
+      originalFrom,
+      hoursFromNow(141),
+      'owner appt, night shift employee',
+      undefined,
+      employeeId
+    );
+    const res = await post('/agent-tools/reschedule-appointment', {
+      tenant_id: tenantId,
+      phone: OWNER_PHONE_RAW,
+      appointment_id: id,
+      new_start_time: '2027-04-20T02:00:00.000Z',
+      new_end_time: '2027-04-20T02:30:00.000Z',
+    });
+    expect(res.json().success).toBe(true);
+    expect((await apptRow(id))!.start_time.toISOString()).toBe('2027-04-20T02:00:00.000Z');
+  });
+
+  it('SAD: rescheduling is refused once the service is unlinked from its resource (NO_SKILLED_RESOURCE)', async () => {
+    const serviceId = await createService(setup, tenantId, 'Guarded Service', 30, 0);
+    const guardedResourceId = await createResource(setup, tenantId, 'Guarded Chair');
+    const employeeId = await createEmployee(setup, tenantId, 'Skill Map Sam');
+    await assignEmployeeToService(setup, tenantId, serviceId, employeeId);
+    await assignResourceToService(setup, tenantId, serviceId, guardedResourceId);
+
+    const originalFrom = hoursFromNow(150);
+    const insertRes = await setup.query<{ appointment_id: string }>(
+      `INSERT INTO appointments (tenant_id, resource_id, customer_id, employee_id, service_id, start_time, end_time, description, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner appt, linked service', 'scheduled')
+       RETURNING appointment_id`,
+      [
+        tenantId,
+        guardedResourceId,
+        ownerCustomerId,
+        employeeId,
+        serviceId,
+        originalFrom,
+        hoursFromNow(151),
+      ]
+    );
+    const id = insertRes.rows[0].appointment_id;
+
+    // The business reconfigures: this resource no longer performs this service.
+    await setup.query(
+      `DELETE FROM service_resource WHERE tenant_id = $1 AND service_id = $2 AND resource_id = $3`,
+      [tenantId, serviceId, guardedResourceId]
+    );
+
+    const res = await post('/agent-tools/reschedule-appointment', {
+      tenant_id: tenantId,
+      phone: OWNER_PHONE_RAW,
+      appointment_id: id,
+      new_start_time: '2027-04-25T10:00:00.000Z',
+      new_end_time: '2027-04-25T10:30:00.000Z',
+    });
+    expect(res.json().success).toBe(false);
+    expect(String(res.json().error)).toMatch(/no longer set up/i);
+    expect((await apptRow(id))!.start_time.toISOString()).toBe(originalFrom);
   });
 });
