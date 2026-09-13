@@ -109,7 +109,12 @@ export default function BillingView() {
         Api.billing
           .status(tenantId)
           .then((s) => setStatus(s as BillingStatus))
-          .catch(() => null);
+          .catch(() =>
+            showToast(
+              'Payment received, but the status refresh failed — reload to see your new plan.',
+              'error'
+            )
+          );
       }
     } else if (result === 'cancel') {
       showToast('Checkout cancelled — no charge was made.', 'info');

@@ -294,6 +294,58 @@ describe('BillingView — usage statements', () => {
   });
 });
 
+describe('BillingView — post-checkout status refetch', () => {
+  function stubLocation(search: string) {
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      configurable: true,
+      value: { ...origLocation, search, pathname: '/dashboard' },
+    });
+  }
+
+  test('HAPPY: ?billing=success refetches status and shows the new plan', async () => {
+    // WHO: tenant owner returning from a successful Stripe checkout
+    // WHAT: the redirect toast fires AND the status refetch lands, so the
+    //   badge reflects the plan they just paid for without a manual reload
+    // WHERE: BillingView's ?billing=success effect
+    stubLocation('?billing=success');
+    mockApi.billing.status
+      .mockResolvedValueOnce({ subscription_status: 'inactive', subscription_plan: null })
+      .mockResolvedValueOnce({ subscription_status: 'active', subscription_plan: 'growth' });
+
+    render(<BillingView />);
+
+    expect(await screen.findByText('Active')).toBeInTheDocument();
+    expect(mockToast).toHaveBeenCalledWith(
+      'Payment successful — your subscription is now active!',
+      'success'
+    );
+  });
+
+  test('SAD: ?billing=success refetch fails — caller is told to reload, not left silent', async () => {
+    // WHO: same tenant owner, but the post-payment refetch itself errors
+    // WHAT: the ORIGINAL code swallowed this with `.catch(() => null)` — the
+    //   caller just paid, sees "Payment successful", and the status badge
+    //   silently stays on the OLD plan with no indication anything is wrong.
+    //   The initial-mount fetch of this exact same endpoint already shows an
+    //   error toast on failure (see the SAD test above); this path must too.
+    // WHERE: BillingView's ?billing=success effect, refetch .catch()
+    stubLocation('?billing=success');
+    mockApi.billing.status
+      .mockResolvedValueOnce({ subscription_status: 'inactive', subscription_plan: null })
+      .mockRejectedValueOnce(new Error('Network error'));
+
+    render(<BillingView />);
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.stringMatching(/reload to see your new plan/i),
+        'error'
+      )
+    );
+  });
+});
+
 describe('BillingView — subdirectory pin', () => {
   test('SetupView imports BillingView from components/billing/', async () => {
     const fs = await import('fs');
