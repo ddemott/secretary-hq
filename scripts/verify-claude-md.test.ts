@@ -6,6 +6,10 @@
  * out — they exercise only the regex + decision logic.
  */
 import { describe, it, expect } from 'vitest';
+import { execSync } from 'child_process';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   checkCount,
   checkPathsExist,
@@ -13,6 +17,7 @@ import {
   collectExpectedUnreachable,
   extractSection,
   stripHistoricalSections,
+  resolveBranchRef,
 } from './verify-claude-md';
 
 describe('checkCount', () => {
@@ -378,5 +383,45 @@ describe('stripHistoricalSections', () => {
     //      flow through the same pipeline — no special-casing
     const md = '## Architecture\nWe have 25 route modules.\n';
     expect(stripHistoricalSections(md)).toBe(md);
+  });
+});
+
+describe('resolveBranchRef', () => {
+  // Real git, deliberately — this is the one exception to the file header's
+  // "no shelling out" rule. The bug this guards (PR #453, 2026-09-13) is a
+  // property of an ACTUAL git checkout shape (a local branch missing while
+  // its remote-tracking ref exists), which mocking `execSync` can't
+  // reproduce: a fake "throws on `main`, succeeds on `origin/main`" mock
+  // would pass even if the real git command line were malformed.
+  it('HAPPY: returns the branch name unchanged when a local ref exists', () => {
+    // WHO: a normal local clone / a push-to-main CI run, where `main` is a
+    //      real local branch
+    expect(resolveBranchRef('main')).toBe('main');
+  });
+
+  it('SAD: falls back to origin/<branch> when no local ref exists', () => {
+    // WHY: a pull_request CI checkout (`actions/checkout`, fetch-depth: 0)
+    //      fetches every branch's history but only checks out the PR's own
+    //      ref locally — `main` itself never becomes a local branch, only
+    //      `origin/main` does. Reproduced here with a real repo: checked out
+    //      on a branch named "feature", with a `refs/remotes/origin/main`
+    //      ref but no local `main` branch — the exact shape `actions/checkout`
+    //      leaves behind, without needing a second real remote repo.
+    const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
+    const originalCwd = process.cwd();
+    try {
+      execSync('git init -q -b feature .', { cwd: dir });
+      execSync('git config user.email test@example.com', { cwd: dir });
+      execSync('git config user.name test', { cwd: dir });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir });
+      const sha = execSync('git rev-parse HEAD', { cwd: dir }).toString().trim();
+      execSync(`git update-ref refs/remotes/origin/main ${sha}`, { cwd: dir });
+
+      process.chdir(dir);
+      expect(resolveBranchRef('main')).toBe('origin/main');
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
