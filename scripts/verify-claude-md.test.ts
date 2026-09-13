@@ -104,6 +104,38 @@ describe('checkCount', () => {
     expect(drifts).toHaveLength(1);
     expect(drifts[0].message).toContain('"7 widgets"');
   });
+
+  it('SAD (regression, PR #454/#455): the real route-count pattern must match "top-level"', () => {
+    // WHO: no one — the check silently never fired. CLAUDE.md said "32
+    //      top-level route modules" in four places while `src/routes/`
+    //      actually held 29; the live pattern was `/(\d+) route modules?/g`,
+    //      which requires the digit immediately before "route module(s)" with
+    //      nothing between them, so "32 top-level route modules" never
+    //      matched at all — checkCount's own "skip silently if no claim
+    //      found" behavior (tested above) made the miss indistinguishable
+    //      from "no claim to check," and `verify:claude-md` reported clean
+    //      for weeks.
+    // WHAT: pins the FIXED pattern (`runAllChecks`'s route-count call site)
+    //       against the exact real-world phrasing, both wrong and right.
+    const wrongCount = checkCount({
+      content: 'Fastify (32 top-level route modules under `src/routes/`).',
+      pattern: /(\d+) (?:top-level )?route modules?/g,
+      actualCount: 29,
+      label: 'route modules',
+      checkName: 'route-count',
+    });
+    expect(wrongCount).toHaveLength(1);
+    expect(wrongCount[0].message).toContain('"32 route modules"');
+
+    const rightCount = checkCount({
+      content: 'Fastify (29 top-level route modules under `src/routes/`).',
+      pattern: /(\d+) (?:top-level )?route modules?/g,
+      actualCount: 29,
+      label: 'route modules',
+      checkName: 'route-count',
+    });
+    expect(rightCount).toEqual([]);
+  });
 });
 
 describe('extractSection', () => {
