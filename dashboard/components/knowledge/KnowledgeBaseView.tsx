@@ -15,6 +15,8 @@ import { Api } from '../../lib/api';
 import { useActiveTenantId } from '../../lib/SessionContext';
 import { useUrlQueryState } from '../../lib/useUrlQueryState';
 import { Badge } from '../ui/Badge';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { useConfirm } from '../../lib/useConfirm';
 import { showToast } from '../ui/Toast';
@@ -49,6 +51,8 @@ export default function KnowledgeBaseView() {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showUnansweredOnly, setShowUnansweredOnly] = useState(false);
+  const [scanUrl, setScanUrl] = useState('');
+  const [scanning, setScanning] = useState(false);
   const [savedAnswers, setSavedAnswers] = useState<
     Map<string, { id: string; answer: string; source?: string }>
   >(new Map());
@@ -155,6 +159,48 @@ export default function KnowledgeBaseView() {
       console.error('Failed to add custom question', err);
       showToast('Failed to save custom question', 'error');
       return false;
+    }
+  }
+
+  async function handleWebsiteScan() {
+    if (!scanUrl || !tenantId) return;
+    setScanning(true);
+    setMessage(null);
+    try {
+      const res = await Api.knowledge.importWebsite(tenantId, scanUrl);
+      if (res?.success && Array.isArray(res.extracted)) {
+        let filled = 0;
+        for (const item of res.extracted) {
+          const q = POLICY_QUESTIONS.find((pq) => pq.id === item.questionId);
+          if (q && item.answer) {
+            await Api.knowledge.add(tenantId, {
+              question: item.question || q.question,
+              answer: item.answer,
+              category: q.category,
+              source: 'website-scan',
+            });
+            filled++;
+          }
+        }
+        await fetchDocs();
+        setMessage({
+          type: 'success',
+          text: filled
+            ? `Scanned your site and saved ${filled} answer${filled === 1 ? '' : 's'}. Review them in Teach Your AI.`
+            : 'Scan completed but no matching answers were found — you can still answer manually.',
+        });
+        setScanUrl('');
+      } else {
+        setMessage({ type: 'error', text: res?.error || 'Could not scan that website.' });
+      }
+    } catch (err) {
+      console.error('Website scan error', err);
+      setMessage({
+        type: 'error',
+        text: 'Could not scan that website. Check the URL and try again.',
+      });
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -356,10 +402,9 @@ export default function KnowledgeBaseView() {
               />
             )}
 
-            {/* Website import as onboarding step (TODO item from list / design).
-                The dedicated scan step is now in the SetupWizard (step 7, right before the questions step 8).
-                This box in the full view can be used post-onboarding to re-scan.
-                See the wizard implementation and docs/TODO.md for details. */}
+            {/* Website re-scan (post-onboarding). The initial scan happens in the
+                SetupWizard (step 7); this lets an owner re-run it later, e.g. after
+                updating their site, without redoing the whole wizard. */}
             <div
               className="mt-4 p-3 border rounded"
               style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-raised)' }}
@@ -367,13 +412,27 @@ export default function KnowledgeBaseView() {
               <div className="text-sm font-medium mb-1">
                 Import policies from your website (beta / optional step)
               </div>
-              <div className="text-xs text-muted mb-2">
+              <div className="text-xs text-muted mb-3">
                 Paste URL → AI extracts answers to your questionnaire. Review & approve to populate
                 KB (reduces manual entry).
               </div>
-              {/* TODO: add <Input> for URL + Button calling Api.knowledge.importWebsite + display results / refresh list */}
-              <div className="text-[10px] text-muted">
-                (UI wiring pending — backend endpoint + helpers + staging table ready)
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://www.yourbusiness.com"
+                  value={scanUrl}
+                  onChange={(e) => setScanUrl(e.target.value)}
+                  disabled={scanning}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleWebsiteScan}
+                  disabled={!scanUrl || scanning}
+                  isLoading={scanning}
+                  variant="primary"
+                >
+                  Scan website
+                </Button>
               </div>
             </div>
 

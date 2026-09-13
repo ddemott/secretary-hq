@@ -20,11 +20,15 @@ vi.mock('../../lib/SessionContext', () => ({
 
 const mockList = vi.fn();
 const mockSuggestions = vi.fn();
+const mockImportWebsite = vi.fn();
+const mockAdd = vi.fn();
 vi.mock('../../lib/api', () => ({
   Api: {
     knowledge: {
       list: (...a: unknown[]) => mockList(...a),
       suggestions: (...a: unknown[]) => mockSuggestions(...a),
+      importWebsite: (...a: unknown[]) => mockImportWebsite(...a),
+      add: (...a: unknown[]) => mockAdd(...a),
     },
   },
 }));
@@ -37,6 +41,7 @@ vi.mock('../../lib/useConfirm', () => ({
   useConfirm: () => ({ confirm: vi.fn(), closeConfirm: vi.fn(), confirmState: { isOpen: false } }),
 }));
 
+import { fireEvent } from '@testing-library/react';
 import KnowledgeBaseView from './KnowledgeBaseView';
 
 // Both questions are in the first category ("Business Hours & Location"), which
@@ -45,8 +50,10 @@ const Q_MANUAL = 'What are your hours of operation?';
 const Q_SCANNED = 'Where are you located?';
 
 beforeEach(() => {
+  mockImportWebsite.mockReset();
+  mockAdd.mockReset().mockResolvedValue({ success: true, tenant_doc_id: 'doc-new' });
   mockSuggestions.mockResolvedValue({ success: true, suggestions: [] });
-  mockList.mockResolvedValue([
+  mockList.mockReset().mockResolvedValue([
     {
       tenant_doc_id: 'doc-manual',
       tenant_id: mockTenantId,
@@ -94,5 +101,63 @@ describe('KnowledgeBaseView prefill + provenance', () => {
     render(<KnowledgeBaseView />);
     await waitFor(() => expect(screen.getByText('From your website')).toBeInTheDocument());
     expect(screen.getByText('Answered')).toBeInTheDocument();
+  });
+});
+
+describe('KnowledgeBaseView website re-scan', () => {
+  // WHO: an owner who already onboarded and wants to re-scan an updated site.
+  // WHAT: the "Import policies from your website" box (previously an unwired
+  //       placeholder) actually calls the scan + saves the extracted answers.
+  // WHEN: 2026-09-13, wiring the TODO left in place since the initial ship.
+  // WHERE: KnowledgeBaseView handleWebsiteScan.
+  // WHY: the box told owners a real feature existed; it did nothing.
+  test('HAPPY: scanning a URL saves matched answers and refreshes the list', async () => {
+    mockImportWebsite.mockResolvedValue({
+      success: true,
+      extracted: [
+        {
+          questionId: 'business-location',
+          question: 'Where are you located?',
+          answer: '456 Oak Ave.',
+        },
+      ],
+    });
+
+    render(<KnowledgeBaseView />);
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    const input = screen.getByPlaceholderText('https://www.yourbusiness.com');
+    fireEvent.change(input, { target: { value: 'https://example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /scan website/i }));
+
+    await waitFor(() =>
+      expect(mockImportWebsite).toHaveBeenCalledWith(mockTenantId, 'https://example.com')
+    );
+    await waitFor(() =>
+      expect(mockAdd).toHaveBeenCalledWith(mockTenantId, {
+        question: 'Where are you located?',
+        answer: '456 Oak Ave.',
+        category: 'Business Hours & Location',
+        source: 'website-scan',
+      })
+    );
+    // Refetches the doc list after saving so the questionnaire tab reflects it.
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText(/saved 1 answer/i)).toBeInTheDocument());
+  });
+
+  test('SAD: a failed scan shows an error and never calls add', async () => {
+    mockImportWebsite.mockResolvedValue({ success: false, error: 'Could not reach that site.' });
+
+    render(<KnowledgeBaseView />);
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByPlaceholderText('https://www.yourbusiness.com'), {
+      target: { value: 'https://dead-site.example' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /scan website/i }));
+
+    await waitFor(() => expect(screen.getByText('Could not reach that site.')).toBeInTheDocument());
+    expect(mockAdd).not.toHaveBeenCalled();
   });
 });
