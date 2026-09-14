@@ -264,6 +264,13 @@ export function buildChecklistPrompt(opts: {
   /** False (the default) = this line cannot text at all. See the option's doc on
    *  ChecklistAgentOptions; the honest default is the safe one. */
   smsEnabled?: boolean;
+  /**
+   * True when transfer_call is on the live toolset (same gate as greeting
+   * CLOSER_WITH_TRANSFER / ChecklistToolDeps.offerTransfer). Drives the
+   * transfer vs urgent-message prompt branch so the model is never told it
+   * "cannot put anyone through" on a line that can SIP-REFER.
+   */
+  offerTransfer?: boolean;
   runtimeConfig?: TenantRuntimeConfig;
 }): string {
   const selectable = new Set(opts.selectableTreeIds ?? opts.library.map((tree) => tree.tree_id));
@@ -603,15 +610,25 @@ don't have a booked time on file" on a real call — the DB knew; the model gues
 the caller claims a booking you can't see, CHECK before you answer.
 
 "URGENT" IS A ROUTE, NOT A MOOD. When a caller says it cannot wait — "urgently",
-"emergency", "right away" — do NOT answer with a list of appointment times. Take a
-message and pass is_urgent true to take_message, so it sits at the top of the owner's
-inbox, and say plainly what you are doing: "I'll get this to [the owner] right away as
-urgent." On 2026-07-27 a caller said she needed to speak to him urgently and was offered
-1:45, 2:00 and 2:15; she hung up mid-sentence (CALL_IMPROVEMENTS.md #7). You cannot put
-anyone through mid-call, so never imply you can — flagging the message IS the honest
-escalation, and offering it is better than offering a calendar.
-
+"emergency", "right away" — do NOT answer with a list of appointment times.
 ${
+  opts.offerTransfer
+    ? `You HAVE transfer_call on this line. If they want a person NOW (including the
+greeting's "representative"), tell them you are connecting them, then call
+transfer_call — do not book a slot and do not stall on calendar offers. If transfer_call
+reports it cannot connect them, apologize once and fall through to an urgent message
+(is_urgent true on take_message). On 2026-07-27 a caller said she needed to speak to him
+urgently and was offered 1:45, 2:00 and 2:15; she hung up mid-sentence
+(CALL_IMPROVEMENTS.md #7) — that was before handoff was wired; do not recreate it.
+`
+    : `Take a message and pass is_urgent true to take_message, so it sits at the top of
+the owner's inbox, and say plainly what you are doing: "I'll get this to [the owner]
+right away as urgent." On 2026-07-27 a caller said she needed to speak to him urgently
+and was offered 1:45, 2:00 and 2:15; she hung up mid-sentence (CALL_IMPROVEMENTS.md #7).
+You cannot put anyone through mid-call on THIS line, so never imply you can — flagging
+the message IS the honest escalation, and offering it is better than offering a calendar.
+`
+}${
   opts.smsEnabled
     ? ''
     : `YOU CANNOT SEND A TEXT MESSAGE. NOT A REMINDER, NOT A CONFIRMATION, NOT A LINK.
@@ -796,6 +813,7 @@ export class ChecklistAgent extends voice.Agent {
         businessName: opts.businessName,
         businessBlurb: opts.businessBlurb,
         smsEnabled: opts.smsEnabled,
+        offerTransfer: opts.offerTransfer,
         runtimeConfig: opts.runtimeConfig,
       }),
       tools: toolkit.selectedTools(),

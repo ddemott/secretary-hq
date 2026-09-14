@@ -1111,6 +1111,24 @@ describe('the 2026-09-09 call sweep', () => {
     expect(build({ smsEnabled: true })).not.toContain('YOU CANNOT SEND A TEXT MESSAGE');
   });
 
+  it('with offerTransfer: instructs transfer_call for human handoff, never "cannot put anyone through"', () => {
+    // WHO: tenant with forward number + transfer available (same gate as greeting)
+    // WHAT: urgent / "representative" → transfer_call, not calendar slots or a hard ban
+    // WHY: #462 wired the tool; the pre-wire prompt still said "You cannot put anyone
+    //      through mid-call" and would have told the model to refuse a live handoff.
+    const p = build({ offerTransfer: true });
+    expect(p).toContain('You HAVE transfer_call on this line');
+    expect(p).toMatch(/call\s+transfer_call/i);
+    expect(p).not.toMatch(/You cannot put anyone through mid-call on THIS line/);
+  });
+
+  it('without offerTransfer: keeps the honest no-handoff urgent-message path', () => {
+    const p = build({ offerTransfer: false });
+    expect(p).toMatch(/You cannot put anyone through mid-call on THIS line/);
+    expect(p).not.toContain('You HAVE transfer_call on this line');
+    expect(p).toMatch(/is_urgent true/);
+  });
+
   it('requires a plain confirmation sentence after a successful write', () => {
     // A message was saved and the caller heard only "You're all set, Camille."
     const p = build();
