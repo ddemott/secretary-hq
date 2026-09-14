@@ -40,12 +40,6 @@ observation sweep — all defects closed, sim suites green).
       prod. Both CALL1/CALL2 showed the greeting at `[0:17]` on the transcript clock, which is
       NOT the caller's clock — nothing is worth optimizing until the real number is in.
       **MEASURE before fixing.**
-- [ ] **Re-price the tiers** once the cost ledger has a few honest calls in it. P0 §2
-      below is being decided against numbers that were ~35× too low. CALL2 really cost
-      about **$0.068** for 96 seconds, dominated by **137,971 input tokens** —
-      ~17k/turn, the checklist state block plus tool schemas resent every turn. That
-      per-turn context is the product's whole cost curve and is now visible for the
-      first time.
 ---
 
 ## 🔴 P0 — Launch blockers (clear before the first paying customer)
@@ -72,7 +66,7 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
 
 ### 2. Billing — be able to take money
 
-- [ ] **(Dale)** **Decide final tier pricing** before creating Stripe products — current placeholders ($129/$279) have not been validated. Research findings + cost model (2026-07-07):
+- [ ] **(Dale)** **Decide final tier pricing** before creating Stripe products — current placeholders ($129/$279) have not been validated. Fold in live cost ledger once a few honest calls exist (CALL2 ~**$0.068**/96s, ~138k input tokens/turn — prior model was ~35× too low). Research findings + cost model (2026-07-07):
   - **Variable cost per call (5-min avg):** Telnyx ~$0.03 + LiveKit ~$0.02–0.05 + Deepgram STT $0.02 + OpenAI LLM ~$0.001 + TTS ~$0.02–0.09 = **~$0.09–0.17/call**
     - ⚠️ **Stale input (flagged 2026-07-28):** the TTS figure is OpenAI's, and TTS moved to **Deepgram Aura** on 2026-07-14. The LLM also moved 4o-mini → **4.1-mini**. Both legs need re-pricing from current provider rates before this model is used to set a price — deliberately NOT guessed here.
   - **Loss point:** an uncapped Solo tier at 1,000 calls costs $90–170 in variable cost alone — near-zero or negative margin at $129/mo
