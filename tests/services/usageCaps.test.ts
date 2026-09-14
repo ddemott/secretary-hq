@@ -20,23 +20,24 @@ const ENV_KEYS = [
   'USAGE_SOFT_CAP_ENFORCE',
 ] as const;
 
-const saved: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
+/** Baseline env at module load — restore here so suite-level PLAN_CAP_* is preserved. */
+const BASELINE: Record<(typeof ENV_KEYS)[number], string | undefined> = {
+  PLAN_CAP_SOLO: process.env.PLAN_CAP_SOLO,
+  PLAN_CAP_GROWTH: process.env.PLAN_CAP_GROWTH,
+  PLAN_CAP_PROFESSIONAL: process.env.PLAN_CAP_PROFESSIONAL,
+  USAGE_WARN_RATIO: process.env.USAGE_WARN_RATIO,
+  USAGE_SOFT_CAP_ENFORCE: process.env.USAGE_SOFT_CAP_ENFORCE,
+};
 
 afterEach(() => {
   for (const key of ENV_KEYS) {
-    if (key in saved) {
-      const v = saved[key];
-      if (v === undefined) delete process.env[key];
-      else process.env[key] = v;
-      delete saved[key];
-    } else {
-      delete process.env[key];
-    }
+    const v = BASELINE[key];
+    if (v === undefined) delete process.env[key];
+    else process.env[key] = v;
   }
 });
 
 function setEnv(key: (typeof ENV_KEYS)[number], value: string | undefined) {
-  if (!(key in saved)) saved[key] = process.env[key];
   if (value === undefined) delete process.env[key];
   else process.env[key] = value;
 }

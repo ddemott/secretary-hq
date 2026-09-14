@@ -145,7 +145,7 @@ export async function countAnsweredCallsThisMonth(
     `SELECT COUNT(*)::int AS n
        FROM voice_sessions
       WHERE tenant_id = $1
-        AND started_at >= date_trunc('month', now() AT TIME ZONE 'UTC')
+        AND started_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
         AND (is_deleted IS NULL OR is_deleted = false)
         AND status = 'completed'
         AND COALESCE(duration_seconds, 0) >= $2
@@ -212,7 +212,8 @@ export async function computeUsageStatements(
             )::int AS answered
        FROM voice_sessions
       WHERE tenant_id = $1
-        AND started_at >= date_trunc('month', now() AT TIME ZONE 'UTC') - ($2 - 1) * interval '1 month'
+        AND started_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+            - ($2 - 1) * interval '1 month'
         AND (is_deleted IS NULL OR is_deleted = false)
       GROUP BY 1
       ORDER BY 1 DESC`,
