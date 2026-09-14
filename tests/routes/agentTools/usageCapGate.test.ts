@@ -11,6 +11,7 @@ import { registerAgentToolRoutes } from '../../../src/routes/agentTools';
 import { registerVoiceRoutes } from '../../../src/routes/voice';
 import { registry } from '../../../src/services/metrics';
 import type { UsageCapEvaluation } from '../../../src/services/billingUsage';
+import type * as BillingUsageModule from '../../../src/services/billingUsage';
 
 const TENANT_ID = 'f234e471-0e60-4163-86c9-93cfd9338e3a';
 const SECRET = 'test-agent-secret';
@@ -40,7 +41,7 @@ const okCap: UsageCapEvaluation = {
 };
 
 vi.mock('../../../src/services/billingUsage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../src/services/billingUsage')>();
+  const actual = await importOriginal<typeof BillingUsageModule>();
   return {
     ...actual,
     evaluateUsageCap: vi.fn(),
