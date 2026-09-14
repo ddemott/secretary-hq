@@ -4,6 +4,16 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — get_available_slots DATE-path night-shift residual already closed (#443)
+
+Kanban residual card claimed the `get_available_slots` DATE path was still same-date-only.
+**Code already shipped 2026-09-13 in PR #443** (`c2abde0b`): two-date `effective_shifts`
+join + wrap clipping + real-DB coverage in `tests/integration/availableSlotsTz.realdb.test.ts`.
+This pass only scrubbed the stale "Residual, deliberately out of scope" prose under the
+2026-09-11 night-shift morning-half entry (and noted dashboard `book_appointment_atomic`
+parity closed by #444). Re-verified 2026-09-14: 26/26 green on
+`availableSlotsTz.realdb.test.ts` + `night-shift-availability.test.ts`.
+
 ## 2026-09-14 — Railway healthcheckPath stays `/health` (declined `/ready` gate)
 
 **Shipped:** PR #468.
@@ -141,18 +151,19 @@ and logged, not fixed" list is superseded by the fixes archived here.
       `book_with_scheduling_atomic` widened from `es.shift_date = v_shift_date` to
       `es.shift_date IN (v_shift_date, v_shift_date - 1)` + the new function, plus
       `availabilitySearch.ts`'s suggest-side JOIN in the same commit (suggest and enforce must
-      read the calendar the same way — the 2026-07-17 midnight-wrap lesson). `book_appointment_atomic`
-      (dashboard path) is untouched — it validates one chosen resource/employee against one day's
-      row by design and has never modeled night shifts; that gap is pre-existing and separate.
-      **Residual, deliberately out of scope:** the `get_available_slots` DATE path
-      (`src/routes/agentTools/scheduling.ts` `effective_shifts` CTE) has the identical
-      same-date-only join and was not touched — it renders a single day's shifts/appointments in
-      JS and was not part of this bug's repro. No live tenant runs night shifts, so this is not an
-      active gap; fix it in the same pass as the day it matters. New tests:
-      `tests/services/night-shift-availability.test.ts` (HAPPY: 02:00 books against a 22:00→06:00
-      row; SAD: a day shift never gains cross-day coverage) and
-      `tests/services/availability-search.test.ts` (suggest-side parity, post-midnight-only search
-      window).
+      read the calendar the same way — the 2026-07-17 midnight-wrap lesson).
+      `book_appointment_atomic` (dashboard path) closed the same gap later via PR **#444**
+      (reuses `shift_row_covers_booking()`).
+      **DATE-path residual closed 2026-09-13, PR #443:** `get_available_slots`
+      (`src/routes/agentTools/scheduling.ts` `effective_shifts` CTE) had the identical
+      same-date-only join — now `shift_date IN (requested, requested - 1)` with the wrapping
+      guard, plus JS clipping so a same-day wrap caps at midnight and a yesterday wrap starts
+      at midnight. Regression: `tests/integration/availableSlotsTz.realdb.test.ts`
+      (`night shift crossing midnight (DATE-path residual)`). Original booking/suggest tests:
+      `tests/services/night-shift-availability.test.ts` (HAPPY: 02:00 books against a
+      22:00→06:00 row; SAD: a day shift never gains cross-day coverage) and
+      `tests/services/availability-search.test.ts` (suggest-side parity, post-midnight-only
+      search window).
 - [x] ~~**A caller who declines the meeting can leave the call unable to END.**~~ — **FIXED
       2026-09-11.** Found in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no
       grader saw it), on `main`. The opener "talk to someone about a job opportunity for Dale"
