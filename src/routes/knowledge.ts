@@ -17,7 +17,7 @@ import {
   ALLOWED_EXTENSIONS,
 } from '../services/knowledgeIngestion';
 import { parseMarkerQuestions } from '../../shared/markerQuestions';
-import { fetchAndExtractSiteText, extractAnswersWithLLM } from '../services/knowledge/siteScrape';
+import { extractAnswersWithLLM } from '../services/knowledge/siteScrape';
 import { ingestChunks } from '../services/knowledge/ingestChunks';
 import { explainAnswer } from '../services/knowledge/answerExplainer';
 import {
@@ -28,6 +28,7 @@ import {
   stubbedQuestionPicks,
   withUsableAnswer,
 } from '../services/knowledge/importStaging';
+import { importWebsiteKnowledge } from '../services/knowledge/websiteImport';
 import {
   approveSuggestion,
   rejectSuggestion,
@@ -314,85 +315,17 @@ export function registerKnowledgeRoutes(
         });
       }
 
-      const questions = await resolveTenantQuestions(withTenantClient, tenantId);
-
-      let extract: {
-        answers: Array<{
-          questionId: string | null;
-          question: string;
-          answer: string | null;
-          sourceUrl?: string;
-          confidence?: number;
-        }>;
-        discovered: Array<{
-          question: string;
-          answer: string;
-          sourceUrl?: string;
-          confidence?: number;
-        }>;
-      };
-      if (isImportStubbed()) {
-        // Deterministic canned output so E2E can exercise the REAL resolver →
-        // staging-INSERT path against a real DB with no live OpenAI key and no
-        // external network (CI runs with OPENAI_API_KEY=sk-dummy).
-        extract = {
-          answers: stubbedQuestionPicks(questions).map((q) => ({
-            questionId: q.id,
-            question: q.question,
-            answer: `Stubbed answer for: ${q.question}`,
-            sourceUrl: url,
-            confidence: 0.9,
-          })),
-          discovered: [
-            {
-              question: 'Stubbed discovered topic?',
-              answer: 'Stubbed discovered answer.',
-              sourceUrl: url,
-              confidence: 0.5,
-            },
-          ],
-        };
-      } else {
-        const siteText = await fetchAndExtractSiteText(url);
-        if (!siteText.success) {
-          return reply.status(400).send({ success: false, error: siteText.error });
-        }
-        const llm = await extractAnswersWithLLM(
-          siteText.text,
-          questions,
-          url,
-          process.env.OPENAI_API_KEY || ''
-        );
-        if (!llm.success) {
-          return reply.status(500).send({ success: false, error: llm.error });
-        }
-        extract = { answers: llm.answers, discovered: llm.discovered };
-        recordExtractionCost(withTenantClient, tenantId, llm.usage);
+      // Shared pipeline with the re-scan scheduler (scrape → extract → stage →
+      // stamp last_scanned). Nothing here auto-publishes to the live KB.
+      const result = await importWebsiteKnowledge(withTenantClient, tenantId, url);
+      if (!result.ok) {
+        return reply.status(result.status).send({ success: false, error: result.error });
       }
-
-      // extractAnswersWithLLM returns camelCase — map to the staged column names.
-      const matchedItems = withUsableAnswer(extract.answers).map((a) => ({
-        question_id: a.questionId || null,
-        question: a.question || '',
-        answer: a.answer,
-        source_url: a.sourceUrl || url,
-        confidence: a.confidence ?? null,
-      }));
-      const suggestedItems = (extract.discovered || []).map((d) => ({
-        question_id: null,
-        question: d.question || '',
-        answer: d.answer || '',
-        source_url: d.sourceUrl || url,
-        confidence: d.confidence ?? null,
-      }));
-
-      await stageSuggestions(withTenantClient, tenantId, [...matchedItems, ...suggestedItems]);
 
       // `confirmed` here is the COUNT of bank/custom-matched items (response-field
       // name kept for API/dashboard compatibility). They are staged as 'suggested'
       // like everything else — nothing is auto-confirmed into the live KB anymore.
-      const confirmed = matchedItems.length;
-      const suggestions = suggestedItems.length;
+      const { confirmed, suggestions, extract } = result;
 
       logEvent(req, 'website_knowledge_import', { url, confirmed, suggestions, tenantId });
       return reply.send({
