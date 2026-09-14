@@ -545,6 +545,33 @@ export function ragCouldNotAnswer(text: string): boolean {
   return text.includes(RAG_NO_ANSWER_MARKER);
 }
 
+/**
+ * True when transfer_call did NOT start a handoff.
+ *
+ * PINNED to the failure shapes in `tools/transfer.ts`: JSON `{ error: ... }` for
+ * not_configured / transfer_failed / no executor, plus any plain-text refusal.
+ * Success is the "Transfer started" line — anything else that looks like an
+ * error must route the caller to a message, not leave them on an open booking
+ * goodbye stall after they asked for a human (C-GATE after #462).
+ */
+export function transferCallFailed(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  // Happy path from transfer.ts — cold REFER accepted.
+  if (/^Transfer started\b/i.test(t)) return false;
+  try {
+    const parsed: unknown = JSON.parse(t);
+    if (parsed && typeof parsed === 'object' && 'error' in (parsed as object)) {
+      return true;
+    }
+  } catch {
+    /* not JSON — fall through to phrase match */
+  }
+  return /not available|cannot connect|did not go through|not_configured|transfer_failed|timed?\s*out/i.test(
+    t
+  );
+}
+
 /** A present, non-blank string argument — anything else counts as omitted. */
 function toNonEmptyString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v : null;
@@ -1586,10 +1613,60 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   // inventory list and the registration cannot drift. transfer_call also needs
   // offerTransfer (forward-number / transferAvailable gate, same as the greeting
   // closer): every preset gets live handoff without a per-tree action node.
+  // Failure is NOT a bare passthrough: like RAG unanswered → message, a failed
+  // REFER host-selects message (+ identity) so the goodbye gate does not stall
+  // a caller who asked for a human on an unfinished booking checklist (C-GATE).
   for (const name of ALWAYS_ON_PASSTHROUGH_TOOLS) {
     const real = realTools[name];
     if (!real) continue;
     if (name === 'transfer_call' && !deps.offerTransfer) continue;
+    if (name === 'transfer_call') {
+      baseTools[name] = llm.tool({
+        description: shape(real).description,
+        parameters: shape(real).parameters,
+        execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
+          const raw = await shape(real).execute(args, toolCtx);
+          const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+          if (!transferCallFailed(text)) return text;
+
+          let selectionChanged = false;
+          // Caller wanted a human. An open unfinished booking must not hold the
+          // goodbye gate while we take a fallback message — same spirit as the
+          // "no meeting" deselect on booking_wanted=false.
+          if (
+            tracker.selectedTrees().includes('booking') &&
+            tracker.status('book') !== 'done'
+          ) {
+            tracker.deselect('booking');
+            selectionChanged = true;
+          }
+          if (selectableTreeSet.has('message')) {
+            const before = tracker.selectedTrees().slice().sort().join(',');
+            const add: string[] = ['message'];
+            if (selectableTreeSet.has('identity')) add.push('identity');
+            tracker.select(add);
+            if (tracker.selectedTrees().slice().sort().join(',') !== before) {
+              selectionChanged = true;
+            }
+          }
+          if (selectionChanged) {
+            getLogger().info(
+              { event: 'checklist_transfer_failed_takes_message' },
+              'transfer_call failed — message tree selected so the caller is not lost on a goodbye stall'
+            );
+            deps.onSelectionChanged();
+          }
+          return (
+            `${text}\n\nThe transfer did NOT connect the caller. Apologize briefly — never ` +
+            `claim they were connected — and TAKE A MESSAGE so someone can call them back. ` +
+            `Taking the message is now on your checklist; unfinished booking questions are ` +
+            `off it. Do not keep the caller on a goodbye stall for open booking nodes. ` +
+            `${stateBlock()}`
+          );
+        },
+      });
+      continue;
+    }
     baseTools[name] = real;
   }
 

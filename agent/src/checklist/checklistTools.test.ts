@@ -22,6 +22,7 @@ import {
   placeholderNameReason,
   topicNamesOnlyAPerson,
   ragCouldNotAnswer,
+  transferCallFailed,
   type ChecklistToolDeps,
 } from './checklistTools.js';
 import { resolveSelectableTreeIds } from './checklistAgent.js';
@@ -181,6 +182,104 @@ describe('the toolset composition', () => {
     const out = await call(toolkit.selectedTools(), 'transfer_call', {});
     expect(out).toContain('Transfer started');
     expect(transfer.execute).toHaveBeenCalledOnce();
+  });
+
+  it('transfer failure host-selects message + identity and drops unfinished booking', async () => {
+    // C-GATE after #462: REFER fail left open booking nodes holding finish_call
+    // until FINISH_REFUSAL_LIMIT while the caller had asked for a human.
+    // Mirror RAG unanswered → message: host owns the fallback lane.
+    const transfer = fakeTool(
+      JSON.stringify({
+        error: 'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+      })
+    );
+    const { toolkit, tracker, onSelectionChanged } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        book_with_scheduling: fakeTool(ok({ appointment_id: 'appt_1' })),
+        take_message: fakeTool(ok({ message_id: 'msg_1' })),
+        identify_caller: fakeTool(ok({ customer_id: 'cust_1' })),
+        get_available_slots: fakeTool(ok({ open_times: ['3:00 PM'] })),
+        get_service_catalog: fakeTool(ok({ services: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'set_purpose', {
+      work_direction: 'neither_or_unclear',
+      trees: ['identity', 'booking'],
+    });
+    expect(tracker.selectedTrees()).toContain('booking');
+    expect(tracker.selectedTrees()).not.toContain('message');
+
+    const res = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(transfer.execute).toHaveBeenCalledOnce();
+    expect(res).toContain('TAKE A MESSAGE');
+    expect(res).toMatch(/did NOT connect/i);
+    expect(tracker.selectedTrees()).toContain('message');
+    expect(tracker.selectedTrees()).toContain('identity');
+    expect(tracker.selectedTrees()).not.toContain('booking');
+    expect(onSelectionChanged).toHaveBeenCalled();
+  });
+
+  it('transfer success does not select message or deselect booking', async () => {
+    const transfer = fakeTool(
+      'Transfer started — the caller is being connected to a team member now. Do not keep talking; the call is leaving this assistant.'
+    );
+    const { toolkit, tracker, onSelectionChanged } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        book_with_scheduling: fakeTool(ok({ appointment_id: 'appt_1' })),
+        get_available_slots: fakeTool(ok({ open_times: ['3:00 PM'] })),
+        get_service_catalog: fakeTool(ok({ services: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'set_purpose', {
+      work_direction: 'neither_or_unclear',
+      trees: ['identity', 'booking'],
+    });
+    onSelectionChanged.mockClear();
+    const res = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(res).toContain('Transfer started');
+    expect(res).not.toContain('TAKE A MESSAGE');
+    expect(tracker.selectedTrees()).toContain('booking');
+    expect(tracker.selectedTrees()).not.toContain('message');
+    expect(onSelectionChanged).not.toHaveBeenCalled();
+  });
+
+  it('transferCallFailed matches transfer.ts failure shapes only', () => {
+    expect(
+      transferCallFailed(
+        'Transfer started — the caller is being connected to a team member now.'
+      )
+    ).toBe(false);
+    expect(
+      transferCallFailed(
+        JSON.stringify({
+          error: 'Transfer is not available right now. Offer to take a message instead.',
+        })
+      )
+    ).toBe(true);
+    expect(
+      transferCallFailed(
+        JSON.stringify({
+          error:
+            'No transfer number is set up for this business, so you cannot connect the caller. Offer to take a message instead.',
+        })
+      )
+    ).toBe(true);
+    expect(
+      transferCallFailed(
+        JSON.stringify({
+          error:
+            'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+        })
+      )
+    ).toBe(true);
   });
 
   it("selection brings each tree's wrapped action + its read passthroughs", async () => {
