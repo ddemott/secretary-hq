@@ -10,19 +10,30 @@ P2 backlog item closed. Deferred pieces were a durable `last_scanned` marker and
 cost/product call on interval + caps.
 
 **Migration `20260914000000_tenant_website_scan_tracking`:** `tenants.website_scan_url`
-+ `tenants.website_last_scanned_at` (both nullable). NULL URL = never scanned / opt-out —
-scheduler skips; no separate enable flag.
++ `tenants.website_last_scanned_at` (both nullable) + `website_scan_fail_count` (NOT NULL
+DEFAULT 0) + `website_scan_last_attempt_at`. NULL URL = never scanned / opt-out —
+scheduler skips; no separate enable flag. Failures never advance `website_last_scanned_at`.
 
-**Shared `importWebsiteKnowledge`:** scrape → extract → stage suggestions → stamp URL +
-last_scanned. Used by `POST /knowledge/import-website` and the worker. Still stages only
+**Shared `importWebsiteKnowledge`:** scrape → extract → supersede prior open suggestions →
+stage new suggestions → stamp URL + last_scanned + reset fail_count **in one tenant
+transaction**. Used by `POST /knowledge/import-website` and the worker. Still stages only
 — never auto-publishes to the live KB.
 
-**Worker `websiteRescanScheduler`:** daily tick (no boot stampede), oldest-stale first,
-non-demo only. Defaults: stale **30 days**, batch **5**/tick (`WEBSITE_RESCAN_STALE_DAYS` /
-`WEBSITE_RESCAN_BATCH_SIZE` / `WEBSITE_RESCAN_INTERVAL_MS`). Gated by
-`ENABLE_WEBSITE_RESCAN_SCHEDULER` via `workerEnabled` (prod ON unless exact `false`).
-Skip whole tick if no `OPENAI_API_KEY`. One tenant failure does not stop the batch
-(`website_rescan_tenant_failed`).
+**Worker `websiteRescanScheduler`:** daily tick (no boot stampede), fail_count ASC then
+oldest-stale first, non-demo only. Defaults: stale **30 days**, batch **5**/tick, maxFails
+**5** — env knobs clamped (`WEBSITE_RESCAN_STALE_DAYS` 1–365, `BATCH_SIZE` 1–50,
+`INTERVAL_MS` 1h–7d, `MAX_FAILS` 1–20). Gated by `ENABLE_WEBSITE_RESCAN_SCHEDULER` via
+`workerEnabled` (prod ON unless exact `false`). Skip whole tick if no `OPENAI_API_KEY`.
+One tenant failure does not stop the batch (`website_rescan_tenant_failed`); records
+backoff and quarantines after max fails (`website_rescan_tenant_quarantined`) so a dead
+URL cannot monopolize the batch forever.
+
+**Multi-instance:** Postgres session advisory lock (`WEBSITE_RESCAN_LOCK_KEY` / `0x57425253`)
+serializes ticks across replicas so OpenAI cost does not multiply with horizontal scale.
+in-process `isRunning` still skips overlapping ticks on one process.
+
+**Roady HIGH follow-up (t_462175ab / PR #472):** CI CLAUDE.md migration count, dead-URL
+backoff, advisory lock, env clamps — addressed on the same branch.
 
 ## 2026-09-14 — Railway healthcheckPath stays `/health` (declined `/ready` gate)
 

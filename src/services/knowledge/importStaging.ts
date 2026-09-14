@@ -114,14 +114,25 @@ export interface StagedSuggestion {
  * the result is true of their business. Nothing here writes to the live KB —
  * that is the approve route's job, and keeping the two apart is what makes a bad
  * scan a review chore instead of an incident.
+ *
+ * Prior open (`status='suggested'`) rows for this tenant are marked `superseded`
+ * first so a re-scan cannot pile up duplicate review chores. Confirmed/rejected
+ * history is untouched. Website import may also call the on-client path inside
+ * a wider stage+stamp transaction — keep that supersede rule in lockstep.
  */
 export async function stageSuggestions(
   withTenantClient: WithTenantClient,
   tenantId: string,
   items: StagedSuggestion[]
 ): Promise<void> {
-  if (items.length === 0) return;
   await withTenantClient(tenantId, async (client) => {
+    await client.query(
+      `UPDATE knowledge_suggestion
+          SET status = 'superseded', updated_at = now()
+        WHERE tenant_id = $1 AND status = 'suggested'`,
+      [tenantId]
+    );
+    if (items.length === 0) return;
     for (const item of items) {
       await client.query(
         `INSERT INTO knowledge_suggestion

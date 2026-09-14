@@ -117,6 +117,7 @@ describe('POST /knowledge/import-website', () => {
     // WHAT: the extractor prompt must contain bank questions AND the custom one
     // WHY: regression guard — questions must never resolve to an empty list
     handle.queryResponses.push({ rows: [{ title: 'Do you deliver?' }], rowCount: 1 }); // custom SELECT
+    handle.queryResponses.push({ rows: [], rowCount: 0 }); // supersede prior open suggestions
     handle.queryResponses.push({ rows: [], rowCount: 1 }); // INSERT of the one confirmed answer
     handle.queryResponses.push({ rows: [], rowCount: 1 }); // stamp website_scan_url / last_scanned
 
@@ -144,6 +145,7 @@ describe('POST /knowledge/import-website', () => {
     // WHAT: empty custom SELECT → resolver returns the static bank only
     // WHY: the common case must still extract; bank must not collapse to []
     handle.queryResponses.push({ rows: [], rowCount: 0 }); // no custom questions
+    handle.queryResponses.push({ rows: [], rowCount: 0 }); // supersede prior open suggestions
     handle.queryResponses.push({ rows: [], rowCount: 1 }); // INSERT
     handle.queryResponses.push({ rows: [], rowCount: 1 }); // stamp website_scan_url / last_scanned
 
