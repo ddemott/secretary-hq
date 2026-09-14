@@ -1,6 +1,6 @@
 # ROADMAP
 
-**Status:** active execution. Steps 1–10 closed in CI (host-tool journeys). **Date:** 2026-08-13. **Owner:** Dale.
+**Status:** ✅ complete. Steps 1–10 closed in CI (host-tool journeys) as of 2026-08-13, and the success definition (§6) was met at scale by #388 (2026-08-31), which composed 28 more business verticals from this roadmap's own primitives (blocks/presets/generic intake layer) rather than custom call engines — see the closing note in §6. **Date:** 2026-08-13 (steps), 2026-09-13 (status closed out). **Owner:** Dale.
 
 This roadmap turns the vertical-preset/block architecture into an execution sequence. It is intentionally ordered by risk: prove the architecture against the current live runtime before widening scope.
 
@@ -556,3 +556,5 @@ This roadmap succeeds when:
 In one sentence:
 
 **Turn one-off live call flows into a typed, testable preset system without breaking the existing question-tree runtime.**
+
+**Closing note (2026-09-13).** #388 (2026-08-31) is this roadmap's success definition realized past the original scope: `agent/src/checklist/verticalIntakeTrees.ts` composed 30 per-vertical slot-filling intake trees + 28 matching front-desk presets — 33 presets total now — out of the exact block/preset/generic-intake primitives §1–§4 built, with zero second runtime, per `docs/planning/RESOLVED.md`'s own §5 rules. See `CLAUDE.md`'s `/agent/src/checklist/` bullet for the live, maintained catalog and count — this roadmap is a plan, not the live source of truth for numbers.
