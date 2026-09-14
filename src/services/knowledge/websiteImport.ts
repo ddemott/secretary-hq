@@ -14,7 +14,9 @@
  *
  * The stamp (`website_scan_url` / `website_last_scanned_at`) is what makes
  * re-scan possible at all: without a durable URL + freshness marker the
- * worker has no candidate set and no notion of "stale".
+ * worker has no candidate set and no notion of "stale". Failure bookkeeping
+ * (`website_scan_fail_count` / `website_scan_last_attempt_at`) is separate so
+ * a dead URL cannot monopolize the oldest-stale batch forever.
  */
 
 import type { PoolClient } from 'pg';
@@ -66,8 +68,11 @@ export type WebsiteImportResult = WebsiteImportSuccess | WebsiteImportFailure;
  * Run one website knowledge import for a tenant.
  *
  * On success: stages suggestions AND stamps tenants.website_scan_url +
- * website_last_scanned_at. On failure: leaves the stamp alone so a bad
- * re-scan does not push the next attempt 30 days out.
+ * website_last_scanned_at (and resets fail_count) in ONE tenant transaction so
+ * a crash between stage and stamp cannot leave "suggestions without freshness"
+ * or the reverse. On failure: leaves the success stamp alone so a bad re-scan
+ * does not push the next attempt 30 days out — the scheduler records failure
+ * separately via recordWebsiteScanFailure.
  *
  * Does NOT rate-limit — the route owns the per-tenant bucket for owner
  * clicks; the scheduler owns its own batch/stale caps. Mixing them would
@@ -128,8 +133,13 @@ export async function importWebsiteKnowledge(
     confidence: d.confidence ?? null,
   }));
 
-  await stageSuggestions(withTenantClient, tenantId, [...matchedItems, ...suggestedItems]);
-  await stampWebsiteScan(withTenantClient, tenantId, url);
+  // Stage + stamp in one tenant transaction (MEDIUM #6): crash mid-way cannot
+  // leave staged rows without a freshness stamp or a stamp without staging.
+  // stageSuggestions also supersedes prior open suggestions (MEDIUM #5).
+  await withTenantClient(tenantId, async (client) => {
+    await stageSuggestionsOnClient(client, tenantId, [...matchedItems, ...suggestedItems]);
+    await stampWebsiteScanOnClient(client, tenantId, url);
+  });
 
   return {
     ok: true,
@@ -139,8 +149,60 @@ export async function importWebsiteKnowledge(
   };
 }
 
+type StagedItem = {
+  question_id: string | null;
+  question: string;
+  answer: string;
+  source_url: string;
+  confidence: number | null;
+};
+
+/**
+ * Supersede prior open suggestions, then insert the new batch — same client /
+ * transaction as the caller. 'superseded' is free-form TEXT (no CHECK on
+ * status); review UI only lists status='suggested', so pile-up is gone.
+ */
+async function stageSuggestionsOnClient(
+  client: PoolClient,
+  tenantId: string,
+  items: StagedItem[]
+): Promise<void> {
+  await client.query(
+    `UPDATE knowledge_suggestion
+        SET status = 'superseded', updated_at = now()
+      WHERE tenant_id = $1 AND status = 'suggested'`,
+    [tenantId]
+  );
+  if (items.length === 0) return;
+  for (const item of items) {
+    await client.query(
+      `INSERT INTO knowledge_suggestion
+         (tenant_id, question_id, question, answer, source_url, confidence, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'suggested')`,
+      [tenantId, item.question_id, item.question, item.answer, item.source_url, item.confidence]
+    );
+  }
+}
+
+async function stampWebsiteScanOnClient(
+  client: PoolClient,
+  tenantId: string,
+  url: string
+): Promise<void> {
+  await client.query(
+    `UPDATE tenants
+        SET website_scan_url = $1,
+            website_last_scanned_at = NOW(),
+            website_scan_fail_count = 0,
+            website_scan_last_attempt_at = NOW()
+      WHERE tenant_id = $2`,
+    [url, tenantId]
+  );
+}
+
 /**
  * Persist the scan URL + freshness marker after a successful import.
+ * Resets consecutive-failure bookkeeping so a healed URL re-enters the queue.
  * Exported for tests that assert the stamp without running a full scrape.
  */
 export async function stampWebsiteScan(
@@ -148,13 +210,29 @@ export async function stampWebsiteScan(
   tenantId: string,
   url: string
 ): Promise<void> {
-  await withTenantClient(tenantId, (client) =>
-    client.query(
+  await withTenantClient(tenantId, (client) => stampWebsiteScanOnClient(client, tenantId, url));
+}
+
+/**
+ * Record a failed scan attempt for backoff / quarantine.
+ * Does NOT touch website_last_scanned_at (that stays "last SUCCESS").
+ * Exported for the worker and unit tests.
+ */
+export async function recordWebsiteScanFailure(
+  withTenantClient: WithTenantClient,
+  tenantId: string,
+  maxFails: number = 5
+): Promise<{ failCount: number; quarantined: boolean }> {
+  const result = await withTenantClient(tenantId, (client) =>
+    client.query<{ website_scan_fail_count: number }>(
       `UPDATE tenants
-          SET website_scan_url = $1,
-              website_last_scanned_at = NOW()
-        WHERE tenant_id = $2`,
-      [url, tenantId]
+          SET website_scan_fail_count = website_scan_fail_count + 1,
+              website_scan_last_attempt_at = NOW()
+        WHERE tenant_id = $1
+        RETURNING website_scan_fail_count`,
+      [tenantId]
     )
   );
+  const failCount = Number(result.rows[0]?.website_scan_fail_count ?? 1);
+  return { failCount, quarantined: failCount >= maxFails };
 }

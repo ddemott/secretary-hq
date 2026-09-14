@@ -21,10 +21,19 @@ transaction**. Used by `POST /knowledge/import-website` and the worker. Still st
 
 **Worker `websiteRescanScheduler`:** daily tick (no boot stampede), fail_count ASC then
 oldest-stale first, non-demo only. Defaults: stale **30 days**, batch **5**/tick, maxFails
-**5** — env knobs clamped. Gated by `ENABLE_WEBSITE_RESCAN_SCHEDULER` via `workerEnabled`
-(prod ON unless exact `false`). Skip whole tick if no `OPENAI_API_KEY`. Dead-URL
-exponential backoff + quarantine (`website_rescan_tenant_quarantined`). Multi-instance:
-Postgres session advisory lock so cost does not multiply with replicas.
+**5** — env knobs clamped (`WEBSITE_RESCAN_STALE_DAYS` 1–365, `BATCH_SIZE` 1–50,
+`INTERVAL_MS` 1h–7d, `MAX_FAILS` 1–20). Gated by `ENABLE_WEBSITE_RESCAN_SCHEDULER` via
+`workerEnabled` (prod ON unless exact `false`). Skip whole tick if no `OPENAI_API_KEY`.
+One tenant failure does not stop the batch (`website_rescan_tenant_failed`); records
+backoff and quarantines after max fails (`website_rescan_tenant_quarantined`) so a dead
+URL cannot monopolize the batch forever.
+
+**Multi-instance:** Postgres session advisory lock (`WEBSITE_RESCAN_LOCK_KEY` / `0x57425253`)
+serializes ticks across replicas so OpenAI cost does not multiply with horizontal scale.
+in-process `isRunning` still skips overlapping ticks on one process.
+
+**Roady HIGH follow-up (t_462175ab / PR #482):** CI CLAUDE.md migration count, dead-URL
+backoff, advisory lock, env clamps — addressed on the same branch.
 
 ## 2026-09-14 — get_available_slots DATE-path night-shift residual already closed (#443)
 
