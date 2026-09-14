@@ -402,7 +402,7 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
       `AIInsightsView.test.tsx` — that hardcoded the old top-level paths and had to move with it).
       Verified: `tsc --noEmit` clean, dashboard `next build` succeeds, full dashboard suite green
       (1070 tests, 99 files).
-- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema.
+- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema. **PLAN ONLY 2026-09-14 — unsafe to execute without Dale prod gate** (prod `schema_migrations` head, data-migration/seed parity, role-grant restore, no checked-in chain-delete runbook). Full procedure + entry criteria: [`docs/planning/MIGRATION_CHAIN_SQUASH_PLAN.md`](./MIGRATION_CHAIN_SQUASH_PLAN.md). Do **not** delete migration files until that plan’s §3 criteria are green.
 
 ---
 
