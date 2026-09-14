@@ -3467,3 +3467,7 @@ Full design: `docs/superpowers/specs/2026-07-05-wizard-phase-b-design.md` — tw
 **Open items explicitly deferred** (design doc §5, not bugs — tracked as a follow-up in TODO.md): abandoned-test-number reaper; auto forwarding-verification heuristic (SIP caller-ID match instead of asking the owner); real Telnyx porting API integration (deferred until a real port customer per YAGNI).
 
 **Lessons:** stale-closure bugs in `useCallback`/plain-function React patterns when the closed-over value (a fresh-every-render hook result) isn't in the dep array, caught via tests not review; E2E fixtures that pre-seed state via direct API calls silently break when the UI stops reading that channel; `example_services` is empty for every real `business_templates` row in seed data — don't assume auto-seed produces test data; Copilot review caught 2-3 genuinely real bugs per PR; unit tests mock away tenant resolution so a missing-`tenant_id` scoping bug is invisible to them by construction — always check a new mutating `Api.*` method sends `tenant_id` explicitly like its siblings; stale `next start`/`node dist` zombie processes served old builds after a rebuild, producing misleading "bug" symptoms twice.
+
+## 2026-09-14 — service-match query-prefix rejected (removed from TODO)
+
+Measured 2026-08-13 (`scripts/probe-service-match.mjs`): prefixing queries (e.g. `"a meeting about …"`) lifts cosine scores roughly constantly, so weak matches clear the threshold onto the wrong service. Not a backlog item — anti-pattern. Dropped from `TODO.md` 2026-09-14 per Dale.

@@ -46,13 +46,6 @@ observation sweep — all defects closed, sim suites green).
       ~17k/turn, the checklist state block plus tool schemas resent every turn. That
       per-turn context is the product's whole cost curve and is now visible for the
       first time.
-- [ ] **Do NOT "fix" the service semantic match by prefixing the query.** Measured and
-      rejected 2026-08-13 (`scripts/probe-service-match.mjs`): `"a meeting about …"`
-      lifts every score by roughly a constant, so `"four-wheel alignment"` (0.1739 →
-      0.3571) clears the 0.35 threshold onto Programming Consultation. It defeats the
-      threshold instead of improving discrimination — a confident wrong booking in place
-      of a safe fallback. Recorded here because it looks like an obvious win.
-
 ---
 
 ## 🔴 P0 — Launch blockers (clear before the first paying customer)
