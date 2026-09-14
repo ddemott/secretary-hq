@@ -1111,24 +1111,6 @@ describe('the 2026-09-09 call sweep', () => {
     expect(build({ smsEnabled: true })).not.toContain('YOU CANNOT SEND A TEXT MESSAGE');
   });
 
-  it('with offerTransfer: instructs transfer_call for human handoff, never "cannot put anyone through"', () => {
-    // WHO: tenant with forward number + transfer available (same gate as greeting)
-    // WHAT: urgent / "representative" → transfer_call, not calendar slots or a hard ban
-    // WHY: #462 wired the tool; the pre-wire prompt still said "You cannot put anyone
-    //      through mid-call" and would have told the model to refuse a live handoff.
-    const p = build({ offerTransfer: true });
-    expect(p).toContain('You HAVE transfer_call on this line');
-    expect(p).toMatch(/call\s+transfer_call/i);
-    expect(p).not.toMatch(/You cannot put anyone through mid-call on THIS line/);
-  });
-
-  it('without offerTransfer: keeps the honest no-handoff urgent-message path', () => {
-    const p = build({ offerTransfer: false });
-    expect(p).toMatch(/You cannot put anyone through mid-call on THIS line/);
-    expect(p).not.toContain('You HAVE transfer_call on this line');
-    expect(p).toMatch(/is_urgent true/);
-  });
-
   it('requires a plain confirmation sentence after a successful write', () => {
     // A message was saved and the caller heard only "You're all set, Camille."
     const p = build();
@@ -1141,5 +1123,53 @@ describe('the 2026-09-09 call sweep', () => {
     const p = build();
     expect(p).toContain('A COMPANY NAMED IN THE OPENER IS THE COMPANY');
     expect(p).toMatch(/If you are unsure which slot the name belongs in, ASK THAT/i);
+  });
+});
+
+describe('buildChecklistPrompt — transfer / representative when offerTransfer', () => {
+  /**
+   * C-PROMPT after #462: ladder prompt.ts has transferToolLine; live ChecklistAgent
+   * never named transfer_call or "representative". High false-connect risk.
+   */
+  const withTransfer = buildChecklistPrompt({
+    persona: 'You are Chris, the receptionist for Thinking Hammer.',
+    runtime: {
+      currentDate: 'Wednesday, July 22, 2026',
+      currentTime: '3:00 PM',
+      timezone: 'America/Chicago',
+      businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+      bookableThrough: 'Friday, August 21, 2026',
+    },
+    library: PLATFORM_TREE_LIBRARY,
+    callerPhone: '+126****9039',
+    offerTransfer: true,
+  });
+  const withoutTransfer = buildChecklistPrompt({
+    persona: 'You are Chris, the receptionist for Thinking Hammer.',
+    runtime: {
+      currentDate: 'Wednesday, July 22, 2026',
+      currentTime: '3:00 PM',
+      timezone: 'America/Chicago',
+      businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+      bookableThrough: 'Friday, August 21, 2026',
+    },
+    library: PLATFORM_TREE_LIBRARY,
+    callerPhone: '+126****9039',
+    offerTransfer: false,
+  });
+
+  it('names transfer_call + representative and forbids false connect when offered', () => {
+    expect(withTransfer).toContain('# Connecting to a person');
+    expect(withTransfer).toContain('transfer_call');
+    expect(withTransfer).toMatch(/representative/i);
+    expect(withTransfer).toMatch(/never say they are connected/i);
+    expect(withTransfer).toMatch(/OUTRANKS/i);
+  });
+
+  it('omits the handoff block when transfer is not offered', () => {
+    expect(withoutTransfer).not.toContain('# Connecting to a person');
+    expect(withoutTransfer).not.toContain('You HAVE transfer_call');
+    // Still honest about no mid-call connect on the urgent path.
+    expect(withoutTransfer).toMatch(/You cannot put\s+anyone through mid-call/i);
   });
 });

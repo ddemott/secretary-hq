@@ -265,10 +265,9 @@ export function buildChecklistPrompt(opts: {
    *  ChecklistAgentOptions; the honest default is the safe one. */
   smsEnabled?: boolean;
   /**
-   * True when transfer_call is on the live toolset (same gate as greeting
-   * CLOSER_WITH_TRANSFER / ChecklistToolDeps.offerTransfer). Drives the
-   * transfer vs urgent-message prompt branch so the model is never told it
-   * "cannot put anyone through" on a line that can SIP-REFER.
+   * When true, transfer_call is on the live toolset (forward number configured).
+   * Injects the short handoff instruction block so the model does not improvise
+   * a false connect on the greeting word "representative" (C-PROMPT after #462).
    */
   offerTransfer?: boolean;
   runtimeConfig?: TenantRuntimeConfig;
@@ -602,33 +601,48 @@ Their questions: answer_question at ANY moment, mid-anything — answer in one o
 spoken sentences from the result only, then return to the checklist. If it has no answer,
 say so honestly and offer to take a message or set up a time with the owner.
 
-EXISTING BOOKINGS ARE TOOL-GATED FACTS. Never tell a caller they do or do not have an
+"URGENT" IS A ROUTE, NOT A MOOD. When a caller says it cannot wait — "urgently",
+"emergency", "right away" — do NOT answer with a list of appointment times.${
+  opts.offerTransfer
+    ? ` If they want a person now, that is transfer_call (see "# Connecting to a person"
+below) — tell them you are connecting them and call it. If transfer is not available
+or fails, take a message and pass is_urgent true to take_message so it sits at the top
+of the owner's inbox, and say plainly what you are doing: "I'll get this to [the owner]
+right away as urgent." Never claim they are connected without a successful transfer_call
+result.`
+    : ` Take a
+message and pass is_urgent true to take_message, so it sits at the top of the owner's
+inbox, and say plainly what you are doing: "I'll get this to [the owner] right away as
+urgent." On 2026-07-27 a caller said she needed to speak to him urgently and was offered
+1:45, 2:00 and 2:15; she hung up mid-sentence (CALL_IMPROVEMENTS.md #7). You cannot put
+anyone through mid-call, so never imply you can — flagging the message IS the honest
+escalation, and offering it is better than offering a calendar.`
+}
+
+${
+  opts.offerTransfer
+    ? `# Connecting to a person
+You HAVE transfer_call on this call. When the caller asks for a representative, a real
+person, a human, to be transferred/connected, or "talk to someone now":
+1. Tell them you are connecting them, THEN call transfer_call. The tool result is the
+   ONLY proof of a handoff — never say they are connected, transferred, or "on with
+   someone" without a successful transfer_call result.
+2. On error / not available / timeout: apologize briefly and take a message. Do not
+   invent a connection and do not keep retrying endlessly.
+3. A human/representative ask OUTRANKS an unfinished booking checklist and the goodbye
+   stall. Honor the handoff (or the message fallback) — do not keep interrogating open
+   booking nodes while they want a person.
+
+`
+    : ''
+}EXISTING BOOKINGS ARE TOOL-GATED FACTS. Never tell a caller they do or do not have an
 appointment unless it comes from the "Known caller" list above or a get_my_appointments
 result from THIS call — get_my_appointments is in your toolset at all times for exactly
 this. Asserting from absence is how a caller WITH a live 2:30 booking was told "you
 don't have a booked time on file" on a real call — the DB knew; the model guessed. If
 the caller claims a booking you can't see, CHECK before you answer.
 
-"URGENT" IS A ROUTE, NOT A MOOD. When a caller says it cannot wait — "urgently",
-"emergency", "right away" — do NOT answer with a list of appointment times.
 ${
-  opts.offerTransfer
-    ? `You HAVE transfer_call on this line. If they want a person NOW (including the
-greeting's "representative"), tell them you are connecting them, then call
-transfer_call — do not book a slot and do not stall on calendar offers. If transfer_call
-reports it cannot connect them, apologize once and fall through to an urgent message
-(is_urgent true on take_message). On 2026-07-27 a caller said she needed to speak to him
-urgently and was offered 1:45, 2:00 and 2:15; she hung up mid-sentence
-(CALL_IMPROVEMENTS.md #7) — that was before handoff was wired; do not recreate it.
-`
-    : `Take a message and pass is_urgent true to take_message, so it sits at the top of
-the owner's inbox, and say plainly what you are doing: "I'll get this to [the owner]
-right away as urgent." On 2026-07-27 a caller said she needed to speak to him urgently
-and was offered 1:45, 2:00 and 2:15; she hung up mid-sentence (CALL_IMPROVEMENTS.md #7).
-You cannot put anyone through mid-call on THIS line, so never imply you can — flagging
-the message IS the honest escalation, and offering it is better than offering a calendar.
-`
-}${
   opts.smsEnabled
     ? ''
     : `YOU CANNOT SEND A TEXT MESSAGE. NOT A REMINDER, NOT A CONFIRMATION, NOT A LINK.
