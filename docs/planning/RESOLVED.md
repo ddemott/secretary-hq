@@ -4,6 +4,94 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — Railway healthcheckPath stays `/health` (declined `/ready` gate)
+
+**Decision: DO NOT repoint** `railway.json` `deploy.healthcheckPath` from `/health` → `/ready`.
+Optional P2 in TODO closed as declined; no Railway dashboard click needed (`railway.json`
+already owns the path).
+
+### Current behavior (verified in code)
+
+| Endpoint | Role | Behavior |
+| --- | --- | --- |
+| `GET /health` | Liveness | `{status:'ok', started_at}` — no DB. Intentional: DB blip must not fail process liveness. |
+| `GET /ready` | Readiness / monitor | `SELECT 1` + pool `{total,idle,waiting}` + `rls_enforced`/`db_role`. **503** when DB unreachable or pool checkout fails. |
+
+Railway docs: healthcheck runs **only at deploy time** to gate traffic switch; it is
+**not** continuous monitoring after go-live. `restartPolicyType: ON_FAILURE` is process
+exit, not HTTP probe failure. So the old "restart-loop the fleet on every DB blip"
+fear does not apply on Railway continuous path — the real risk is **deploy promotion**.
+
+### Why keep `/health` (failure modes of `/ready` as healthcheck)
+
+1. **Deploy-time DB blip blocks promotion.** New revision healthy, code fine, shared DB
+   hiccups through the healthcheck window (default timeout 300s) → deploy **failed**,
+   old revision stays. Retry noise; emergency hotfix during DB maintenance cannot promote.
+2. **Couples shipability to a dependency the old revision already shares.** If DB is
+   down, neither revision serves data. Gating the new one on `/ready` does not protect
+   callers; it only slows roll-forward. The valuable catch (bad `DATABASE_URL` **only on
+   the new deploy's env**) is rare and already diagnosable via post-deploy
+   `curl …/ready` + `npm run status -- --env prod --deep`.
+3. **`/ready` is not a schema/migration gate.** It only proves `SELECT 1` + role flags —
+   not "migrations applied" (the real half-land failure mode from 2026-09-09). Do not
+   pretend it closes that gap.
+4. **Intentional split already encoded.** `src/routes/health.ts`, RUNBOOK §0/§6, and
+   RESOLVED (deep `/ready` ship notes) all mark `/ready` as a monitoring signal, not a
+   traffic gate. Preserve that contract.
+
+### What to do instead (if ops wants DB awareness)
+
+- Keep Railway on `/health` (in-repo `railway.json` — already correct).
+- After deploys: `curl …/ready` and/or `npm run status -- --env prod --deep`.
+- Continuous DB/pool watch: external probe on `/ready` (ALERTS.md §3.5 options) — not
+  Railway healthcheckPath.
+- Migration half-land: compare `max(schema_migrations.version)` to newest file under
+  `supabase/migrations/` (lesson already in RESOLVED 2026-09-14 doc-hygiene entry).
+
+### Files locked to the decision
+
+- `railway.json` — unchanged `healthcheckPath: "/health"`
+- `docs/planning/TODO.md` — P2 item marked declined
+- `docs/operations/RUNBOOK.md` §6 — traffic-gate hedge removed
+- `docs/architecture/ARCHITECTURE.md` §19.4 — both endpoints documented
+- `src/routes/health.ts` — comment no longer invites a repoint
+
+---
+
+## 2026-09-14 — Aura TTS WebSocket zero-bytes: prod-risk check closed (dev-host-only)
+
+**Open question (from 2026-08-14):** one local host saw Deepgram Aura's WebSocket
+`speak` path return **zero audio bytes** while the HTTP `collect` path returned
+audio on the same key/voice/minute. `agent/src/greetingPickup.ts` made the
+greeting prefer a collected frame and added `AURA_TTS_STREAMING=false` as an
+escape hatch for session replies. Prod kept the streaming default, but nobody
+had proven the WS path healthy against prod credentials.
+
+**Verdict: dev-host-only artifact — not a confirmed prod risk.** Evidence:
+
+1. Monorepo `.env` `DEEPGRAM_API_KEY` **matches Railway prod** (identical
+   fingerprint: length 40, same sha256_12 prefix). Not a different key.
+2. `cd agent && npm run verify:tts` against that key: **10/10 SPEAKS** —
+   all six picker-mapped Aura voices (`aura-asteria-en` … `aura-arcas-en`)
+   plus greeting / hold / recovery / tool-fallback fixed lines. Each check
+   returned ~100k–290k linear16 bytes on the **WebSocket** path
+   (`wss://api.deepgram.com/v1/speak?model=…&encoding=linear16&sample_rate=24000`).
+3. Railway agent env: `AURA_TTS_STREAMING` is **UNSET**, so prod stays on the
+   streaming default (`auraTtsStreamingEnabled()` is true unless explicitly
+   `'false'`).
+
+**What stays (deliberately not removed):** greeting collected-frame preference,
+`AURA_TTS_STREAMING=false` escape hatch, and the mandatory `verify:tts` gate
+before any TTS change ships. A socket that opens is still not audio that plays;
+the 2026-08-14 measurement remains a real host-local failure mode even though
+it does not justify flipping the prod default. See also
+`docs/voice/VOICE_AGENT_PLAYBOOK.md` RULE 3.7 and
+`docs/workflow/LESSONS_LEARNED.md`.
+
+TODO.md P0 §1 item marked `[x]`. No code change required.
+
+---
+
 ## 2026-09-14 — doc-hygiene: cold historical narrative trimmed from TODO.md
 
 Trimmed from `docs/planning/TODO.md` 2026-09-14 (doc-hygiene; each item below was
