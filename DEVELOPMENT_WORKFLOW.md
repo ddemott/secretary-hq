@@ -87,4 +87,4 @@ Run `npx tsx scripts/setup-test-db.ts` after schema changes affecting RLS or rol
 
 **Verified:** Script completes without error. `npm run test -- tests/regression/rlsIsolation.test.ts` now succeeds (role posture assertions pass).
 
-See `HANDOFF.md`, `CODING_STANDARDS.md`, `supabase/migrations/20260724000100_app_user_role.sql` for context.
+See `docs/workflow/CODING_STANDARDS.md`, `supabase/migrations/20260724000100_app_user_role.sql` for context.
