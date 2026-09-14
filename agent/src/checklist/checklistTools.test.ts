@@ -260,6 +260,31 @@ describe('the toolset composition', () => {
     expect(transfer.execute).toHaveBeenCalledTimes(2);
   });
 
+  it('transfer failure cap does not invent message when that tree is disabled', async () => {
+    // runtimeConfig can drop message from selectableTreeIds — guidance must
+    // not tell the model to set_purpose(message) into a refused tree (#478).
+    const fail = JSON.stringify({
+      error:
+        'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+    });
+    const transfer = fakeTool(fail);
+    const { toolkit, tracker } = makeKit({
+      offerTransfer: true,
+      selectableTreeIds: ['identity', 'qa', 'booking'],
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'transfer_call', {});
+    const second = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(second).toMatch(/STOP retrying|finish_call|checklist/i);
+    expect(second).not.toMatch(/set_purpose/i);
+    expect(tracker.selectedTrees()).not.toContain('message');
+    expect(transfer.execute).toHaveBeenCalledTimes(2);
+  });
+
   it("selection brings each tree's wrapped action + its read passthroughs", async () => {
     const { toolkit } = makeKit();
     await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'job', 'booking'] });

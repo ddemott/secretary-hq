@@ -1633,14 +1633,20 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       description: shape(real).description,
       parameters: shape(real).parameters,
       execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
+        // Guidance after the attempt budget is spent. Never tell the model to
+        // set_purpose(message) when message is not in selectableTreeSet — that
+        // tree can be disabled by runtimeConfig and the instruction would be a
+        // dead end (PR review on #478).
+        const afterTransferCap = (): string =>
+          selectableTreeSet.has('message')
+            ? 'Take a message instead (add the message tree with set_purpose if it is not already selected).'
+            : 'Apologize briefly, finish anything still open on the checklist, then finish_call.';
+
         if (transferred || closing) {
           return 'Transfer already started or the call is ending — say nothing further. Do not call transfer_call or finish_call again.';
         }
         if (transferFailures >= TRANSFER_FAILURE_LIMIT) {
-          return (
-            'Transfer is no longer available after repeated failures. Take a message instead ' +
-            `(add the message tree with set_purpose if it is not already selected). ${stateBlock()}`
-          );
+          return `Transfer is no longer available after repeated failures. ${afterTransferCap()} ${stateBlock()}`;
         }
         const raw = await shape(real).execute(args, toolCtx);
         const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
@@ -1681,13 +1687,13 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
           }
           return (
             `${text}\n\nThis has failed ${transferFailures} times in a row — STOP retrying ` +
-            `transfer_call. Apologize briefly and take a message instead. ${stateBlock()}`
+            `transfer_call. ${afterTransferCap()} ${stateBlock()}`
           );
         }
-        return (
-          `${text}\n\nTransfer did not go through. You may try transfer_call one more time, ` +
-          `or take a message instead. ${stateBlock()}`
-        );
+        const retryOrFallback = selectableTreeSet.has('message')
+          ? 'You may try transfer_call one more time, or take a message instead.'
+          : 'You may try transfer_call one more time, or finish open checklist items and close.';
+        return `${text}\n\nTransfer did not go through. ${retryOrFallback} ${stateBlock()}`;
       },
     });
 
