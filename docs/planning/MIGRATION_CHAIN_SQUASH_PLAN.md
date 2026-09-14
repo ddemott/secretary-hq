@@ -1,7 +1,7 @@
 # Migration chain squash plan
 
 **Status:** PLAN ONLY — do **not** execute until Dale signs a prod gate.  
-**Date:** 2026-09-14  
+**Date:** 2026-09-14 (landed PR #459)  
 **Source:** `docs/planning/TODO.md` P2 — Migration chain squash (~202 files).  
 **Decision this pass:** **UNSAFE to squash now.** Document procedure; leave the 202-file chain intact.
 

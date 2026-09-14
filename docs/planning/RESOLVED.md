@@ -6,6 +6,7 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ## 2026-09-14 — Railway healthcheckPath stays `/health` (declined `/ready` gate)
 
+**Shipped:** PR #468.
 **Decision: DO NOT repoint** `railway.json` `deploy.healthcheckPath` from `/health` → `/ready`.
 Optional P2 in TODO closed as declined; no Railway dashboard click needed (`railway.json`
 already owns the path).
@@ -60,6 +61,7 @@ fear does not apply on Railway continuous path — the real risk is **deploy pro
 
 ## 2026-09-14 — Aura TTS WebSocket zero-bytes: prod-risk check closed (dev-host-only)
 
+**Shipped:** PR #467.
 **Open question (from 2026-08-14):** one local host saw Deepgram Aura's WebSocket
 `speak` path return **zero audio bytes** while the HTTP `collect` path returned
 audio on the same key/voice/minute. `agent/src/greetingPickup.ts` made the
@@ -94,6 +96,7 @@ TODO.md P0 §1 item marked `[x]`. No code change required.
 
 ## 2026-09-14 — doc-hygiene: cold historical narrative trimmed from TODO.md
 
+**Shipped:** PR #460.
 Trimmed from `docs/planning/TODO.md` 2026-09-14 (doc-hygiene; each item below was
 already `[x]` or a finished series pointer, nothing left open in these blocks). Open
 items and unique procedures stayed in TODO. The 2026-09-11 RESOLVED entry's "Found
