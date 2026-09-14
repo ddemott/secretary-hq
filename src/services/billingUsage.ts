@@ -341,8 +341,7 @@ export async function computeUsageStatements(
       includedCalls: included,
       overageCalls,
       packsApplied,
-      packChargeUsd:
-        quota && packsApplied !== null ? packsApplied * quota.packPriceUsd : null,
+      packChargeUsd: quota && packsApplied !== null ? packsApplied * quota.packPriceUsd : null,
       inProgress: row.month === currentMonth,
     };
   });

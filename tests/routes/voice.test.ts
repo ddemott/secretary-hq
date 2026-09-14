@@ -4,11 +4,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import { registerVoiceRoutes } from '../../src/routes/voice';
 import { createMockClient, createMockPool, createMockWithTenantClient } from '../mock';
+import type * as BillingUsageModule from '../../src/services/billingUsage';
 
 // Cap gate hits pool.query before start_voice_session. Default allow so existing
 // scripted responses stay aligned with the session-open SQL only.
 vi.mock('../../src/services/billingUsage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/billingUsage')>();
+  const actual = await importOriginal<typeof BillingUsageModule>();
   return {
     ...actual,
     evaluateUsageCap: vi.fn(async () => ({
