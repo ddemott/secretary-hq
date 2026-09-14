@@ -548,28 +548,14 @@ export function ragCouldNotAnswer(text: string): boolean {
 /**
  * True when transfer_call did NOT start a handoff.
  *
- * PINNED to the failure shapes in `tools/transfer.ts`: JSON `{ error: ... }` for
- * not_configured / transfer_failed / no executor, plus any plain-text refusal.
- * Success is the "Transfer started" line — anything else that looks like an
- * error must route the caller to a message, not leave them on an open booking
- * goodbye stall after they asked for a human (C-GATE after #462).
+ * PINNED to transfer.ts: success is ONLY the line starting with
+ * "Transfer started". Everything else (JSON `{ error }`, empty, unexpected
+ * shapes, timeouts) is failure and must route to message — not leave the
+ * caller on an open booking goodbye stall after they asked for a human
+ * (C-GATE after #462).
  */
 export function transferCallFailed(text: string): boolean {
-  const t = text.trim();
-  if (!t) return true;
-  // Happy path from transfer.ts — cold REFER accepted.
-  if (/^Transfer started\b/i.test(t)) return false;
-  try {
-    const parsed: unknown = JSON.parse(t);
-    if (parsed && typeof parsed === 'object' && 'error' in (parsed as object)) {
-      return true;
-    }
-  } catch {
-    /* not JSON — fall through to phrase match */
-  }
-  return /not available|cannot connect|did not go through|not_configured|transfer_failed|timed?\s*out/i.test(
-    t
-  );
+  return !/^Transfer started\b/i.test(text.trim());
 }
 
 /** A present, non-blank string argument — anything else counts as omitted. */
@@ -1626,7 +1612,17 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         parameters: shape(real).parameters,
         execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
           const raw = await shape(real).execute(args, toolCtx);
-          const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+          const text =
+            typeof raw === 'string'
+              ? raw
+              : (() => {
+                  try {
+                    const s = JSON.stringify(raw);
+                    return s === undefined ? String(raw) : s;
+                  } catch {
+                    return String(raw);
+                  }
+                })();
           if (!transferCallFailed(text)) return text;
 
           let selectionChanged = false;

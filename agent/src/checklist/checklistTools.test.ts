@@ -251,7 +251,7 @@ describe('the toolset composition', () => {
     expect(onSelectionChanged).not.toHaveBeenCalled();
   });
 
-  it('transferCallFailed matches transfer.ts failure shapes only', () => {
+  it('transferCallFailed treats only Transfer started as success', () => {
     expect(
       transferCallFailed(
         'Transfer started — the caller is being connected to a team member now.'
@@ -280,6 +280,9 @@ describe('the toolset composition', () => {
         })
       )
     ).toBe(true);
+    // Ambiguous non-empty output must NOT look like success (skip fallback).
+    expect(transferCallFailed('ok')).toBe(true);
+    expect(transferCallFailed('')).toBe(true);
   });
 
   it("selection brings each tree's wrapped action + its read passthroughs", async () => {
