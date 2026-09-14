@@ -64,9 +64,9 @@ then be gated/insured. Most of this is your action, not code — the code is shi
 
 _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voice — Phase 2** at the bottom of this file._
 
-- [x] **(Dale, use wife's phone)** **Live validation call** — **CLOSED 2026-09-14 (Dale verbal).** Dale and his wife place real PSTN calls; system works fine. Dale also uses live calls as ongoing QA (e.g. double-ask / dialog defects). Checklist below kept as optional regression recipe:
+- [x] **(Dale, second handset)** **Live validation call** — **CLOSED 2026-09-14 (Dale verbal).** Real PSTN calls from a second handset verified answer + dialog on production. Dale also uses live calls as ongoing QA for dialog defects (e.g. double-ask). Checklist below kept as optional regression recipe:
   1. Set the **forward number** on the dashboard AI Persona → "Forward Calls to a Person" (`+1 608 217 5303`) before calling.
-  2. Have wife call `+1 630-822-9086` (must use her phone — can't call from your cell and forward to it).
+  2. Call `+1 630-822-9086` from a second handset (can't call from the forward-to cell and forward to it).
   3. Validate booking: appointment lands in `appointments` for tenant `d5e3c6a1` inside a real shift window.
   4. Validate transfer: say "talk to a person" → your cell rings + Calls tab shows the transcript.
      Code wiring shipped 2026-09-14 (`transfer_call` always-on checklist passthrough when forward number configured).
