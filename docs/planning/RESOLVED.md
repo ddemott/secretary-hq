@@ -4,6 +4,40 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — Aura TTS WebSocket zero-bytes: prod-risk check closed (dev-host-only)
+
+**Open question (from 2026-08-14):** one local host saw Deepgram Aura's WebSocket
+`speak` path return **zero audio bytes** while the HTTP `collect` path returned
+audio on the same key/voice/minute. `agent/src/greetingPickup.ts` made the
+greeting prefer a collected frame and added `AURA_TTS_STREAMING=false` as an
+escape hatch for session replies. Prod kept the streaming default, but nobody
+had proven the WS path healthy against prod credentials.
+
+**Verdict: dev-host-only artifact — not a confirmed prod risk.** Evidence:
+
+1. Monorepo `.env` `DEEPGRAM_API_KEY` **matches Railway prod** (identical
+   fingerprint: length 40, same sha256_12 prefix). Not a different key.
+2. `cd agent && npm run verify:tts` against that key: **10/10 SPEAKS** —
+   all six picker-mapped Aura voices (`aura-asteria-en` … `aura-arcas-en`)
+   plus greeting / hold / recovery / tool-fallback fixed lines. Each check
+   returned ~100k–290k linear16 bytes on the **WebSocket** path
+   (`wss://api.deepgram.com/v1/speak?model=…&encoding=linear16&sample_rate=24000`).
+3. Railway agent env: `AURA_TTS_STREAMING` is **UNSET**, so prod stays on the
+   streaming default (`auraTtsStreamingEnabled()` is true unless explicitly
+   `'false'`).
+
+**What stays (deliberately not removed):** greeting collected-frame preference,
+`AURA_TTS_STREAMING=false` escape hatch, and the mandatory `verify:tts` gate
+before any TTS change ships. A socket that opens is still not audio that plays;
+the 2026-08-14 measurement remains a real host-local failure mode even though
+it does not justify flipping the prod default. See also
+`docs/voice/VOICE_AGENT_PLAYBOOK.md` RULE 3.7 and
+`docs/workflow/LESSONS_LEARNED.md`.
+
+TODO.md P0 §1 item marked `[x]`. No code change required.
+
+---
+
 ## 2026-09-14 — doc-hygiene: cold historical narrative trimmed from TODO.md
 
 Trimmed from `docs/planning/TODO.md` 2026-09-14 (doc-hygiene; each item below was
