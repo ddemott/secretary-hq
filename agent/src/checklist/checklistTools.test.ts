@@ -114,6 +114,75 @@ describe('the toolset composition', () => {
     ]);
   });
 
+  it('transfer_call is always-on when offerTransfer + real tool present', () => {
+    // WHY: greeting CLOSER_WITH_TRANSFER offers "representative" whenever a
+    //      forward number is configured. Without transfer_call on the checklist
+    //      toolset that word was a dead end — the model had nothing to call.
+    //      Always-on (not tree-gated) so every preset can hand off; gated on
+    //      offerTransfer so tenants without a forward number never see it.
+    const transfer = fakeTool('Transfer started — the caller is being connected.');
+    const { toolkit } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        ...({
+          book_with_scheduling: fakeTool(ok({ appointment_id: 'appt_1' })),
+          take_message: fakeTool(ok({ message_id: 'msg_1' })),
+          capture_job_inquiry: fakeTool(ok({ job_inquiry_id: 'ji_1' })),
+          identify_caller: fakeTool(ok({ customer_id: 'cust_1' })),
+          get_company_policy_answer: fakeTool(ok({ answer: 'Open 1 to 5.' })),
+          get_available_slots: fakeTool(ok({ open_times: ['3:00 PM'] })),
+          get_service_catalog: fakeTool(ok({ services: [] })),
+          get_my_appointments: fakeTool(ok({ appointments: [] })),
+          cancel_appointment: fakeTool(ok({ appointment_id: 'appt_9' })),
+          reschedule_appointment: fakeTool(ok({ appointment_id: 'appt_9' })),
+          attach_meeting_notes: fakeTool(ok({ appointment_id: 'appt_1' })),
+          get_customer_context: fakeTool(ok({ name: 'Camille', preferences: {}, history: '' })),
+          send_verification_code: fakeTool(ok({ sent: true })),
+          verify_phone_code: fakeTool(ok({ verified: true, phone: '+155****4567' })),
+          transfer_call: transfer,
+        } as unknown as ToolMap),
+      },
+    });
+    const names = Object.keys(toolkit.selectedTools());
+    expect(names).toContain('transfer_call');
+    // Present before any purpose selection — not waiting on a tree.
+    expect(names).toContain('set_purpose');
+  });
+
+  it('transfer_call is absent without offerTransfer even when real tool exists', () => {
+    const { toolkit } = makeKit({
+      offerTransfer: false,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: fakeTool('Transfer started'),
+      } as unknown as ToolMap,
+    });
+    expect(Object.keys(toolkit.selectedTools())).not.toContain('transfer_call');
+  });
+
+  it('transfer_call is absent when offerTransfer is true but real tool is missing', () => {
+    // Capability subset dropped transfer (e.g. realtime lean mode) — flag alone
+    // must not invent a tool that is not in realTools.
+    const { toolkit } = makeKit({ offerTransfer: true });
+    expect(Object.keys(toolkit.selectedTools())).not.toContain('transfer_call');
+  });
+
+  it('transfer_call execute still reaches the real tool when offered', async () => {
+    const transfer = fakeTool('Transfer started — the caller is being connected.');
+    const { toolkit } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    const out = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(out).toContain('Transfer started');
+    expect(transfer.execute).toHaveBeenCalledOnce();
+  });
+
   it("selection brings each tree's wrapped action + its read passthroughs", async () => {
     const { toolkit } = makeKit();
     await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'job', 'booking'] });

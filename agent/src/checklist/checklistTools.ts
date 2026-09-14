@@ -158,6 +158,15 @@ export const TREE_PASSTHROUGH_TOOLS: Record<string, string[]> = {
 };
 
 /**
+ * Always-on passthroughs — offered every turn when present in realTools, not
+ * tree-gated. transfer_call is further gated by ChecklistToolDeps.offerTransfer
+ * (same forward-number gate as the greeting's CLOSER_WITH_TRANSFER): every preset
+ * gets live human handoff without a per-tree action node, and tenants without a
+ * forward number never see the tool at all.
+ */
+export const ALWAYS_ON_PASSTHROUGH_TOOLS: readonly string[] = ['transfer_call'];
+
+/**
  * HOST-SIDE ARG BACKFILL (2026-07-21, first live tree call): the tracker HOLDS
  * every recorded answer, but wrapAction forwarded only what the model RETYPED
  * into the action's args — and on the first live call it silently dropped
@@ -704,6 +713,13 @@ export interface ChecklistToolDeps {
   /** Name of an already-recognized returning caller (null when unknown) —
    *  auto-fills the caller_name node for the same reason callerPhone does. */
   knownCallerName?: string | null;
+  /**
+   * Offer transfer_call as an always-on passthrough. Same gate as the greeting's
+   * CLOSER_WITH_TRANSFER: true only when this tenant has a forward number the
+   * call can actually REFER to. False/absent → tool omitted entirely (the model
+   * must not see a handoff tool it cannot use).
+   */
+  offerTransfer?: boolean;
   maxPurposeRounds?: number;
   /** The agent reschedules its toolset (macrotask-deferred updateTools). */
   onSelectionChanged: () => void;
@@ -1565,6 +1581,17 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   });
 
   const baseTools: ToolMap = { set_purpose, record_answer, finish_call };
+
+  // Always-on passthroughs — driven by ALWAYS_ON_PASSTHROUGH_TOOLS so the
+  // inventory list and the registration cannot drift. transfer_call also needs
+  // offerTransfer (forward-number / transferAvailable gate, same as the greeting
+  // closer): every preset gets live handoff without a per-tree action node.
+  for (const name of ALWAYS_ON_PASSTHROUGH_TOOLS) {
+    const real = realTools[name];
+    if (!real) continue;
+    if (name === 'transfer_call' && !deps.offerTransfer) continue;
+    baseTools[name] = real;
+  }
 
   // get_my_appointments — in the toolset EVERY turn, not just when
   // schedule_change is selected (2026-07-30, CALL_IMPROVEMENTS.md #8): a caller

@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-13 for filesystem/package facts (29 top-level route modules, 202 migrations, 27 defined agent tools in `tools.ts`, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5) — the 2026-09-05 pass had drifted (32/184-192/26 were wrong; see CLAUDE.md's Project Status for current test counts). Test-pass counts below remain the 2026-08-14 full-suite snapshot until re-run.
+**Last verified:** 2026-09-14 for filesystem/package facts (29 top-level route modules, 202 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5) and live suite totals (backend 3,147 / 263 files, dashboard 1,126 / 104 files, agent 1,048 / 61 files — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -68,7 +68,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── lib/                      api.ts, SessionContext, ThemeContext, VocabularyContext, hooks, types
 │   ├── e2e/                      40 Playwright spec files
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
-│   └── 92 Vitest test files      React Testing Library + utility tests
+│   └── 104 Vitest test files     React Testing Library + utility tests
 ├── supabase/
 │   ├── migrations/               202 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
@@ -776,7 +776,7 @@ Every component consumes CSS custom properties (`--bg`, `--fg`, `--accent`, `--b
 
 ### 16.7 Test harness
 
-Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,046 passing tests** (2026-08-18). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
+Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,126 passing tests** across **104 files** (2026-09-14). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
 
 ### 16.8 Dev server
 
@@ -816,15 +816,15 @@ All async work is **best-effort**. If a sync fails, the user-facing operation st
 
 ### 18.2 Backend (`npm test`)
 
-Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-08-18): not green in this workspace — 1,761 passing, 985 skipped, 9 failed. The loudest blocker was `tests/regression/rlsIsolation.test.ts`, which could not connect as `app_user` and instructed applying `supabase/migrations/20260724000100_app_user_role.sql` to `test_db` first.**
+Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-09-14): 3,147 passing across 263 files, full green.** The 2026-08-18 `rlsIsolation` / `app_user` failure is gone — `scripts/start-test-db.sh` + `scripts/setup-test-db.ts` bootstrap the role.
 
-### 18.3 Dashboard (`cd dashboard && npm test` — 1,046 passing on 2026-08-18)
+### 18.3 Dashboard (`cd dashboard && npm test` — 1,126 passing / 104 files on 2026-09-14)
 
 Vitest + React Testing Library (jsdom). Renders components with all 4 providers (Session, Theme, Vocabulary, AppointmentDetail). Tests interactions (click, keyboard, form submission), accessibility (role/tabIndex/aria attributes), and error states.
 
-### 18.4 Agent (`cd agent && npm test` — 943 passing on 2026-08-18)
+### 18.4 Agent (`cd agent && npm test` — 1,048 passing / 61 files on 2026-09-14)
 
-Vitest. Covers the LiveKit Agents worker: prompt assembly, the 26 defined tool schemas, `toolsClient`, transcript recording, call-outcome tracking, the bounded post-call summary, and the TTS dead-air fallback.
+Vitest. Covers the LiveKit Agents worker: prompt assembly, the 27 defined tool schemas (`agent/src/tools/`), `toolsClient`, transcript recording, call-outcome tracking, the bounded post-call summary, and the TTS dead-air fallback.
 
 _(The former Supabase edge-function suite — `deno task test --no-check` — was removed with `supabase/functions/` itself when the backend moved to Fastify. See `docs/voice/FRAMEWORK_MIGRATIONS.md`.)_
 

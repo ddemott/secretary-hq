@@ -277,7 +277,16 @@ export function buildGreeting(config: TenantDisplayConfig): string {
   // is in effect (custom question lowercased to read after "Otherwise,").
   const customCloser = config.greetingCloser?.trim();
   const closerQuestion = customCloser || CLOSER_NO_TRANSFER;
-  const closer = config.forwardPhone?.trim()
+  // Human opt-out only when a transfer can actually run. Prefer the backend-
+  // resolved transferAvailable flag when present (false = loop risk or no
+  // target). When the flag is absent (unit tests that only set forwardPhone),
+  // fall back to a non-blank forwardPhone — same "only promise it if it exists"
+  // rule, without forcing every test fixture to set transferAvailable.
+  const transferReady =
+    typeof config.transferAvailable === 'boolean'
+      ? config.transferAvailable && Boolean(config.forwardPhone?.trim())
+      : Boolean(config.forwardPhone?.trim());
+  const closer = transferReady
     ? customCloser
       ? TRANSFER_PREFIX + closerQuestion.charAt(0).toLowerCase() + closerQuestion.slice(1)
       : CLOSER_WITH_TRANSFER

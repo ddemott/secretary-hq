@@ -354,7 +354,15 @@ export default defineAgent({
     if (canWarmGreetingBeforePickup(preliminaryCtx.tenantId)) {
       warmedTenant = await fetchTenantConfig(earlyClient, preliminaryCtx.tenantId);
       warmedVoice = toAuraVoice(warmedTenant.ttsVoice);
-      warmedGreeting = buildGreeting(warmedTenant);
+      // Greeting closer and ChecklistAgent offerTransfer must agree. Realtime
+      // drops the 'transfer' capability (lean toolset); force the closer off so
+      // we never invite "representative" on a path that cannot hand off.
+      const warmOfferTransfer = !config.ENABLE_REALTIME && warmedTenant.transferAvailable;
+      warmedGreeting = buildGreeting(
+        warmOfferTransfer
+          ? warmedTenant
+          : { ...warmedTenant, forwardPhone: null, transferAvailable: false }
+      );
       {
         const tts = new deepgram.TTS({
           apiKey: config.DEEPGRAM_API_KEY,
@@ -886,7 +894,16 @@ export default defineAgent({
       // A second fetch here would push first audio even later.
       tenantConfig = warmedTenant ?? (await fetchTenantConfig(client, sessionCtx.tenantId));
       ttsVoiceKey = warmedVoice ?? toAuraVoice(tenantConfig.ttsVoice);
-      greeting = warmedGreeting ?? buildGreeting(tenantConfig);
+      // Same transfer gate as warm path above — capability + transferAvailable.
+      // When warm already produced the greeting, reuse it (same inputs).
+      const liveOfferTransfer = !config.ENABLE_REALTIME && tenantConfig.transferAvailable;
+      greeting =
+        warmedGreeting ??
+        buildGreeting(
+          liveOfferTransfer
+            ? tenantConfig
+            : { ...tenantConfig, forwardPhone: null, transferAvailable: false }
+        );
       callLog.info(
         {
           event: 'tenant_config_fetched',
@@ -1500,6 +1517,16 @@ export default defineAgent({
               // Same capability list that decides the TOOLSET, so the prompt and
               // the tools can never disagree about whether this line can text.
               smsEnabled: activeCapabilities.includes('sms'),
+              // Live human handoff — one boolean for greeting + toolset.
+              // Requires: transfer capability active (not realtime lean set),
+              // backend transferAvailable (no loop), and a nonblank forwardPhone.
+              // Matches buildGreeting's transferReady gate when transferAvailable
+              // is set on the tenant config (production path).
+              offerTransfer: Boolean(
+                activeCapabilities.includes('transfer') &&
+                  tenantConfig.transferAvailable &&
+                  tenantConfig.forwardPhone?.trim()
+              ),
               runtime: {
                 currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
                 // Read at SESSION START, so a very long call drifts — acceptable:
