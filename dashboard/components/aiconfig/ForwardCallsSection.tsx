@@ -41,9 +41,13 @@ export function ForwardCallsSection({
           placeholder="Ex: +1 312 555 0100"
         />
         {forwardLoops && (
-          <p className="text-sm" style={{ color: 'var(--danger, #dc2626)' }}>
+          <p
+            id="forward-loop-error"
+            className="text-sm"
+            style={{ color: 'var(--danger, #dc2626)' }}
+          >
             This can&apos;t be the same as your forwarded-from number or the assistant&apos;s own
-            number — the call would loop back to the assistant.
+            number — the call would loop back to the assistant. Fix it below before saving.
           </p>
         )}
       </section>
@@ -57,8 +61,12 @@ export function ForwardCallsSection({
           Owner Notification Phone
         </h2>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          When a caller leaves a message, the AI will send you an SMS alert at this number. Leave
-          blank to disable SMS notifications.
+          Messages a caller leaves always show up in your Calls inbox right away. This number is
+          where the AI will also text you an alert.
+        </p>
+        <p className="text-sm" style={{ color: 'var(--warning)' }}>
+          Text alerts aren&apos;t live yet on this platform (carrier registration is still pending)
+          — check your Calls inbox for new messages until SMS alerts turn on.
         </p>
         <Input
           type="tel"
