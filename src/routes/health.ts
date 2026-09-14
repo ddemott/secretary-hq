@@ -57,8 +57,9 @@ export function registerHealthRoutes(app: AppFastifyInstance, pool: Pool): void 
   app.get('/health', () => ({ status: 'ok', started_at: PROCESS_STARTED_AT }));
 
   // Readiness: pings the DB + reports pool saturation. A monitoring/alerting
-  // signal — page on 503 or sustained waiting>0. Not a traffic gate unless
-  // Railway's healthcheck path is repointed here.
+  // signal — page on 503 or sustained waiting>0. Not a traffic gate.
+  // Railway healthcheckPath stays /health (declined /ready gate 2026-09-14):
+  // deploy-time DB blip would block promotion of otherwise-good code.
   app.get('/ready', (_req, reply) => runReadinessCheck(pool, app.log, reply));
 
   // Prometheus-format metrics scrape. Strict opt-in: 404 when METRICS_TOKEN

@@ -872,9 +872,14 @@ Surfaces in dashboard via `GET /versionHistory/:entity/:id`.
 
 `record_versions` table — parallel history system specific to entities that need UI diff/restore (services, employees, resources). Triggered from `src/routes/versionHistory.ts`.
 
-### 19.4 Health endpoint
+### 19.4 Health endpoints
 
-`GET /health` → `{ status: 'ok' }`. Railway uses this as the healthcheck.
+`GET /health` → `{ status: 'ok', started_at }` — process liveness only (no DB).
+Railway `healthcheckPath` is `/health` (deploy-time promote gate only; not continuous).
+
+`GET /ready` → DB ping + pool saturation + `rls_enforced`/`db_role`. Returns 503 when
+DB unreachable. **Monitoring signal only** — intentionally not the Railway healthcheck
+(decision 2026-09-14: repointing would block deploy promotion during a DB blip).
 
 ### 19.5 Gaps
 
