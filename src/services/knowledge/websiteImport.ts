@@ -167,13 +167,14 @@ async function stageSuggestionsOnClient(
   tenantId: string,
   items: StagedItem[]
 ): Promise<void> {
+  // Empty batch must not clear the owner review queue (Copilot / PR #482).
+  if (items.length === 0) return;
   await client.query(
     `UPDATE knowledge_suggestion
         SET status = 'superseded', updated_at = now()
       WHERE tenant_id = $1 AND status = 'suggested'`,
     [tenantId]
   );
-  if (items.length === 0) return;
   for (const item of items) {
     await client.query(
       `INSERT INTO knowledge_suggestion

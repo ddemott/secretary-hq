@@ -263,7 +263,7 @@ describe('rescanStaleWebsitesNow', () => {
     });
     expect(importFn).toHaveBeenCalledTimes(2);
     expect(recordFailureFn).toHaveBeenCalledTimes(1);
-    expect(recordFailureFn).toHaveBeenCalledWith(expect.anything(), 'bad');
+    expect(recordFailureFn).toHaveBeenCalledWith(expect.anything(), 'bad', 5);
     expect(errorsTotalFor('website_rescan_tenant_failed')).toBe(before + 1);
   });
 

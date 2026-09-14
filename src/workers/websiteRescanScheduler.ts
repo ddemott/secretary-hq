@@ -246,7 +246,14 @@ export async function rescanStaleWebsitesNow(
       params?: unknown[]
     ) => Promise<{ rows: T[] }>;
     importFn?: typeof importWebsiteKnowledge;
-    recordFailureFn?: typeof recordWebsiteScanFailure;
+    recordFailureFn?: (
+      withTenantClient: <T>(
+        tenantId: string,
+        fn: (client: import('pg').PoolClient) => Promise<T>
+      ) => Promise<T>,
+      tenantId: string,
+      maxFails?: number
+    ) => Promise<{ failCount: number; quarantined: boolean }>;
     /** Test escape hatch: skip advisory lock (unit tests without a real pool). */
     skipLock?: boolean;
     pool?: Pick<Pool, 'connect' | 'query'>;
@@ -274,11 +281,12 @@ export async function rescanStaleWebsitesNow(
     const withTenantClient = opts.withTenantClient ?? createWithTenantClient(pool as Pool);
     const importFn = opts.importFn ?? importWebsiteKnowledge;
     const recordFailureFn = opts.recordFailureFn ?? recordWebsiteScanFailure;
+    const maxFails = opts.maxFails ?? MAX_FAILS;
 
     const candidates = await selectStaleWebsiteScanTenants(query, {
       staleDays: opts.staleDays,
       batchSize: opts.batchSize,
-      maxFails: opts.maxFails,
+      maxFails,
     });
 
     let succeeded = 0;
@@ -297,7 +305,7 @@ export async function rescanStaleWebsitesNow(
             `websiteRescan: tenant ${tenant_id} failed (${result.status}): ${result.error}`
           );
           try {
-            const rec = await recordFailureFn(withTenantClient, tenant_id);
+            const rec = await recordFailureFn(withTenantClient, tenant_id, maxFails);
             if (rec.quarantined) {
               quarantined++;
               errorsTotal.inc({ event: 'website_rescan_tenant_quarantined' });
@@ -314,7 +322,7 @@ export async function rescanStaleWebsitesNow(
         errorsTotal.inc({ event: 'website_rescan_tenant_failed' });
         console.error(`websiteRescan: tenant ${tenant_id} threw:`, err);
         try {
-          const rec = await recordFailureFn(withTenantClient, tenant_id);
+          const rec = await recordFailureFn(withTenantClient, tenant_id, maxFails);
           if (rec.quarantined) {
             quarantined++;
             errorsTotal.inc({ event: 'website_rescan_tenant_quarantined' });

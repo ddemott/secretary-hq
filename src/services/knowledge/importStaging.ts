@@ -125,6 +125,8 @@ export async function stageSuggestions(
   tenantId: string,
   items: StagedSuggestion[]
 ): Promise<void> {
+  // Empty batch must not clear the owner review queue (Copilot / PR #482).
+  if (items.length === 0) return;
   await withTenantClient(tenantId, async (client) => {
     await client.query(
       `UPDATE knowledge_suggestion
@@ -132,7 +134,6 @@ export async function stageSuggestions(
         WHERE tenant_id = $1 AND status = 'suggested'`,
       [tenantId]
     );
-    if (items.length === 0) return;
     for (const item of items) {
       await client.query(
         `INSERT INTO knowledge_suggestion
