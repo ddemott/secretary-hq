@@ -138,7 +138,7 @@ export type RescanTickResult = {
  * - last_scanned is NULL or older than staleDays
  * - not quarantined (fail_count < maxFails)
  * - past exponential backoff after consecutive failures
- *   (2^(fail_count-1) days, capped at staleDays)
+ *   (2^(min(fail_count, maxFails)-1) days, capped at staleDays)
  *
  * Ordered fail_count ASC then oldest-scanned so healthy backlog drains before
  * flaky URLs, and a single dead URL cannot monopolize the batch forever.
@@ -173,7 +173,7 @@ export async function selectStaleWebsiteScanTenants(
           OR website_scan_last_attempt_at < NOW() - (
             LEAST(
               $1::int,
-              POWER(2, LEAST(website_scan_fail_count, 5) - 1)::int
+              POWER(2, LEAST(website_scan_fail_count, $3) - 1)::int
             ) * INTERVAL '1 day'
           )
         )
@@ -192,6 +192,8 @@ export async function selectStaleWebsiteScanTenants(
  * — caller should skip (cost must not multiply with replica count).
  *
  * MUST unlock on the same connection that locked; pool.query alone is unsafe.
+ * If unlock fails, release the client with an error so the pool destroys the
+ * session rather than recycling a connection that still holds the lock forever.
  * Exported for tests.
  */
 export async function withWebsiteRescanLock<T>(
@@ -200,6 +202,7 @@ export async function withWebsiteRescanLock<T>(
   lockKey: number = WEBSITE_RESCAN_LOCK_KEY
 ): Promise<{ acquired: false } | { acquired: true; result: T }> {
   const client: PoolClient = await pool.connect();
+  let held = false;
   try {
     const locked = await client.query<{ ok: boolean }>(
       'SELECT pg_try_advisory_lock($1) AS ok',
@@ -208,14 +211,36 @@ export async function withWebsiteRescanLock<T>(
     if (!locked.rows[0]?.ok) {
       return { acquired: false };
     }
+    held = true;
     try {
       const result = await fn();
       return { acquired: true, result };
     } finally {
-      await client.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+      if (held) {
+        try {
+          await client.query('SELECT pg_advisory_unlock($1)', [lockKey]);
+          held = false;
+        } catch (unlockErr) {
+          // Destroy the session so a stuck advisory lock cannot pin every
+          // future tick across replicas (session locks survive client.release).
+          try {
+            client.release(true);
+          } catch {
+            /* already dead */
+          }
+          held = false;
+          throw unlockErr;
+        }
+      }
     }
   } finally {
-    client.release();
+    if (held === false) {
+      try {
+        client.release();
+      } catch {
+        /* already released after unlock failure */
+      }
+    }
   }
 }
 
