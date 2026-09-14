@@ -145,7 +145,7 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
 ## 🟢 P2 — Quality, scale & ops visibility
 
 - [ ] **(code)** **Volume metering + tier cap enforcement** — do after first customer, once real usage data sets the bands. Data already exists (`voice_sessions` per tenant per month). Build: (1) monthly call counter endpoint; (2) per-plan limit config (Solo ~300–400 calls, Growth ~1,000, Pro unlimited); (3) dashboard usage meter + 80% warning banner; (4) soft cap enforcement. No Stripe Metered Billing needed — flat bands with a DB query. See pricing notes in §2 Billing above.
-- [ ] **(Dale/code)** _(Optional)_ Repoint Railway `healthcheckPath` → `/ready` to gate deploy **promotion** on DB reachability (behavior change — could block promotion during a DB blip; your call).
+- [x] ~~**(Dale/code)** _(Optional)_ Repoint Railway `healthcheckPath` → `/ready`~~ — **DECLINED 2026-09-14.** Keep `railway.json` `healthcheckPath: /health`. `/ready` stays monitoring-only. Rationale + failure modes: `docs/planning/RESOLVED.md` (2026-09-14 Railway healthcheck decision).
 - [ ] **(code)** **Website-scan re-scan scheduler** — periodic re-scan of stale KB. Deferred: needs a `last_scanned` column/migration + is a cost/product call.
 
 ### Structural refactors
