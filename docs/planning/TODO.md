@@ -64,15 +64,15 @@ then be gated/insured. Most of this is your action, not code — the code is shi
 
 _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voice — Phase 2** at the bottom of this file._
 
-- [ ] **(Dale, use wife's phone)** **Live validation call** — do these steps together in one sitting:
+- [x] **(Dale, second handset)** **Live validation call** — **CLOSED 2026-09-14 (Dale verbal).** Real PSTN calls from a second handset verified answer + dialog on production. Dale also uses live calls as ongoing QA for dialog defects (e.g. double-ask). Checklist below kept as optional regression recipe:
   1. Set the **forward number** on the dashboard AI Persona → "Forward Calls to a Person" (`+1 608 217 5303`) before calling.
-  2. Have wife call `+1 630-822-9086` (must use her phone — can't call from your cell and forward to it).
+  2. Call `+1 630-822-9086` from a second handset (can't call from the forward-to cell and forward to it).
   3. Validate booking: appointment lands in `appointments` for tenant `d5e3c6a1` inside a real shift window.
   4. Validate transfer: say "talk to a person" → your cell rings + Calls tab shows the transcript.
-     Code wiring shipped 2026-09-14 (`transfer_call` always-on checklist passthrough when forward number configured). This step is now the live proof, not a known fail.
+     Code wiring shipped 2026-09-14 (`transfer_call` always-on checklist passthrough when forward number configured).
   5. Validate dialog: agent asks preferred time, widens when none fit, never imposes a slot, recalls preferences across calls.
-  6. Validate the booked time is what was said, not an earlier slot. `docs/planning/RESOLVED.md` (2026-07-04) logged a `[~]` **partial**: `book_with_scheduling_atomic` books the EARLIEST open slot ≥ `window_from`, so a caller-named "4:30" could book 4:00 — code mitigation shipped (tool description + prompt sharpened to set `window_from` to exactly the picked time), but it was never live-proved and no later TODO item picked it up. Confirm the agent both books AND confirms back the actual `booked_start`, not the caller's stated time restated blindly.
-     (PSTN inbound itself already confirmed 2026-06-30; this closes the booking + transfer + preference legs.)
+  6. Validate the booked time is what was said, not an earlier slot (`booked_start` confirmed back, not caller time restated blindly).
+     (PSTN inbound itself already confirmed 2026-06-30.)
 - [x] **(code)** **Wire `transfer_call` into the question-tree toolset** — 2026-09-14, PR #462. Always-on passthrough via `ALWAYS_ON_PASSTHROUGH_TOOLS` + `offerTransfer` (same forward-number gate as `CLOSER_WITH_TRANSFER`). Not a per-tree action node — every preset gets it when a forward number is configured; omitted entirely when absent.
 - [ ] **(Dale)** **Delete or merge the duplicate active `Dale DeMott` employee row in prod.** `docs/planning/RESOLVED.md` (2026-07-03) logged this `[~]` **partial**: the app-level guard that stops a NEW duplicate (409 on a normalized-name collision with an existing non-deleted employee) shipped, but the pre-existing duplicate row in prod — one soft-deleted, one active — was left for a manual cleanup that needed prod DB access no session has. Never resurfaced as its own TODO item since.
 - [x] **(code)** **Confirm whether the Aura TTS zero-bytes bug reaches prod.** ~~CLAUDE.md's TTS section documents an unresolved 2026-08-14 finding…~~ **CLOSED 2026-09-14 (PR #467) — dev-host-only artifact, not prod risk.** Ran `cd agent && npm run verify:tts` against the monorepo `.env` Deepgram key after confirming it **fingerprints identical** to Railway `DEEPGRAM_API_KEY` (same sha256_12 / len / prefix+suffix). Result: **10/10 SPEAKS** (6 Aura voices + greeting/hold/recovery/tool-fallback), each path returning ~100k–290k audio bytes over the **WebSocket** speak path. Prod `AURA_TTS_STREAMING` is **UNSET** (streaming default stays on). Keep `greetingPickup.ts` + `AURA_TTS_STREAMING=false` escape hatch + `verify:tts` gate; do not flip the prod default. Evidence: `docs/planning/RESOLVED.md` (2026-09-14 Aura zero-bytes).
