@@ -1125,3 +1125,51 @@ describe('the 2026-09-09 call sweep', () => {
     expect(p).toMatch(/If you are unsure which slot the name belongs in, ASK THAT/i);
   });
 });
+
+describe('buildChecklistPrompt — transfer / representative when offerTransfer', () => {
+  /**
+   * C-PROMPT after #462: ladder prompt.ts has transferToolLine; live ChecklistAgent
+   * never named transfer_call or "representative". High false-connect risk.
+   */
+  const withTransfer = buildChecklistPrompt({
+    persona: 'You are Chris, the receptionist for Thinking Hammer.',
+    runtime: {
+      currentDate: 'Wednesday, July 22, 2026',
+      currentTime: '3:00 PM',
+      timezone: 'America/Chicago',
+      businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+      bookableThrough: 'Friday, August 21, 2026',
+    },
+    library: PLATFORM_TREE_LIBRARY,
+    callerPhone: '+126****9039',
+    offerTransfer: true,
+  });
+  const withoutTransfer = buildChecklistPrompt({
+    persona: 'You are Chris, the receptionist for Thinking Hammer.',
+    runtime: {
+      currentDate: 'Wednesday, July 22, 2026',
+      currentTime: '3:00 PM',
+      timezone: 'America/Chicago',
+      businessHours: 'Monday to Friday, 1:00 PM to 5:00 PM',
+      bookableThrough: 'Friday, August 21, 2026',
+    },
+    library: PLATFORM_TREE_LIBRARY,
+    callerPhone: '+126****9039',
+    offerTransfer: false,
+  });
+
+  it('names transfer_call + representative and forbids false connect when offered', () => {
+    expect(withTransfer).toContain('# Connecting to a person');
+    expect(withTransfer).toContain('transfer_call');
+    expect(withTransfer).toMatch(/representative/i);
+    expect(withTransfer).toMatch(/never say they are connected/i);
+    expect(withTransfer).toMatch(/OUTRANKS/i);
+  });
+
+  it('omits the handoff block when transfer is not offered', () => {
+    expect(withoutTransfer).not.toContain('# Connecting to a person');
+    expect(withoutTransfer).not.toContain('You HAVE transfer_call');
+    // Still honest about no mid-call connect on the urgent path.
+    expect(withoutTransfer).toMatch(/You cannot put\s+anyone through mid-call/i);
+  });
+});

@@ -22,6 +22,7 @@ import {
   placeholderNameReason,
   topicNamesOnlyAPerson,
   ragCouldNotAnswer,
+  transferCallFailed,
   type ChecklistToolDeps,
 } from './checklistTools.js';
 import { resolveSelectableTreeIds } from './checklistAgent.js';
@@ -230,8 +231,8 @@ describe('the toolset composition', () => {
   });
 
   it('caps failed transfer attempts then forces the message path', async () => {
-    // Failed REFER must not loop forever; after the action-style two-failure
-    // cap, host-select message so the goodbye gate has somewhere to go.
+    // C-GATE + C-TERM: first failure already host-selects message (goodbye must
+    // not stall a human ask); second failure stops SIP retries.
     const fail = JSON.stringify({
       error:
         'The transfer did not go through. Apologize briefly and offer to take a message instead.',
@@ -248,16 +249,68 @@ describe('the toolset composition', () => {
     });
     const first = await call(toolkit.selectedTools(), 'transfer_call', {});
     expect(first).toContain('did not go through');
-    expect(tracker.selectedTrees()).not.toContain('message');
-    const second = await call(toolkit.selectedTools(), 'transfer_call', {});
-    expect(second).toMatch(/STOP retrying|take a message/i);
+    expect(first).toContain('TAKE A MESSAGE');
     expect(tracker.selectedTrees()).toContain('message');
     expect(tracker.selectedTrees()).toContain('identity');
     expect(onSelectionChanged).toHaveBeenCalled();
+    const second = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(second).toMatch(/STOP retrying|TAKE A MESSAGE/i);
+    expect(tracker.selectedTrees()).toContain('message');
     // Third call must not hit the SIP executor again.
     const third = await call(toolkit.selectedTools(), 'transfer_call', {});
-    expect(third).toMatch(/no longer available|take a message|STOP/i);
+    expect(third).toMatch(/no longer available|TAKE A MESSAGE|STOP/i);
     expect(transfer.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('first transfer failure drops unfinished booking so goodbye is not stalled', async () => {
+    // C-GATE: open booking nodes held finish_call after REFER fail while the
+    // caller had asked for a human.
+    const transfer = fakeTool(
+      JSON.stringify({
+        error:
+          'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+      })
+    );
+    const { toolkit, tracker, onSelectionChanged } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        book_with_scheduling: fakeTool(ok({ appointment_id: 'appt_1' })),
+        take_message: fakeTool(ok({ message_id: 'msg_1' })),
+        identify_caller: fakeTool(ok({ customer_id: 'cust_1' })),
+        get_available_slots: fakeTool(ok({ open_times: ['3:00 PM'] })),
+        get_service_catalog: fakeTool(ok({ services: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'set_purpose', {
+      work_direction: 'neither_or_unclear',
+      trees: ['identity', 'booking'],
+    });
+    expect(tracker.selectedTrees()).toContain('booking');
+    const res = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(res).toContain('TAKE A MESSAGE');
+    expect(tracker.selectedTrees()).toContain('message');
+    expect(tracker.selectedTrees()).not.toContain('booking');
+    expect(onSelectionChanged).toHaveBeenCalled();
+  });
+
+  it('transferCallFailed treats only Transfer started as success', () => {
+    expect(
+      transferCallFailed(
+        'Transfer started — the caller is being connected to a team member now.'
+      )
+    ).toBe(false);
+    expect(
+      transferCallFailed(
+        JSON.stringify({
+          error: 'Transfer is not available right now. Offer to take a message instead.',
+        })
+      )
+    ).toBe(true);
+    expect(transferCallFailed('ok')).toBe(true);
+    expect(transferCallFailed('')).toBe(true);
   });
 
   it('transfer failure cap does not invent message when that tree is disabled', async () => {
