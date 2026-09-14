@@ -1582,14 +1582,15 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
 
   const baseTools: ToolMap = { set_purpose, record_answer, finish_call };
 
-  // transfer_call — always-on when the tenant has a forward number (same gate as
-  // greeting CLOSER_WITH_TRANSFER). Not a tree action and not TREE_PASSTHROUGH:
-  // every preset must be able to honour "representative" without a per-tree node.
-  // Unwrapped: completes no checklist node, holds no goodbye gate. Absent from
-  // realTools (capability off) or offerTransfer false → omitted entirely.
-  const realTransfer = realTools['transfer_call'];
-  if (deps.offerTransfer && realTransfer) {
-    baseTools['transfer_call'] = realTransfer;
+  // Always-on passthroughs — driven by ALWAYS_ON_PASSTHROUGH_TOOLS so the
+  // inventory list and the registration cannot drift. transfer_call also needs
+  // offerTransfer (forward-number / transferAvailable gate, same as the greeting
+  // closer): every preset gets live handoff without a per-tree action node.
+  for (const name of ALWAYS_ON_PASSTHROUGH_TOOLS) {
+    const real = realTools[name];
+    if (!real) continue;
+    if (name === 'transfer_call' && !deps.offerTransfer) continue;
+    baseTools[name] = real;
   }
 
   // get_my_appointments — in the toolset EVERY turn, not just when
