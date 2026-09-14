@@ -410,6 +410,8 @@ export interface UsageCapEvaluation {
   softCapEnforced: boolean;
   warnRatio: number;
   blocked: boolean;
+  /** True when limit came from free-tier fallback (null/unknown plan). */
+  freeTierApplied?: boolean;
 }
 
 export interface UsageStatementResult {

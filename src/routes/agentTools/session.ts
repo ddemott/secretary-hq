@@ -263,6 +263,13 @@ export function registerSessionRoutes({ app, pool, withTenantClient }: AgentTool
       // spirit: refuse new work when the tenant is over its plan, but speak a
       // conversational error_code so the agent can hang up cleanly. Fail-open
       // on evaluation errors — a metering blip must not silence every line.
+      // Page on rate(errors_total{event="usage_cap_check_failed"}) — fail-open
+      // amplifies unmetered load under DB stress (see docs/operations/ALERTS.md).
+      //
+      // H2 decision (non-cap start failure): FAIL-SOFT. Agent continues the live
+      // call when start_voice_session errors (availability). Cap path still
+      // refuses via usage_limit_exceeded. Page voice_session_start_failed rate;
+      // do not invent a stub row on insert failure (would race the real insert).
       try {
         const cap = await evaluateUsageCap(pool, args.tenant_id);
         if (cap.blocked) {

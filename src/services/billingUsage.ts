@@ -3,13 +3,20 @@
  *
  * Billing model: answered call only. A call bills when it completed, the caller
  * actually spoke, and it lasted at least BILLABLE_MIN_SECONDS. Silent rooms,
- * instant hang-ups, spam, and still-active calls are free. Overage is flat
- * call packs when soft-cap enforcement is off. Soft-cap mode (default) warns at
- * 80% and blocks new voice-session starts at the plan limit — see
- * evaluateUsageCap() + voice-session-start.
+ * instant hang-ups, and spam are free. Soft-cap mode (default) warns at 80% and
+ * blocks new voice-session starts at the plan limit — see evaluateUsageCap() +
+ * voice-session-start.
+ *
+ * Integrity rules (margin protection):
+ * - Null/unknown plan under soft-cap → explicit free-tier finite cap (never
+ *   silent unlimited). Professional stays unlimited via PLAN_QUOTAS.
+ * - Soft-delete does NOT wipe the meter: billable counts ignore is_deleted.
+ * - In-flight sessions reserve capacity: active rows in the UTC month count
+ *   toward the cap alongside completed billable calls (closes TOCTOU overshoot).
  *
  * Cap numbers are Dale-owned placeholders: override via PLAN_CAP_SOLO /
- * PLAN_CAP_GROWTH / PLAN_CAP_PROFESSIONAL without a deploy of magic numbers.
+ * PLAN_CAP_GROWTH / PLAN_CAP_PROFESSIONAL / PLAN_CAP_FREE without a deploy of
+ * magic numbers.
  */
 import type { Pool, PoolClient } from 'pg';
 
@@ -17,6 +24,9 @@ type Queryable = Pool | PoolClient;
 
 export const BILLABLE_MIN_SECONDS = 15;
 const CALLER_LINE_RE = '(?:^|\\n)Caller(?: \\[\\d+:\\d{2}\\])?: ';
+
+/** Default free-tier included calls when plan is null/unknown under soft-cap. */
+export const FREE_TIER_INCLUDED_CALLS = 50;
 
 export interface PlanQuota {
   /** null = unlimited (Professional default). */
@@ -44,6 +54,8 @@ export interface UsageCapEvaluation {
   warnRatio: number;
   /** True when a new voice session must be refused. */
   blocked: boolean;
+  /** True when limit came from free-tier fallback (null/unknown plan). */
+  freeTierApplied: boolean;
 }
 
 export interface MonthlyStatement {
@@ -91,20 +103,51 @@ function envPlanCap(plan: string): number | null | undefined {
   return n;
 }
 
+/** Normalize plan keys (trim + lower). Empty → null. */
+export function normalizePlanKey(plan: string | null | undefined): string | null {
+  if (plan == null) return null;
+  const key = plan.trim().toLowerCase();
+  return key.length > 0 ? key : null;
+}
+
+/**
+ * Free-tier finite cap for null/unknown plans under soft-cap.
+ * PLAN_CAP_FREE env override; 0/invalid falls back to FREE_TIER_INCLUDED_CALLS
+ * (never unlimited — that would re-open the null-plan hole).
+ */
+export function freeTierCallLimit(): number {
+  const n = parsePositiveInt(process.env.PLAN_CAP_FREE);
+  if (n === undefined || n === 0) return FREE_TIER_INCLUDED_CALLS;
+  return n;
+}
+
 export function resolvePlanQuota(plan: string | null | undefined): PlanQuota | null {
-  if (!plan) return null;
-  const base = PLAN_QUOTAS[plan];
+  const key = normalizePlanKey(plan);
+  if (!key) return null;
+  const base = PLAN_QUOTAS[key];
   if (!base) return null;
-  const override = envPlanCap(plan);
+  const override = envPlanCap(key);
   if (override === undefined) return { ...base };
   return { ...base, includedCalls: override };
 }
 
-/** Included-call limit for a plan, or null when unlimited / unknown. */
+/**
+ * Included-call limit for a plan, or null when unlimited.
+ *
+ * Under soft-cap enforcement, null/unknown plan → free-tier finite cap
+ * (never silent unlimited). Recognized Professional stays unlimited.
+ * When soft-cap is off, null/unknown stays null (pack/overage path).
+ */
 export function planCallLimit(plan: string | null | undefined): number | null {
   const q = resolvePlanQuota(plan);
-  if (!q) return null;
-  return q.includedCalls;
+  if (q) return q.includedCalls;
+  if (isSoftCapEnforced()) return freeTierCallLimit();
+  return null;
+}
+
+/** Whether planCallLimit applied free-tier fallback for this plan. */
+export function isFreeTierPlan(plan: string | null | undefined): boolean {
+  return resolvePlanQuota(plan) == null && isSoftCapEnforced();
 }
 
 export function getWarnRatio(): number {
@@ -136,7 +179,43 @@ export function usageCapStatus(
   return 'ok';
 }
 
-/** Billable (answered) call count for the current UTC month. */
+/**
+ * SQL predicate: completed billable (answered) call.
+ * Soft-delete is intentionally ignored — owner delete must not wipe the meter.
+ */
+const BILLABLE_COMPLETED_SQL = `status = 'completed'
+        AND COALESCE(duration_seconds, 0) >= $2
+        AND transcript ~ $3`;
+
+/**
+ * Cap occupancy for the current UTC month:
+ * - completed billable answered calls (incl. soft-deleted)
+ * - active in-flight sessions (reservation against concurrent overshoot)
+ */
+export async function countCapOccupancyThisMonth(
+  pool: Queryable,
+  tenantId: string
+): Promise<number> {
+  const res = await pool.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n
+       FROM voice_sessions
+      WHERE tenant_id = $1
+        AND started_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+        AND (
+          status = 'active'
+          OR (${BILLABLE_COMPLETED_SQL})
+        )`,
+    [tenantId, BILLABLE_MIN_SECONDS, CALLER_LINE_RE]
+  );
+  return res.rows[0]?.n ?? 0;
+}
+
+/**
+ * Billable (answered) call count for the current UTC month.
+ * Includes soft-deleted rows so owner delete cannot reset the meter.
+ * Does not count active/in-flight (those are free until completed billable).
+ * Prefer countCapOccupancyThisMonth for the soft-cap gate.
+ */
 export async function countAnsweredCallsThisMonth(
   pool: Queryable,
   tenantId: string
@@ -146,28 +225,18 @@ export async function countAnsweredCallsThisMonth(
        FROM voice_sessions
       WHERE tenant_id = $1
         AND started_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-        AND (is_deleted IS NULL OR is_deleted = false)
-        AND status = 'completed'
-        AND COALESCE(duration_seconds, 0) >= $2
-        AND transcript ~ $3`,
+        AND (${BILLABLE_COMPLETED_SQL})`,
     [tenantId, BILLABLE_MIN_SECONDS, CALLER_LINE_RE]
   );
   return res.rows[0]?.n ?? 0;
 }
 
-export async function evaluateUsageCap(
-  pool: Queryable,
-  tenantId: string
-): Promise<UsageCapEvaluation> {
-  const tenantRes = await pool.query<{ subscription_plan: string | null }>(
-    'SELECT subscription_plan FROM tenants WHERE tenant_id = $1',
-    [tenantId]
-  );
-  if (tenantRes.rows.length === 0) throw new Error('Tenant not found');
-
-  const plan = tenantRes.rows[0].subscription_plan;
-  const limit = planCallLimit(plan);
-  const used = await countAnsweredCallsThisMonth(pool, tenantId);
+function buildCapEvaluation(
+  plan: string | null,
+  used: number,
+  limit: number | null,
+  freeTierApplied: boolean
+): UsageCapEvaluation {
   const warnRatio = getWarnRatio();
   const status = usageCapStatus(used, limit, warnRatio);
   const softCapEnforced = isSoftCapEnforced();
@@ -183,7 +252,27 @@ export async function evaluateUsageCap(
     softCapEnforced,
     warnRatio,
     blocked: softCapEnforced && status === 'blocked',
+    freeTierApplied,
   };
+}
+
+export async function evaluateUsageCap(
+  pool: Queryable,
+  tenantId: string
+): Promise<UsageCapEvaluation> {
+  const tenantRes = await pool.query<{ subscription_plan: string | null }>(
+    'SELECT subscription_plan FROM tenants WHERE tenant_id = $1',
+    [tenantId]
+  );
+  if (tenantRes.rows.length === 0) throw new Error('Tenant not found');
+
+  const plan = tenantRes.rows[0].subscription_plan;
+  const freeTierApplied = isFreeTierPlan(plan);
+  const limit = planCallLimit(plan);
+  // Gate uses occupancy (completed billable + active) so concurrent starts cannot
+  // all pass at limit-1 and overshoot when they complete.
+  const used = await countCapOccupancyThisMonth(pool, tenantId);
+  return buildCapEvaluation(plan, used, limit, freeTierApplied);
 }
 
 export async function computeUsageStatements(
@@ -200,8 +289,21 @@ export async function computeUsageStatements(
   if (tenantRes.rows.length === 0) throw new Error('Tenant not found');
 
   const plan = tenantRes.rows[0].subscription_plan;
-  const quota = resolvePlanQuota(plan);
+  const recognizedQuota = resolvePlanQuota(plan);
+  const freeTierApplied = isFreeTierPlan(plan);
+  // Soft-cap free-tier: synthesize a quota so the dashboard meter has a limit.
+  // Pack math only applies to recognized paid plans (not free-tier fallback).
+  const quota: PlanQuota | null = recognizedQuota
+    ? recognizedQuota
+    : freeTierApplied
+      ? {
+          includedCalls: freeTierCallLimit(),
+          packCalls: PLAN_QUOTAS.solo.packCalls,
+          packPriceUsd: PLAN_QUOTAS.solo.packPriceUsd,
+        }
+      : null;
 
+  // Metering ignores is_deleted (C2). UI lists still filter deleted separately.
   const usage = await pool.query<{ month: string; total: number; answered: number }>(
     `SELECT to_char(date_trunc('month', started_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
             COUNT(*)::int AS total,
@@ -214,7 +316,6 @@ export async function computeUsageStatements(
       WHERE tenant_id = $1
         AND started_at >= (date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
             - ($2 - 1) * interval '1 month'
-        AND (is_deleted IS NULL OR is_deleted = false)
       GROUP BY 1
       ORDER BY 1 DESC`,
     [tenantId, months, BILLABLE_MIN_SECONDS, CALLER_LINE_RE]
@@ -223,10 +324,13 @@ export async function computeUsageStatements(
   const currentMonth = new Date().toISOString().slice(0, 7);
   const included = quota?.includedCalls ?? null;
   const statements: MonthlyStatement[] = usage.rows.map((row) => {
+    // Pack overage only for recognized paid plans when soft-cap is off path;
+    // free-tier under soft-cap is hard-capped, not pack-billed.
+    const packEligible = recognizedQuota != null;
     const overageCalls =
-      included !== null ? Math.max(0, row.answered - included) : null;
+      packEligible && included !== null ? Math.max(0, row.answered - included) : null;
     const packsApplied =
-      quota && overageCalls !== null && included !== null
+      packEligible && quota && overageCalls !== null && included !== null
         ? Math.ceil(overageCalls / quota.packCalls)
         : null;
     return {
@@ -243,15 +347,10 @@ export async function computeUsageStatements(
     };
   });
 
-  // Cap evaluation reuses the same answered-call definition for the live month.
-  const current = statements.find((s) => s.inProgress);
-  const used = current?.answeredCalls ?? 0;
+  // Cap uses occupancy (answered + active) for the live month — same as gate.
+  const occupancy = await countCapOccupancyThisMonth(pool, tenantId);
   const limit = included;
-  const warnRatio = getWarnRatio();
-  const status = usageCapStatus(used, limit, warnRatio);
-  const softCapEnforced = isSoftCapEnforced();
-  const percent =
-    limit !== null && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null;
+  const cap = buildCapEvaluation(plan, occupancy, limit, freeTierApplied);
 
   return {
     plan,
@@ -259,15 +358,6 @@ export async function computeUsageStatements(
     billableMinSeconds: BILLABLE_MIN_SECONDS,
     monthBoundaries: 'utc',
     statements,
-    cap: {
-      plan,
-      used,
-      limit,
-      percent,
-      status,
-      softCapEnforced,
-      warnRatio,
-      blocked: softCapEnforced && status === 'blocked',
-    },
+    cap,
   };
 }

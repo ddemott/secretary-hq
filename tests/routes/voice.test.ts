@@ -5,6 +5,26 @@ import type { Pool } from 'pg';
 import { registerVoiceRoutes } from '../../src/routes/voice';
 import { createMockClient, createMockPool, createMockWithTenantClient } from '../mock';
 
+// Cap gate hits pool.query before start_voice_session. Default allow so existing
+// scripted responses stay aligned with the session-open SQL only.
+vi.mock('../../src/services/billingUsage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/services/billingUsage')>();
+  return {
+    ...actual,
+    evaluateUsageCap: vi.fn(async () => ({
+      plan: 'solo',
+      used: 0,
+      limit: 350,
+      percent: 0,
+      status: 'ok' as const,
+      softCapEnforced: true,
+      warnRatio: 0.8,
+      blocked: false,
+      freeTierApplied: false,
+    })),
+  };
+});
+
 // --- Constants ---
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const CUSTOMER_ID = '11111111-2222-3333-8444-555555555555'; // Valid UUID format (4th segment starts with 8)

@@ -580,7 +580,7 @@ OWNER: Claude-able (+ Human decides cap numbers)
 PRIORITY: HIGH
 EFFORT: 8–12h
 DEPENDS_ON: T-004
-CONTEXT: Tiers are flat subscriptions. Cap enforcement counts answered calls from `voice_sessions` (UTC month) via `evaluateUsageCap` — no denormalized counter columns. Env knobs: `PLAN_CAP_SOLO|GROWTH|PROFESSIONAL`, `USAGE_WARN_RATIO`, `USAGE_SOFT_CAP_ENFORCE`.
+CONTEXT: Tiers are flat subscriptions. Cap occupancy = completed billable answered calls (incl. soft-deleted) + active in-flight sessions in the UTC month via `evaluateUsageCap` — no denormalized counter columns. Null/unknown plan under soft-cap → `PLAN_CAP_FREE` (default 50), never silent unlimited. Env knobs: `PLAN_CAP_SOLO|GROWTH|PROFESSIONAL|FREE`, `USAGE_WARN_RATIO`, `USAGE_SOFT_CAP_ENFORCE`. Both `/agent-tools/voice-session-start` and `/voice/session/start` share the gate.
 FILES: `src/services/billingUsage.ts`, `src/routes/agentTools/session.ts` (gate), `agent/src/index.ts` (spoken refuse), `dashboard/components/billing/BillingView.tsx`, tests.
 STEPS:
 
