@@ -44,7 +44,10 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
   name="$(basename "$f")"
   # Strip SQL line comments and blank lines before matching, so a comment
   # mentioning "insert" doesn't false-positive.
-  body="$(grep -v '^\s*--' "$f")"
+  # `|| true`: a migration file that's all comments/blank makes grep -v exit
+  # 1 (no non-comment lines) — under `set -e` that would abort the whole
+  # inventory run on one edge-case file instead of just classifying it DDL.
+  body="$(grep -v '^\s*--' "$f" || true)"
   if echo "$body" | grep -qiE '\b(INSERT INTO|UPDATE[[:space:]]+[a-z_]+[[:space:]]+SET|DELETE FROM|COPY[[:space:]]+[a-z_]+[[:space:]]+FROM)\b'; then
     echo -e "DATA\t$name"
     data_count=$((data_count + 1))
