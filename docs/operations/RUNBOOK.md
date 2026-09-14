@@ -95,7 +95,7 @@ Check:
 1. **A slow query holding connections** — look for `statement_timeout` cancellations in logs; find the offending route via `http_request_duration_ms` p95 by route.
 2. **A lock fight** — `lock_timeout` errors point at contended rows (e.g. booking under load; the GiST exclusion constraints are race-safe but a pathological pattern can still queue).
 3. **Connection leak** — `pool.total` pinned at 10 with low throughput. Restart the backend to drain; then hunt the un-released client.
-4. `/ready` is a signal, not a traffic gate, unless Railway's healthcheck path was repointed to it.
+4. `/ready` is a signal, not a traffic gate. Railway `healthcheckPath` stays `/health` (decision 2026-09-14 — do not repoint to `/ready`; a DB blip would block deploy promotion).
 
 ### 6b. "No one is scheduled that day" for hours the owner does work
 
