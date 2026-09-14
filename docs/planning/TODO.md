@@ -172,8 +172,8 @@ at `dashboard/components/`). Backend suite warning cleanup (incl. pg@9 single-cl
 
 ## 🎨 UX backlog (separate workstream — `/ux-expert` audits)
 
-- [ ] **(Dale — BLOCKER)** Review live scheduling **coloring/grading** so Cluster A neutral-language work can proceed (de-grade slices were reverted 2026-05-20; do not re-apply unprompted).
-- [ ] **Cluster A — neutral-language / no-grading** (8 surfaces, blocked on the Dale review): `StepReview`, `SkillRelationshipMap`/`SkillMapNode`, `ResourceColumnsView`, `AppointmentListView`, `EmployeeDayFocusPanel`, `AnalyticsView`, `AppointmentDetailPanel`. (Violates the "no percentage/letter grading" product rule.)
+- [x] **(Dale — BLOCKER)** Review live scheduling **coloring/grading** — **ACCEPTED 2026-09-14 (Dale verbal).** Keep current colors/grades. De-grade slices stay reverted; do not strip coloring unprompted. Revisit only if Dale flags a specific surface later.
+- [x] **Cluster A — neutral-language / no-grading** — **DEFERRED 2026-09-14 with Dale's color accept.** Same 8 surfaces (`StepReview`, `SkillRelationshipMap`/`SkillMapNode`, `ResourceColumnsView`, `AppointmentListView`, `EmployeeDayFocusPanel`, `AnalyticsView`, `AppointmentDetailPanel`) may still use traffic-light / % / coverage-badge patterns; that is now intentional product choice, not an open de-grade ticket. Re-open only on Dale request.
 - [ ] **Wizard Phase B follow-ups, remaining** (explicitly deferred in the design doc, not bugs):
       auto forwarding-verification heuristic (SIP caller-ID match instead of asking the owner) —
       named, not built; real Telnyx porting API integration — deferred until a real port customer
