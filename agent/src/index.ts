@@ -1512,13 +1512,16 @@ export default defineAgent({
               smsEnabled: activeCapabilities.includes('sms'),
               // Live human handoff — one boolean for greeting + toolset.
               // Requires: transfer capability active (not realtime lean set),
-              // backend transferAvailable (no loop), and a nonblank forwardPhone.
-              // Matches buildGreeting's transferReady gate when transferAvailable
-              // is set on the tenant config (production path).
+              // backend transferAvailable (no loop), a nonblank forwardPhone,
+              // AND a non-null SIP REFER executor (buildTools.canOfferTransfer
+              // already requires execute). Without the executor the model would
+              // still hear "connecting you" into a tool that can only report
+              // "not available" — never offer the tool in that state (M1/#462).
               offerTransfer: Boolean(
                 activeCapabilities.includes('transfer') &&
-                  tenantConfig.transferAvailable &&
-                  tenantConfig.forwardPhone?.trim()
+                tenantConfig.transferAvailable &&
+                tenantConfig.forwardPhone?.trim() &&
+                transferExecutor
               ),
               runtime: {
                 currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
