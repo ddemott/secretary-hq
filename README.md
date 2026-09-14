@@ -227,7 +227,7 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 │   ├── lib/                API client, hooks, types, SessionContext
 │   └── e2e/                Playwright tests
 ├── supabase/
-│   ├── migrations/         202 SQL migrations
+│   ├── migrations/         203 SQL migrations
 │   └── seed.sql            Platform admin + Bella's Hair Studio demo tenant
 ├── shared/                 Cross-runtime code (embeddings, scheduling, voice CRM types + prompt formatter)
 ├── scripts/                Automation (bootstrap, setup-db, seed-db, deploy, QA)

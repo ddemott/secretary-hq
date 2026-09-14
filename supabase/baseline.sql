@@ -4481,6 +4481,10 @@ CREATE TABLE public.tenants (
     checklist_preset_id text,
     checklist_overrides jsonb DEFAULT '{}'::jsonb NOT NULL,
     logo_url text,
+    website_scan_url text,
+    website_last_scanned_at timestamp with time zone,
+    website_scan_fail_count integer DEFAULT 0 NOT NULL,
+    website_scan_last_attempt_at timestamp with time zone,
     CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text]))))
 );
 
@@ -4649,6 +4653,43 @@ COMMENT ON COLUMN public.tenants.logo_url IS 'Owner-supplied URL to their own lo
 tenant-to-customer emails (appointment confirmations/reminders/etc via
 emailService.ts). NULL/blank = no logo (current default for all tenants).
 Plain URL string only — no upload/storage is provided by the platform.';
+
+
+--
+-- Name: COLUMN tenants.website_scan_url; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.website_scan_url IS 'Start URL of the last successful website knowledge scan for this tenant.
+Set by POST /knowledge/import-website and by the website re-scan scheduler on
+success. NULL = never scanned (or cleared) — scheduler skips. Absence of a URL
+is the opt-out; there is no separate enable flag.';
+
+
+--
+-- Name: COLUMN tenants.website_last_scanned_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.website_last_scanned_at IS 'When website_scan_url was last successfully scanned (manual import or
+scheduled re-scan). Scheduler re-scans when older than WEBSITE_RESCAN_STALE_DAYS
+(default 30). NULL with a URL is treated as stale. Failures do not advance this.';
+
+
+--
+-- Name: COLUMN tenants.website_scan_fail_count; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.website_scan_fail_count IS 'Consecutive website-scan failures since the last success. Reset to 0 on a
+successful stamp. Worker applies exponential backoff and quarantines the tenant
+from auto re-scan once the count reaches WEBSITE_RESCAN_MAX_FAILS (default 5).';
+
+
+--
+-- Name: COLUMN tenants.website_scan_last_attempt_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.website_scan_last_attempt_at IS 'Wall-clock of the last website-scan attempt (success or failure). Used with
+website_scan_fail_count for exponential backoff so dead URLs leave the
+oldest-stale queue between retries.';
 
 
 --

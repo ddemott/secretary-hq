@@ -4,6 +4,37 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — Website-scan re-scan scheduler
+
+P2 backlog item closed. Deferred pieces were a durable `last_scanned` marker and a
+cost/product call on interval + caps.
+
+**Migration `20260914000000_tenant_website_scan_tracking`:** `tenants.website_scan_url`
++ `tenants.website_last_scanned_at` (both nullable) + `website_scan_fail_count` (NOT NULL
+DEFAULT 0) + `website_scan_last_attempt_at`. NULL URL = never scanned / opt-out —
+scheduler skips; no separate enable flag. Failures never advance `website_last_scanned_at`.
+
+**Shared `importWebsiteKnowledge`:** scrape → extract → supersede prior open suggestions →
+stage new suggestions → stamp URL + last_scanned + reset fail_count **in one tenant
+transaction**. Used by `POST /knowledge/import-website` and the worker. Still stages only
+— never auto-publishes to the live KB.
+
+**Worker `websiteRescanScheduler`:** daily tick (no boot stampede), fail_count ASC then
+oldest-stale first, non-demo only. Defaults: stale **30 days**, batch **5**/tick, maxFails
+**5** — env knobs clamped (`WEBSITE_RESCAN_STALE_DAYS` 1–365, `BATCH_SIZE` 1–50,
+`INTERVAL_MS` 1h–7d, `MAX_FAILS` 1–20). Gated by `ENABLE_WEBSITE_RESCAN_SCHEDULER` via
+`workerEnabled` (prod ON unless exact `false`). Skip whole tick if no `OPENAI_API_KEY`.
+One tenant failure does not stop the batch (`website_rescan_tenant_failed`); records
+backoff and quarantines after max fails (`website_rescan_tenant_quarantined`) so a dead
+URL cannot monopolize the batch forever.
+
+**Multi-instance:** Postgres session advisory lock (`WEBSITE_RESCAN_LOCK_KEY` / `0x57425253`)
+serializes ticks across replicas so OpenAI cost does not multiply with horizontal scale.
+in-process `isRunning` still skips overlapping ticks on one process.
+
+**Roady HIGH follow-up (t_462175ab / PR #482):** CI CLAUDE.md migration count, dead-URL
+backoff, advisory lock, env clamps — addressed on the same branch.
+
 ## 2026-09-14 — get_available_slots DATE-path night-shift residual already closed (#443)
 
 Kanban residual card claimed the `get_available_slots` DATE path was still same-date-only.
@@ -2805,8 +2836,8 @@ Tiers (Solo/Growth/Pro) + price ID env vars exist.
 ## 5. Onboarding, Knowledge & Setup
 
 - Wizard (solo + team modes), 30 business templates (now in seed + `business_templates` table), vocabulary system, first-run tour, setup progress pill, and `/demo` ephemeral tenant are strong.
-- **Website scan onboarding**: Core fetch + LLM extract + `knowledge_suggestion` staging + dedicated Step 7 (`Step7WebsiteScan.tsx`) + prefill of later policy questions step shipped 2026-06-12. **SHIPPED since**: per-question suggestion review UI (`KnowledgeSuggestions`), scan happy-path + wizard click-path E2E, and cost/rate-limit guardrails (`src/services/scanRateLimit.ts`). **Still pending**: periodic re-scan of stale KB (deferred — needs a `last_scanned` column + is a cost/product call).
-- Knowledge base: File upload, `knowledgeIngestion.ts` (chunking + embeddings), pgvector RAG via `/agent-tools/policy-answer` + `shared/expandQueryForEmbedding.ts` (recent accuracy win). `simulate rag` harness reports 100% hit-rate on known seeds. **SHIPPED**: caller-facing source citations (`[From "<title>"]` in `policy-answer`) + admin "explain this answer" debugger (`POST /knowledge/explain` + `ExplainAnswerView`). **Still missing**: periodic re-scan.
+- **Website scan onboarding**: Core fetch + LLM extract + `knowledge_suggestion` staging + dedicated Step 7 (`Step7WebsiteScan.tsx`) + prefill of later policy questions step shipped 2026-06-12. **SHIPPED since**: per-question suggestion review UI (`KnowledgeSuggestions`), scan happy-path + wizard click-path E2E, cost/rate-limit guardrails (`src/services/scanRateLimit.ts`), and **periodic re-scan** (`websiteRescanScheduler` + `tenants.website_scan_url` / `website_last_scanned_at`, 2026-09-14).
+- Knowledge base: File upload, `knowledgeIngestion.ts` (chunking + embeddings), pgvector RAG via `/agent-tools/policy-answer` + `shared/expandQueryForEmbedding.ts` (recent accuracy win). `simulate rag` harness reports 100% hit-rate on known seeds. **SHIPPED**: caller-facing source citations (`[From "<title>"]` in `policy-answer`) + admin "explain this answer" debugger (`POST /knowledge/explain` + `ExplainAnswerView`) + periodic website re-scan (2026-09-14).
 - Policy questions: Static bank + tenant customs.
 - No "import from existing calendar/CRM" step beyond the website scan.
 
