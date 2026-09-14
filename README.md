@@ -11,7 +11,7 @@ Below is a full list of its features:
 - Answers inbound calls 24/7 with a low-latency, human-like voice (Deepgram Aura TTS, streaming)
 - Identifies callers on arrival and matches them to existing customer records
 - Greets callers by name when recognized, captures new callers into the address book automatically
-- Takes messages for escalation today; SIP REFER handoff plumbing exists in code, but the live question-tree path does not yet expose human transfer
+- Transfers live calls to a configured forward number via SIP REFER when the caller asks for a person (always-on `transfer_call` passthrough when a forward number is set); otherwise takes a message for escalation
 - Records full call transcripts and generates AI post-call summaries
 - Handles rejections, off-topic questions, and policy queries naturally
 

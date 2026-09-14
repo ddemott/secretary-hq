@@ -335,18 +335,19 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 `agent/src/tools.ts` defines **27** real tools (this doc undercounted it as 26 for weeks — missing `capture_case_inquiry`, the `case_intake` tree's action tool, added 2026-08-14 alongside the `law_firm_front_desk` preset), implemented as POST routes under `src/routes/agentTools/` (a DIRECTORY since 2026-07-11 — split from a single 2,517-line file).
 
-**But defining a tool does not put it in front of the model.** Under question trees, `selectedTools()` (`agent/src/checklist/checklistTools.ts`) rebuilds the toolset from the currently selected trees, and presents **13 base tools**, plus **3 identity tools whenever the `identity` tree is selected** (which is true on goal-bearing calls, so most real calls see 16):
+**But defining a tool does not put it in front of the model.** Under question trees, `selectedTools()` (`agent/src/checklist/checklistTools.ts`) rebuilds the toolset from the currently selected trees, and presents **13 base tools**, plus **`transfer_call` whenever a forward number is configured** (`ALWAYS_ON_PASSTHROUGH_TOOLS` + `offerTransfer`, shipped #462), plus **3 identity tools whenever the `identity` tree is selected** (which is true on goal-bearing calls, so most real calls with a forward number see 17):
 
 | Group | Tools |
 |---|---|
 | Base (always) | `set_purpose`, `record_answer`, `finish_call`, `answer_question` (wraps `get_company_policy_answer` — RAG under another name) |
+| Always-on passthrough (forward-number gated) | `transfer_call` (SIP REFER live handoff; omitted entirely when no forward number / capability off) |
 | Action nodes (per selected tree) | `book_with_scheduling`, `take_message`, `capture_job_inquiry`, `cancel_appointment`, `reschedule_appointment`, `capture_case_inquiry` |
 | Passthrough (per selected tree) | `get_available_slots`, `get_service_catalog`, `get_my_appointments` |
 | Identity add-ons (when `identity` is selected) | `get_customer_context`, `send_verification_code`, `verify_phone_code` |
 
-The other 11 are **never offered on a live call.** Some are dead by design: `start_booking` / `manage_appointment` were ladder-era ROUTERS, `book_appointment` / `check_availability` / `get_scheduling_options` are superseded, and `record_sms_consent` / `send_self_service_link` are gated off with SMS anyway. **The rest are capability the product still does not expose on the live question-tree path**: `transfer_call` — *so there is still no live human handoff on a production call* — plus `page_owner_via_sms`, `attach_meeting_notes`, `save_customer_preference`, `identify_caller`, `get_detailed_customer_history`, and `find_caller_by_name`.
+The rest are **never offered on a live call.** Some are dead by design: `start_booking` / `manage_appointment` were ladder-era ROUTERS, `book_appointment` / `check_availability` / `get_scheduling_options` are superseded, and `record_sms_consent` / `send_self_service_link` are gated off with SMS anyway. **Still not model-facing on the question-tree path** (see `DEFINED_UNREACHABLE_ON_QUESTION_TREE`): `page_owner_via_sms`, `attach_meeting_notes`, `save_customer_preference`, `identify_caller` (host-code-only via `maybeIdentify()`), `get_detailed_customer_history`, and `find_caller_by_name` (deliberately excluded). Live human handoff **is** exposed when a forward number is set — that is no longer a gap.
 
-To make a tool reachable it must be an `action` node in a tree, a `TREE_PASSTHROUGH_TOOLS` entry, or a base tool.
+To make a tool reachable it must be an `action` node in a tree, a `TREE_PASSTHROUGH_TOOLS` / `ALWAYS_ON_PASSTHROUGH_TOOLS` entry, or a base tool.
 
 **Action tools are WRAPPED, not passed raw** (`wrapAction`): a completed action refuses to run twice (anti-double-book), a blocked one names its unmet prerequisites, omitted arguments are backfilled from the tracker's recorded answers, completion requires a real success id in the response, and two consecutive failures rewrite the tool's own result to "stop retrying, take a message."
 

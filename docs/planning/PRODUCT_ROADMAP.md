@@ -295,7 +295,7 @@ OWNER: Human-only (requires two real phones)
 PRIORITY: CRITICAL
 EFFORT: 30m call + 1h analysis
 DEPENDS_ON: None
-CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. NOTE: there is no live human transfer on the tree path — escalation takes a message + urgent flag. Do NOT test "transfer to a person"; test "leave an urgent message."
+CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer urgent-message path for product acceptance if transfer destination is unavailable; otherwise also prove "representative" → cell rings + `transferred` outcome.
 FILES: findings go to `docs/planning/CALL_FIX_PLAN.md` (append a dated section).
 STEPS:
 
@@ -1946,7 +1946,7 @@ DEFINITION_OF_DONE:
 ### How to claim a task (implementer workflow)
 
 1. **Pick** the lowest-numbered task whose `DEPENDS_ON` are all ✅ DONE in the Master Status Table (Section 1).
-2. **Read** its CONTEXT + Section 0 (Complete Context) so you understand the goal path and constraints (no HIPAA verticals; voice = question trees not free-form LLM; SMS off until 10DLC; no live human transfer on tree path).
+2. **Read** its CONTEXT + Section 0 (Complete Context) so you understand the goal path and constraints (no HIPAA verticals; voice = question trees not free-form LLM; SMS off until 10DLC; live human transfer is wired on the tree path when a forward number is set — still needs live proof).
 3. **Branch** `feat/<task-id>-<slug>` off `main`. Never commit to `main` directly (branch protection requires a PR with 4 green CI jobs).
 4. **Implement** the STEPS, touching the listed FILES.
 5. **Prove it** by running the exact ACCEPTANCE_TEST commands. The task is done ONLY when every command exits 0 / returns the stated value — these are objective and non-negotiable.
