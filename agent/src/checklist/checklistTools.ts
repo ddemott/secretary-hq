@@ -409,6 +409,14 @@ const DEFAULT_MAX_PURPOSE_ROUNDS = 5;
 const ACTION_FAILURE_LIMIT = 2;
 
 /**
+ * Failed transfer_call attempts before the host stops REFERing and forces the
+ * message path. Same budget as ACTION_FAILURE_LIMIT: one retry is enough to
+ * absorb a transient SIP blip; looping forever after "connecting you" is worse
+ * than taking a message. C-TERM residual after #462.
+ */
+const TRANSFER_FAILURE_LIMIT = 2;
+
+/**
  * After this many consecutive REFUSALS the unconfirmed-booking guard stands
  * down and lets the write through.
  *
@@ -802,6 +810,14 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   // (CALL_IMPROVEMENTS.md #2).
   let identifiedAs: { name: string; phone: string } | null = null;
   let closing = false;
+  /**
+   * Successful transfer_call latches this for the rest of the call. SIP REFER
+   * is once-per-call: a second fire is a double-REFER on the same participant
+   * (C-TERM after #462). Also drives finish_call no-op and selectedTools strip.
+   */
+  let transferred = false;
+  /** Consecutive failed transfer_call executes — see TRANSFER_FAILURE_LIMIT. */
+  let transferFailures = 0;
   const failCounts = new Map<string, number>();
   // Refusals are counted separately from failures: a refusal returns BEFORE the
   // real tool runs, so it can never reach `failCounts` and never trips
@@ -1582,15 +1598,115 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
 
   const baseTools: ToolMap = { set_purpose, record_answer, finish_call };
 
+  /**
+   * Did the real transfer_call report a successful REFER?
+   * Success is a plain guidance string ("Transfer started…"); failures are
+   * JSON `{ error: … }` from tools/transfer.ts. Never treat a parseable error
+   * object as ok — that would latch terminal state on a failed handoff.
+   */
+  const transferCallSucceeded = (raw: unknown): boolean => {
+    if (typeof raw !== 'string') return false;
+    const text = raw.trim();
+    if (text.startsWith('{')) {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && 'error' in parsed) return false;
+      } catch {
+        /* fall through to the phrase check */
+      }
+    }
+    return /transfer started/i.test(text);
+  };
+
+  /**
+   * Host-owned transfer_call wrap (C-TERM after #462).
+   *
+   * Plain passthrough left the tool on baseTools for the whole call with no
+   * once-flag: the model could double-REFER, and finish_call could still speak
+   * a farewell on a room that was already leaving via SIP. On ok we latch
+   * transferred+closing, strip the tool via onSelectionChanged, and refuse
+   * further transfer/finish. On repeated failure we cap like action tools and
+   * host-select message so the call has a non-interrogation exit.
+   */
+  const wrapTransferCall = (real: ToolMap[string]): ToolMap[string] =>
+    llm.tool({
+      description: shape(real).description,
+      parameters: shape(real).parameters,
+      execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
+        // Guidance after the attempt budget is spent. Never tell the model to
+        // set_purpose(message) when message is not in selectableTreeSet — that
+        // tree can be disabled by runtimeConfig and the instruction would be a
+        // dead end (PR review on #478).
+        const afterTransferCap = (): string =>
+          selectableTreeSet.has('message')
+            ? 'Take a message instead (add the message tree with set_purpose if it is not already selected).'
+            : 'Apologize briefly, finish anything still open on the checklist, then finish_call.';
+
+        if (transferred || closing) {
+          return 'Transfer already started or the call is ending — say nothing further. Do not call transfer_call or finish_call again.';
+        }
+        if (transferFailures >= TRANSFER_FAILURE_LIMIT) {
+          return `Transfer is no longer available after repeated failures. ${afterTransferCap()} ${stateBlock()}`;
+        }
+        const raw = await shape(real).execute(args, toolCtx);
+        const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        if (transferCallSucceeded(raw)) {
+          transferred = true;
+          // Same latch finish_call uses for the double-goodbye race — blocks
+          // farewell speech on a dying post-REFER room without speaking one.
+          closing = true;
+          deps.onSelectionChanged();
+          return text;
+        }
+        transferFailures += 1;
+        if (transferFailures >= TRANSFER_FAILURE_LIMIT) {
+          // Force the message path the way unanswered RAG does: host-select so
+          // the goodbye gate has real work, not an infinite transfer retry.
+          if (selectableTreeSet.has('message')) {
+            const before = tracker.selectedTrees().length;
+            const pick = selectableTreeSet.has('identity')
+              ? (['message', 'identity'] as string[])
+              : (['message'] as string[]);
+            tracker.select(pick);
+            if (tracker.selectedTrees().length !== before) {
+              getLogger().warn(
+                {
+                  event: 'transfer_failures_force_message',
+                  failures: transferFailures,
+                  selected: tracker.selectedTrees(),
+                },
+                'transfer_call failed repeatedly — message tree selected so the caller is not trapped'
+              );
+              deps.onSelectionChanged();
+            }
+          } else {
+            getLogger().warn(
+              { event: 'transfer_failures_capped', failures: transferFailures },
+              'transfer_call failed repeatedly — no message tree available to force'
+            );
+          }
+          return (
+            `${text}\n\nThis has failed ${transferFailures} times in a row — STOP retrying ` +
+            `transfer_call. ${afterTransferCap()} ${stateBlock()}`
+          );
+        }
+        const retryOrFallback = selectableTreeSet.has('message')
+          ? 'You may try transfer_call one more time, or take a message instead.'
+          : 'You may try transfer_call one more time, or finish open checklist items and close.';
+        return `${text}\n\nTransfer did not go through. ${retryOrFallback} ${stateBlock()}`;
+      },
+    });
+
   // Always-on passthroughs — driven by ALWAYS_ON_PASSTHROUGH_TOOLS so the
   // inventory list and the registration cannot drift. transfer_call also needs
   // offerTransfer (forward-number / transferAvailable gate, same as the greeting
   // closer): every preset gets live handoff without a per-tree action node.
+  // transfer_call is WRAPPED (not a bare passthrough) so success is terminal.
   for (const name of ALWAYS_ON_PASSTHROUGH_TOOLS) {
     const real = realTools[name];
     if (!real) continue;
     if (name === 'transfer_call' && !deps.offerTransfer) continue;
-    baseTools[name] = real;
+    baseTools[name] = name === 'transfer_call' ? wrapTransferCall(real) : real;
   }
 
   // get_my_appointments — in the toolset EVERY turn, not just when
@@ -1936,6 +2052,11 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
 
   const selectedTools = (): ToolMap => {
     const tools: ToolMap = { ...baseTools };
+    // Terminal lock: after a successful REFER the model must not see transfer_call
+    // advertised again (double-REFER). The wrap also no-ops; strip is the belt.
+    if (transferred) {
+      delete tools['transfer_call'];
+    }
     for (const treeId of tracker.selectedTrees()) {
       for (const site of actionSites.values()) {
         if (site.treeId === treeId && realTools[site.def.tool] && !tools[site.def.tool]) {

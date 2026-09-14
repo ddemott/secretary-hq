@@ -70,11 +70,7 @@ function treePassthroughTools(): string[] {
 /** Tools from tools.ts that selectedTools() can offer (actions + passthroughs + always-on). */
 function questionTreeReachableFromToolsTs(): string[] {
   return [
-    ...new Set([
-      ...treeActionTools(),
-      ...treePassthroughTools(),
-      ...ALWAYS_ON_PASSTHROUGH_TOOLS,
-    ]),
+    ...new Set([...treeActionTools(), ...treePassthroughTools(), ...ALWAYS_ON_PASSTHROUGH_TOOLS]),
   ].sort();
 }
 
