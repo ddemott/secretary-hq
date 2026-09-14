@@ -425,6 +425,97 @@ describe('AIConfigView — Customer Preferences', () => {
   });
 });
 
+describe('AIConfigView — UX review 2026-09-14 (owner-judgment pass)', () => {
+  test('HAPPY: the First Message section explains itself instead of showing a bare textbox', async () => {
+    // WHO: a first-time owner landing on Voice Settings who has never touched
+    //        this field before.
+    // WHAT: every OTHER section on this page (Personality, Caller Disclosure,
+    //        Customer Preferences, Buffer) carries at least one sentence of
+    //        guidance; First Message was the one section with none — just a
+    //        heading and an empty box. An owner had no way to know this is
+    //        spoken BEFORE the compliance disclosure, so wording it too long
+    //        pushes the caller further from the point of the call.
+    // WHERE: AIConfigView "First Message (Greeting)" section.
+    // WHY: an unexplained control next to five explained ones reads as
+    //      inconsistent, and silence here is a worse default than everywhere
+    //      else on the page — this is the line that legally has to be followed
+    //      immediately by the AI disclosure.
+    mockGetConfig.mockResolvedValue({ ...BASE_CONFIG });
+    render(<AIConfigView />);
+    expect(
+      await screen.findByText(/right before the required ai-assistant disclosure/i)
+    ).toBeInTheDocument();
+  });
+
+  test('HAPPY: the Owner Notification Phone copy is honest that SMS alerts are not live yet', async () => {
+    // WHO: an owner reading "Owner Notification Phone" before entering their
+    //        cell number.
+    // WHAT: the section used to promise "the AI will send you an SMS alert at
+    //        this number" unconditionally. Per docs/CLAUDE.md, SMS is globally
+    //        off pending 10DLC carrier registration and Telnyx reports success
+    //        even though the carrier drops every message — so that promise was
+    //        false for every tenant on the platform today. The product's own
+    //        rule (used for the voice agent's SMS copy) is "it cannot promise
+    //        what it has no means to do"; this fixes the dashboard side of the
+    //        same defect class.
+    // WHERE: ForwardCallsSection "Owner Notification Phone".
+    // WHY: an owner who believes a text is coming will miss a real message
+    //      that in fact only ever lands in the Calls inbox.
+    mockGetConfig.mockResolvedValue({ ...BASE_CONFIG });
+    render(<AIConfigView />);
+    expect(await screen.findByText(/aren.t live yet on this platform/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/the ai will send you an sms alert at this number\. leave/i)
+    ).not.toBeInTheDocument();
+  });
+
+  test('SAD: the forward-loop error is reachable from the disabled Save button, not only by scrolling', async () => {
+    // WHO: a keyboard/screen-reader owner (or anyone who hasn't scrolled past
+    //        the sticky header) who just typed a looping transfer number.
+    // WHAT: the header Save button goes disabled the moment forwardLoops is
+    //        true, but the explanation lives in a paragraph further down the
+    //        page. aria-describedby + title on the button surface the reason
+    //        at the control itself instead of requiring a scroll-and-hunt.
+    // WHERE: AIConfigView Save button + ForwardCallsSection's #forward-loop-error.
+    // WHY: a disabled control with no attached explanation is a dead end —
+    //      same class as the earlier "Call My AI Now" dead-button fix.
+    mockGetConfig.mockResolvedValue({
+      ...BASE_CONFIG,
+      forwarded_from_phone: '+16082175303',
+      forward_phone: null,
+    });
+    render(<AIConfigView />);
+
+    const forwardInput = await screen.findByPlaceholderText(/\+1 312 555 0100/i);
+    fireEvent.change(forwardInput, { target: { value: '(608) 217-5303' } });
+
+    const saveButton = screen.getByRole('button', { name: /save changes/i });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveAttribute('aria-describedby', 'forward-loop-error');
+    expect(document.getElementById('forward-loop-error')).toBeInTheDocument();
+  });
+
+  test('HAPPY: the Speaking pace control says it does not yet affect live calls', async () => {
+    // WHO: an owner dragging the pace slider expecting the AI to sound
+    //        faster/slower on the next real call.
+    // WHAT: tts_speed is parsed by the agent (agent/src/tenantConfig.ts) but
+    //        never passed to the Deepgram Aura TTS constructor
+    //        (agent/src/index.ts: "NO `speed` — Aura WS 400s on ?speed= and
+    //        there is no TTS at all") — verified by grep, not assumed. The
+    //        slider silently saves a value that changes nothing a caller
+    //        hears. This regression-guards the honest caption.
+    // WHERE: VoiceIdentitySection speaking-pace control.
+    // WHY: an owner who "fixes" a pace they don't like, hears no change, and
+    //      concludes the whole persona editor is broken loses trust in every
+    //      other control on the page too.
+    mockGetConfig.mockResolvedValue({ ...BASE_CONFIG });
+    render(<AIConfigView />);
+    expect(
+      await screen.findByText(/doesn.t support changing pace on live calls yet/i)
+    ).toBeInTheDocument();
+  });
+});
+
 describe('AIConfigView — Caller Disclosure', () => {
   test('HAPPY: an untouched disclosure saves as null with no attestation flag', async () => {
     // WHO: an owner who saves other settings without touching the disclosure.

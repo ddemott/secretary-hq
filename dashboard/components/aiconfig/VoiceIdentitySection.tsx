@@ -110,6 +110,17 @@ export function VoiceIdentitySection({ config, onUpdate }: VoiceIdentitySectionP
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           1.0 is normal pace. Lower = slower and calmer; higher = brisker.
         </p>
+        {/* The current voice engine (Deepgram Aura) can't take a speed parameter
+            without going silent (agent/src/index.ts — "Aura WS 400s on ?speed=
+            and there is no TTS at all"), so this value is saved but not sent to
+            live calls yet. Say so plainly rather than let an owner drag the
+            slider and wonder why nothing changed on their next test call —
+            the same "don't promise what you can't do" rule the SMS copy
+            follows elsewhere in this product. */}
+        <p className="text-xs mt-1" style={{ color: 'var(--warning)' }}>
+          Saved for later — the current voice engine doesn&apos;t support changing pace on live
+          calls yet, so this won&apos;t change what callers hear.
+        </p>
       </div>
 
       {/* Style checkboxes */}
