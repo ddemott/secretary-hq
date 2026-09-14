@@ -70,7 +70,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
 │   └── 104 Vitest test files     React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               202 SQL migrations
+│   ├── migrations/               203 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts

@@ -60,6 +60,10 @@ import { workerEnabled } from './services/workerEnabled';
 import { startReminderScheduler, stopReminderScheduler } from './workers/reminderScheduler';
 import { startVoiceSessionReaper, stopVoiceSessionReaper } from './workers/voiceSessionReaper';
 import { startScheduleExtender, stopScheduleExtender } from './workers/scheduleExtender';
+import {
+  startWebsiteRescanScheduler,
+  stopWebsiteRescanScheduler,
+} from './workers/websiteRescanScheduler';
 import { createGetEmbedding } from '../shared/getEmbedding';
 import { createNormalizer } from '../shared/normalizeForEmbedding';
 import { createQueryExpander } from '../shared/expandQueryForEmbedding';
@@ -328,6 +332,15 @@ if (workerEnabled(process.env.ENABLE_SCHEDULE_EXTENDER, isProduction)) {
   startScheduleExtender();
 }
 
+// --- Start Website Re-scan Scheduler ---
+// Re-runs website knowledge import for tenants whose last successful scan is
+// older than WEBSITE_RESCAN_STALE_DAYS (default 30), capped at
+// WEBSITE_RESCAN_BATCH_SIZE (default 5) per daily tick. Stages suggestions only
+// — never auto-publishes. Same gating as the other workers.
+if (workerEnabled(process.env.ENABLE_WEBSITE_RESCAN_SCHEDULER, isProduction)) {
+  startWebsiteRescanScheduler();
+}
+
 // --- Feature-readiness boot report ---
 // One structured line (not 12 warns) naming each optional capability's status
 // (ready/mocked/disabled/missing_config). Same conditions as the prod-only
@@ -425,6 +438,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     await stopReminderScheduler();
     stopVoiceSessionReaper();
     stopScheduleExtender();
+    stopWebsiteRescanScheduler();
     await app.close();
     await closePool();
     process.exit(0);
