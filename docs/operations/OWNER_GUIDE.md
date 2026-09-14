@@ -115,7 +115,16 @@ widens to the next window if nothing fits. It never imposes a slot.
 
 **What happens if a caller wants a human?**
 If you've set a forward number (Phone Assistant → AI Persona → "Forward Calls to
-a Person"), the AI can transfer the live call to that number.
+a Person"), the assistant is **configured and code-wired** to cold-transfer the
+live call to that number via SIP REFER (`transfer_call`, always-on when the
+forward number is set — shipped 2026-09-14). Without a forward number, it takes a
+message instead.
+
+**Honest status:** configuration + wiring are in place; a real PSTN ring-through
+and residual hardening (no double-transfer, clean failure → take-a-message, prompt
+that names the handoff) are still pending before you should treat transfer as
+owner-proven. Operators: `docs/planning/TODO.md` live-validation step 4 and
+`docs/operations/RUNBOOK.md` §7c.
 
 **Do callers get reminders?**
 Yes — confirmation and reminder messages send by SMS/email, subject to the

@@ -96,7 +96,7 @@ npm run verify:claude-md
 1. **No HIPAA / PHI verticals.** `dentist`, `chiropractor`, `vet-clinic` were removed by migration `20260321000000_remove_hipaa_templates.sql`. Do not re-add health verticals or a "HIPAA tier" without explicit owner sign-off. There are **30 active non-HIPAA verticals**.
 2. **Voice = question trees.** Do not replace the tree flow with a free-form LLM agent.
 3. **SMS is OFF by design** until 10DLC registration completes. `ENABLE_SMS` defaults to false in the agent config schema. "Fixing SMS" means completing 10DLC + flipping the gate, not patching a bug.
-4. **No live human transfer on the question-tree path today.** Escalation takes a message and flags urgency. SIP REFER plumbing exists but is not wired into the tree flow. Do not claim transfer works until a task explicitly builds and tests it.
+4. **Live human transfer is wired on the question-tree path when a forward number is set** (`transfer_call` always-on passthrough via `offerTransfer`, shipped #462 — same gate as the greeting closer). Without a forward number, escalation takes a message and flags urgency. Do not claim transfer is **live-proven** until Dale's validation call (T-003 / TODO live-validation step 4) rings a real cell and residual hardening lands (terminal lock, failure→message path, checklist prompt — see RUNBOOK §7c).
 5. **Product voice** in all user-facing copy: "Sounds Real. Books Smart. Never Misses a Call." / "Live in under 10 minutes."
 6. **Every PK follows `<table_singular>_id`** (see `docs/workflow/CODING_STANDARDS.md`).
 7. **Every test covers happy + sad paths** with 5W diagnostic context (Who/What/When/Where/Why) in sad-path assertions.
@@ -295,14 +295,15 @@ OWNER: Human-only (requires two real phones)
 PRIORITY: CRITICAL
 EFFORT: 30m call + 1h analysis
 DEPENDS_ON: None
-CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. NOTE: there is no live human transfer on the tree path — escalation takes a message + urgent flag. Do NOT test "transfer to a person"; test "leave an urgent message."
+CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer the greeting word **"representative"** (plus one "talk to a person") for the transfer leg. Treat step 5 as a **first live attempt**, not an auto-pass: fail on double-REFER, dead air, false "you're connected", or goodbye trap after a failed REFER — residual P0 hardening is still open (terminal lock, failure→message, checklist prompt). If the transfer destination is unavailable, fall back to the urgent-message path for product acceptance and record why transfer was skipped.
 FILES: findings go to `docs/planning/CALL_FIX_PLAN.md` (append a dated section).
 STEPS:
 
-1. Dashboard → Phone Assistant → set the escalation contact.
+1. Dashboard → Phone Assistant → AI Persona → set **Forward Calls to a Person** to a reachable cell (not the calling phone).
 2. From a second phone, call `+1 630-822-9086`.
 3. Book an appointment for a real time inside a shift window.
-4. Trigger escalation ("this is urgent") → verify a `customer_messages` row with `is_urgent=true`.
+4. Trigger escalation ("this is urgent") → verify a `customer_messages` row with `is_urgent=true` (message path still required).
+5. On the same sitting (or a second call if needed): say **"representative"** → cell rings + Calls tab shows transcript / `outcome='transferred'`. If REFER fails or cell is unavailable, take the urgent message instead and note the failure mode (do not mark transfer DoD done). See `docs/planning/TODO.md` live-validation step 4 and `docs/operations/RUNBOOK.md` §7c.
    ACCEPTANCE_TEST (objective DB queries after the call):
 
 ```sql
@@ -313,13 +314,17 @@ SELECT count(*) FROM appointments WHERE created_at > now() - interval '15 min'; 
 -- escalation captured as an urgent customer message (schema: customer_messages.is_urgent BOOLEAN):
 SELECT count(*) FROM customer_messages
   WHERE is_urgent = true AND created_at > now() - interval '15 min';                 -- >= 1
+-- when transfer was attempted and succeeded:
+SELECT count(*) FROM voice_sessions
+  WHERE outcome = 'transferred' AND created_at > now() - interval '15 min';               -- >= 1 if transfer DoD claimed
 ```
 
 DEFINITION_OF_DONE:
 
 - [ ] `voice_sessions` has the call with a non-empty transcript.
 - [ ] `appointments` has the booking at the correct time for the correct tenant.
-- [ ] Urgent message captured (no false "transferred" claim).
+- [ ] Urgent message captured when the message path was used (no false "transferred" claim without a real handoff).
+- [ ] Transfer leg: cell rang + `outcome='transferred'` **or** failure mode documented and transfer DoD left open (wiring ≠ live proof; hardening still pending).
 - [ ] Findings appended to `docs/planning/CALL_FIX_PLAN.md` with the transcript.
 
 ---
@@ -569,7 +574,7 @@ Action "book" requires unknown node "drop_off_ok" — not defined in any library
 
 `booking.book` carries a cross-tree `requires` on `drop_off_ok`, which lives in `fix_computer` — a tree **no preset enables**. The tracker validates every `requires` id against the library it was handed, while at runtime ids outside the call's selected trees are treated as satisfied. So the LIBRARY is _what exists_ and the PRESET is _what this business may select_, and they are not the same list. This was already found on 2026-08-14 and is why `scripts/seed-question-tree-templates.ts` seeds the full library per vertical; the sim now mirrors production (`library` = full, `selectableTreeIds` = intersection).
 
-**Observation, not a blocker:** one plumber run (of nine) never closed. The improvising caller invented a burst pipe flooding their kitchen and refused the next day's slots; the agent correctly took an urgent message — there is no live-transfer path — then re-offered booking and looped between the two for four turns. Worth a look when someone owns emergency-intake behaviour; it is LLM variance, not a wiring fault.
+**Observation, not a blocker:** one plumber run (of nine) never closed. The improvising caller invented a burst pipe flooding their kitchen and refused the next day's slots; the agent correctly took an urgent message (that sim had no forward number / transfer offer) then re-offered booking and looped between the two for four turns. Worth a look when someone owns emergency-intake behaviour; it is LLM variance, not a wiring fault. Live transfer is now model-facing when a forward number is set (#462) — still needs live PSTN proof.
 
 ---
 
@@ -1947,7 +1952,7 @@ DEFINITION_OF_DONE:
 ### How to claim a task (implementer workflow)
 
 1. **Pick** the lowest-numbered task whose `DEPENDS_ON` are all ✅ DONE in the Master Status Table (Section 1).
-2. **Read** its CONTEXT + Section 0 (Complete Context) so you understand the goal path and constraints (no HIPAA verticals; voice = question trees not free-form LLM; SMS off until 10DLC; no live human transfer on tree path).
+2. **Read** its CONTEXT + Section 0 (Complete Context) so you understand the goal path and constraints (no HIPAA verticals; voice = question trees not free-form LLM; SMS off until 10DLC; live human transfer is wired on the tree path when a forward number is set — still needs live proof).
 3. **Branch** `feat/<task-id>-<slug>` off `main`. Never commit to `main` directly (branch protection requires a PR with 4 green CI jobs).
 4. **Implement** the STEPS, touching the listed FILES.
 5. **Prove it** by running the exact ACCEPTANCE_TEST commands. The task is done ONLY when every command exits 0 / returns the stated value — these are objective and non-negotiable.
