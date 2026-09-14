@@ -212,7 +212,7 @@ in a single statement` timed out on PR #394's Backend job at **5,004 ms
 
 ---
 
-## 📞 Live-call fix series (2026-07-30) — see `docs/CALL_FIX_PLAN.md`
+## 📞 Live-call fix series (2026-07-30) — see `docs/planning/CALL_FIX_PLAN.md`
 
 The 12 real calls from 2026-07-26/27 (`CALL_IMPROVEMENTS.md`, root) produced an
 8-batch PR plan: **G** (job-call capture completeness — role_description dropped
@@ -222,7 +222,7 @@ on the live path) → **H** (per-call tool-call log + transcript fidelity) → *
 cross-call duplicates, roster) → **C** (availability reason codes) → **D**
 (corrections propagate) → **E** (junk "Caller" rows, urgency) → **F** (silence
 handling, greeting metric, inbox unification). Full detail, cut lines, and the four
-recurring failure classes: `docs/CALL_FIX_PLAN.md`.
+recurring failure classes: `docs/planning/CALL_FIX_PLAN.md`.
 
 ---
 
@@ -413,7 +413,7 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
 - [ ] **Product expansion** — booking widget/embed; granular RBAC beyond owner/front_desk; white-label / reseller theming; public API; PDF + analytics export (CSV export shipped #189); SSO/SAML; international numbers (US-centric today); multi-DID per tenant.
 - [ ] **Schedule sub-view consolidation (C1+C2)** — merge the 4 scheduler sub-views (calendar/staff/resources/list) → 2 (calendar Day/Month + Team/Resources) with one unified header. `dashboard/components/SchedulerView.tsx`. (large/UX; from the former IMPROVEMENT_IDEAS.) **Open — needs a UX design pass with Dale before build** (it changes the scheduler layout; brainstorm the target shape first).
 - [ ] **Threaded demo mode (E1)** — replace the static `/demo` page with a session flag (`isDemoMode`) injecting read-only sample data into the live dashboard shell (stays in sync with real UI automatically). (large.)
-- [ ] **Future CRM/platform candidates** (build-deferred per the `docs/STRATEGY.md` vendor heuristic — "how does this vendor make money?") — QuickBooks/Xero, Toast, Apple Calendar (safe infra/transaction partners); Microsoft Teams (notify-only); Vagaro/Mindbody, Acuity/Calendly (competitor-ish → shallow read or import-only).
+- [ ] **Future CRM/platform candidates** (build-deferred per the `docs/product/STRATEGY.md` vendor heuristic — "how does this vendor make money?") — QuickBooks/Xero, Toast, Apple Calendar (safe infra/transaction partners); Microsoft Teams (notify-only); Vagaro/Mindbody, Acuity/Calendly (competitor-ish → shallow read or import-only).
 
 ---
 

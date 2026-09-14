@@ -4,7 +4,7 @@
 > real 2026 user reviews/complaints (sources at bottom), not speculation. This
 > is a **product + pricing + positioning weapon** — each weakness maps to
 > something we build, price, or say. Started 2026-06-12. Pairs with
-> `docs/STRATEGY.md` (positioning) — this doc is the offense.
+> `docs/product/STRATEGY.md` (positioning) — this doc is the offense.
 
 ## Two classes of competitor
 
@@ -78,7 +78,7 @@ These repeat across multiple competitors. Each is a wedge.
 Concrete, weakness-driven build/pricing/positioning calls:
 
 1. **Booking flow must always capture service intent** + owner-defined required questions. (Directly beats Jobber's #1 receptionist complaint.) Likely partly built — verify + make it a headline.
-2. **Website-scan onboarding + gap-fill** (`docs/STRATEGY.md`). Onboarding speed is the wedge against ServiceTitan's 3–6 months and everyone's form-filling. "Live in minutes" is the pitch.
+2. **Website-scan onboarding + gap-fill** (`docs/product/STRATEGY.md`). Onboarding speed is the wedge against ServiceTitan's 3–6 months and everyone's form-filling. "Live in minutes" is the pitch.
 3. **Value-aligned volume pricing — metered on bookings/calls in predictable bands, receptionist included, NEVER per-seat or per-minute** (see `STRATEGY.md` → Pricing model; finalize after the base product). Scales revenue with the customer's success while attacking the most-cited weakness across *all four* competitors.
 4. **No-contract, easy-export.** Sell the opposite of ServiceTitan/HCP lock-in.
 5. **Receptionist flexibility + customization** (persona, required questions, free-text training) — out-build the "form with a voice."
@@ -87,7 +87,7 @@ Concrete, weakness-driven build/pricing/positioning calls:
 8. **Non-trades verticals first** — salons/auto/fitness/food, where none of these three even compete.
 8. **Responsive support** as a differentiator while small.
 
-Guard rails (from `docs/STRATEGY.md` + build principles): build per real demand, partner the regulated/heavy parts (payments→Square, payroll→Gusto), don't chase feature-parity — beat them on the *weak points*, not by becoming them.
+Guard rails (from `docs/product/STRATEGY.md` + build principles): build per real demand, partner the regulated/heavy parts (payments→Square, payroll→Gusto), don't chase feature-parity — beat them on the *weak points*, not by becoming them.
 
 ---
 

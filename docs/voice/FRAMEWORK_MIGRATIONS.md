@@ -24,7 +24,7 @@ Tracks in-flight and recently-completed framework/provider swaps. This is the in
 
 **Why:** LiveKit agent runs as a Node.js worker; keeping tools in Deno edge functions added a network hop and a second runtime. Consolidating into Fastify lets tools share the existing DB pool, middleware, and types.
 
-**Current implementation:** 26 defined voice tools across `src/routes/agentTools/` + `agent/src/tools.ts`. Auth via `x-agent-secret` header. The live question-tree path exposes a subset of those tools, not the entire catalog. See `docs/ARCHITECTURE.md` for the current reachability split.
+**Current implementation:** 26 defined voice tools across `src/routes/agentTools/` + `agent/src/tools.ts`. Auth via `x-agent-secret` header. The live question-tree path exposes a subset of those tools, not the entire catalog. See `docs/architecture/ARCHITECTURE.md` for the current reachability split.
 
 ---
 
@@ -55,9 +55,9 @@ The fallback path inside `runFallback()` uses `openai.TTS` as a last-resort voic
 ## Related docs
 
 - `docs/planning/TODO.md` — full active task list
-- `docs/ARCHITECTURE.md` — system architecture
+- `docs/architecture/ARCHITECTURE.md` — system architecture
 - `CLAUDE.md` — project overview, includes migration callout
-- `docs/VOICE_AGENT_PLAYBOOK.md` — rules for building/maintaining voice agents (pipeline vs Realtime, never-silent layers, etc.)
+- `docs/voice/VOICE_AGENT_PLAYBOOK.md` — rules for building/maintaining voice agents (pipeline vs Realtime, never-silent layers, etc.)
 
 ---
 
@@ -100,5 +100,5 @@ order; what is enforced is COMPLETION, not sequence.
 
 **What this means in practice:** a tenant's composed `system_prompt` is never passed to the
 model on a live call. Editing `blocks.ts`, running `install-script.ts`, or regenerating
-`docs/CALL_LADDER.md` changes nothing about how calls go. Behaviour changes go in
-`agent/src/checklist/trees.ts`. See `docs/QUESTION_TREE_ARCHITECTURE.md`.
+`docs/voice/CALL_LADDER.md` changes nothing about how calls go. Behaviour changes go in
+`agent/src/checklist/trees.ts`. See `docs/voice/QUESTION_TREE_ARCHITECTURE.md`.

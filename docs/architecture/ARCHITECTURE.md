@@ -4,7 +4,7 @@
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
-> **Migration shipped:** The voice-AI stack moved from Vapi + Supabase Edge Functions to LiveKit Agents + Fastify in commit `661d21d` (2026-04-27). Vapi account deleted; only Telnyx + LiveKit remain. TTS provider history: OpenAI → xAI Grok (2026-05) → OpenAI (2026-06-25) → **Deepgram Aura (2026-07-14, current)**; see §6.2 and `docs/FRAMEWORK_MIGRATIONS.md`.
+> **Migration shipped:** The voice-AI stack moved from Vapi + Supabase Edge Functions to LiveKit Agents + Fastify in commit `661d21d` (2026-04-27). Vapi account deleted; only Telnyx + LiveKit remain. TTS provider history: OpenAI → xAI Grok (2026-05) → OpenAI (2026-06-25) → **Deepgram Aura (2026-07-14, current)**; see §6.2 and `docs/voice/FRAMEWORK_MIGRATIONS.md`.
 >
 > **Call flow:** production runs the **question-tree** architecture (`agent/src/checklist/`, `ENABLE_QUESTION_TREE`, on by default). The prompt ladder (`tenants.system_prompt`) and the TaskGroup rungs are flag-gated fallbacks and are NOT what a live call executes — see §6.3.
 
@@ -306,7 +306,7 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 **Why the switch off OpenAI TTS (2026-07-14):** the OpenAI LiveKit plugin is **non-streaming** — it buffers the entire reply before emitting any audio, so every turn was silence-then-a-burst. Chopping the input into sentences with `StreamAdapter` only traded one gap for a gap between every sentence. **You cannot make a non-streaming engine stream by chopping its input finer.**
 
-**Historical (no longer in the codebase):** the Grok/xAI phase (`agent/src/grokTTS.ts`, `XAI_TTS_VOICE`) was removed entirely on 2026-06-25 — no `XAI_API_KEY` is referenced anywhere. The OpenAI-TTS phase that followed it is likewise gone. Full index in `docs/FRAMEWORK_MIGRATIONS.md`.
+**Historical (no longer in the codebase):** the Grok/xAI phase (`agent/src/grokTTS.ts`, `XAI_TTS_VOICE`) was removed entirely on 2026-06-25 — no `XAI_API_KEY` is referenced anywhere. The OpenAI-TTS phase that followed it is likewise gone. Full index in `docs/voice/FRAMEWORK_MIGRATIONS.md`.
 
 ### 6.3 Call flow — THE QUESTION-TREE ARCHITECTURE (what production runs)
 
@@ -369,7 +369,7 @@ Every route returns HTTP 200 with one of:
 
 ### 7.3 Core agent-tools routes (booking/knowledge subset)
 
-> The table below is the original 10 Fastify `/agent-tools/*` routes. The agent defines **26 real tools** today in `agent/src/tools.ts`; this table documents the original booking/knowledge subset, not the full live catalog. For the current reachability split, see §7 above and `docs/VOICE_AGENT_PLAYBOOK.md`.
+> The table below is the original 10 Fastify `/agent-tools/*` routes. The agent defines **26 real tools** today in `agent/src/tools.ts`; this table documents the original booking/knowledge subset, not the full live catalog. For the current reachability split, see §7 above and `docs/voice/VOICE_AGENT_PLAYBOOK.md`.
 
 | Route                                      | Input (Zod)                                                                                                                  | Return shape                                                                                                                                                                | Backing logic                                                                                                              |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -826,7 +826,7 @@ Vitest + React Testing Library (jsdom). Renders components with all 4 providers 
 
 Vitest. Covers the LiveKit Agents worker: prompt assembly, the 26 defined tool schemas, `toolsClient`, transcript recording, call-outcome tracking, the bounded post-call summary, and the TTS dead-air fallback.
 
-_(The former Supabase edge-function suite — `deno task test --no-check` — was removed with `supabase/functions/` itself when the backend moved to Fastify. See `docs/FRAMEWORK_MIGRATIONS.md`.)_
+_(The former Supabase edge-function suite — `deno task test --no-check` — was removed with `supabase/functions/` itself when the backend moved to Fastify. See `docs/voice/FRAMEWORK_MIGRATIONS.md`.)_
 
 ### 18.5 Playwright e2e (`cd dashboard && npx playwright test` — 40 committed spec files)
 

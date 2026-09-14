@@ -11,7 +11,7 @@ the same thing without re-paying for the lessons.
 > 2026-07-21 by the question-tree architecture**. It is reachable today only with
 > `ENABLE_QUESTION_TREE=false` **and** `ENABLE_TASK_GROUP=true`.
 >
-> Live calls run `agent/src/checklist/` — see `docs/QUESTION_TREE_ARCHITECTURE.md`
+> Live calls run `agent/src/checklist/` — see `docs/voice/QUESTION_TREE_ARCHITECTURE.md`
 > and CLAUDE.md → `/agent`. **Read this file for the BUGS, not for the design.**
 > The failure modes it catalogues (a model that says "booked" with an empty diary,
 > a router that swaps its own tool mid-call, an action that fires before its inputs

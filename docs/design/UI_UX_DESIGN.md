@@ -76,7 +76,7 @@ Each theme defines:
 
 ## Navigation Structure — Single Primary Bar (superseded the two-tab layout)
 
-> **SUPERSEDED 2026-05-06.** The Front Desk / Back Office two-tab layout below was retired for a **single primary tab bar**: Primary tabs (Home, Schedule, Customers, Calls) always visible; Advanced tabs (My Business, My Team, Phone Assistant) shown to owners/admins only; front-desk logins see Primary only and snap back to Home on a restricted tab. The dark-sidebar visual spec still applies. See `docs/ARCHITECTURE.md` §16.2 + `docs/DESIGN_HANDOFF.md` §3. The original two-tab text is kept below as the design-session record.
+> **SUPERSEDED 2026-05-06.** The Front Desk / Back Office two-tab layout below was retired for a **single primary tab bar**: Primary tabs (Home, Schedule, Customers, Calls) always visible; Advanced tabs (My Business, My Team, Phone Assistant) shown to owners/admins only; front-desk logins see Primary only and snap back to Home on a restricted tab. The dark-sidebar visual spec still applies. See `docs/architecture/ARCHITECTURE.md` §16.2 + `docs/design/DESIGN_HANDOFF.md` §3. The original two-tab text is kept below as the design-session record.
 
 **Original decision (superseded):** Keep the existing Front Desk / Back Office two-tab layout with all current sub-views intact. Apply the new dark sidebar visual style on top.
 
@@ -295,7 +295,7 @@ This is valuable especially for salons (80% of calls asking for one stylist = bu
 
 ## Current Views (12 components)
 
-> **Stale snapshot (March 2026).** Tab ids + the view list below predate the single-primary-bar nav and later view splits/renames. For the live component map see `docs/ARCHITECTURE.md` §16.4. Kept as the original design-session inventory.
+> **Stale snapshot (March 2026).** Tab ids + the view list below predate the single-primary-bar nav and later view splits/renames. For the live component map see `docs/architecture/ARCHITECTURE.md` §16.4. Kept as the original design-session inventory.
 
 | Tab ID | Component | What it does |
 |--------|-----------|-------------|

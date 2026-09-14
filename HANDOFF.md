@@ -74,7 +74,7 @@ deletion skips in 11 ms, a deletion mixed with a real ref still runs the checks.
 `git merge-tree --write-tree origin/main copilot/fix-dashboard-typecheck-tests`
 returns **the exact tree hash of `main`** (`b214128`). Merging it would change
 nothing; its 13,509-line diff is entirely `main`'s newer work that it lacks. By
-`docs/TODO_ITEM_LIFECYCLE.md` it is an empty leftover: close the PR, purge the
+`docs/planning/TODO_ITEM_LIFECYCLE.md` it is an empty leftover: close the PR, purge the
 branch. Not done here because it is someone else's open PR.
 
 ### What the reviews turned up — these were not rubber stamps

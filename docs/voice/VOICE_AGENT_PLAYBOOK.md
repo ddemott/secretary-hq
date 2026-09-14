@@ -10,7 +10,7 @@
 > architecture (`agent/src/checklist/`, `ENABLE_QUESTION_TREE`, on by default) — one
 > agent, a host-owned checklist, and a goodbye gate. Any rule below that talks about
 > a "script", a "ladder", rungs, or `tenants.system_prompt` driving the conversation
-> is describing a fallback path. See `docs/QUESTION_TREE_ARCHITECTURE.md`.
+> is describing a fallback path. See `docs/voice/QUESTION_TREE_ARCHITECTURE.md`.
 
 ---
 
@@ -195,7 +195,7 @@ The `agent_session_error` log's `error_body` carries the provider's exact error 
 > the selected trees. Steps 1, 4, 6 and 7 (mode, Realtime config, deploy-then-real-call,
 > known gotchas) are still correct, because they are about the PIPELINE.
 > **To build a call section under the live architecture, use
-> `docs/CALL_ARCHITECTURE.md` §8.4.**
+> `docs/voice/CALL_ARCHITECTURE.md` §8.4.**
 
 1. **Pick the mode** (§0). Lean/cheap/high-volume → pipeline (+ streaming TTS). Premium feel + tier budget → Realtime.
 2. **Pick capabilities** the flow needs → `buildTools(..., { capabilities: [...] })`. Fewer = fewer tokens.

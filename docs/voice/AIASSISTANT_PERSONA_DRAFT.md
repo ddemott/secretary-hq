@@ -6,7 +6,7 @@
 > - **Persona name is `Piper`**, not `Chris` (`tenants.persona_name`, set 2026-07-27).
 > - **The call flow below is not the architecture.** Live calls run question trees
 >   (`agent/src/checklist/`) — purpose-selected trees and a goodbye gate, not a
->   scripted business-or-personal branch. See `docs/QUESTION_TREE_ARCHITECTURE.md`.
+>   scripted business-or-personal branch. See `docs/voice/QUESTION_TREE_ARCHITECTURE.md`.
 > - **`transfer_call` IS built** (`agent/src/tools.ts`, `transferClient.ts`, SIP REFER)
 >   — the "❌ NOT BUILT" row below is out of date. BUT it is **not reachable on a live
 >   call**: the question-tree toolset never presents it, so personal calls still cannot

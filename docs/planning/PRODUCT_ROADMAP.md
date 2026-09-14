@@ -296,7 +296,7 @@ PRIORITY: CRITICAL
 EFFORT: 30m call + 1h analysis
 DEPENDS_ON: None
 CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. NOTE: there is no live human transfer on the tree path — escalation takes a message + urgent flag. Do NOT test "transfer to a person"; test "leave an urgent message."
-FILES: findings go to `docs/CALL_FIX_PLAN.md` (append a dated section).
+FILES: findings go to `docs/planning/CALL_FIX_PLAN.md` (append a dated section).
 STEPS:
 
 1. Dashboard → Phone Assistant → set the escalation contact.
@@ -320,7 +320,7 @@ DEFINITION_OF_DONE:
 - [ ] `voice_sessions` has the call with a non-empty transcript.
 - [ ] `appointments` has the booking at the correct time for the correct tenant.
 - [ ] Urgent message captured (no false "transferred" claim).
-- [ ] Findings appended to `docs/CALL_FIX_PLAN.md` with the transcript.
+- [ ] Findings appended to `docs/planning/CALL_FIX_PLAN.md` with the transcript.
 
 ---
 
@@ -723,7 +723,7 @@ PRIORITY: MEDIUM
 EFFORT: 3–4h
 DEPENDS_ON: None
 CONTEXT: Deploys have footguns (Railway "Wait for CI" is unversioned; migration ordering; SKIPPED-is-terminal). Capture a checklist + automate the mechanical checks.
-FILES: new `docs/DEPLOYMENT_CHECKLIST.md`, new `.github/workflows/pre-merge-checks.yml`.
+FILES: new `docs/operations/DEPLOYMENT_CHECKLIST.md`, new `.github/workflows/pre-merge-checks.yml`.
 ACCEPTANCE_TEST:
 
 ```bash
@@ -734,7 +734,7 @@ git grep -nE 'sk_live_|whsec_[A-Za-z0-9]' -- ':!docs/*' && exit 1 || exit 0   # 
 
 DEFINITION_OF_DONE:
 
-- [ ] `docs/DEPLOYMENT_CHECKLIST.md` covers pre-merge, migration order, post-deploy verification, and the 3 gotchas.
+- [ ] `docs/operations/DEPLOYMENT_CHECKLIST.md` covers pre-merge, migration order, post-deploy verification, and the 3 gotchas.
 - [ ] `.github/workflows/pre-merge-checks.yml` runs drift + secret scan on every PR and is required.
 - [ ] A deliberately-drifted CLAUDE.md makes the workflow fail (proof in PR).
 

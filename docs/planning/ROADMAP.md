@@ -6,7 +6,7 @@ This roadmap turns the vertical-preset/block architecture into an execution sequ
 
 Related doc:
 
-- `docs/VERTICAL-PRESET-BLOCK-ARCHITECTURE.md`
+- `docs/product/VERTICAL-PRESET-BLOCK-ARCHITECTURE.md`
 
 ---
 
