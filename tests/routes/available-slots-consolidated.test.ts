@@ -77,16 +77,21 @@ describe('Fix #31: Consolidated getAvailableSlots query', () => {
           AND (is_deleted IS NULL OR is_deleted = false)
       ),
       effective_shifts AS (
+        -- TWO DATES, NOT ONE — mirrors src/routes/agentTools/scheduling.ts
+        -- get_available_slots DATE path (PR #443). Yesterday's row only when
+        -- it is a wrapping night shift that can reach this date.
         SELECT DISTINCT
+          es.shift_date::text AS shift_date,
           es.start_time::text AS start_time,
           es.end_time::text AS end_time
         FROM active_employees ae
         JOIN employee_schedule es
           ON es.employee_id = ae.employee_id
           AND es.tenant_id = $1
-          AND es.shift_date = $3::date
+          AND es.shift_date IN ($3::date, $3::date - 1)
           AND es.is_off = false
           AND es.start_time IS NOT NULL
+          AND (es.shift_date = $3::date OR es.end_time < es.start_time)
       ),
       day_appointments AS (
         SELECT start_time::text, end_time::text
@@ -95,11 +100,11 @@ describe('Fix #31: Consolidated getAvailableSlots query', () => {
           AND (is_deleted IS NULL OR is_deleted = false)
           AND start_time::date = $3::date
       )
-      SELECT 'service' AS source, name, duration_minutes::int, price, NULL::text AS start_time, NULL::text AS end_time FROM svc
+      SELECT 'service' AS source, name, duration_minutes::int, price, NULL::text AS shift_date, NULL::text AS start_time, NULL::text AS end_time FROM svc
       UNION ALL
-      SELECT 'shift', NULL, NULL, NULL, start_time, end_time FROM effective_shifts
+      SELECT 'shift', NULL, NULL, NULL, shift_date, start_time, end_time FROM effective_shifts
       UNION ALL
-      SELECT 'appointment', NULL, NULL, NULL, start_time, end_time FROM day_appointments
+      SELECT 'appointment', NULL, NULL, NULL, NULL, start_time, end_time FROM day_appointments
       ORDER BY source, start_time`,
       [tenantId, serviceType, date]
     );
@@ -112,7 +117,17 @@ describe('Fix #31: Consolidated getAvailableSlots query', () => {
       if (row.source === 'service' && row.name) {
         service = { name: row.name, duration_minutes: row.duration_minutes, price: row.price };
       } else if (row.source === 'shift' && row.start_time && row.end_time) {
-        shifts.push({ start_time: row.start_time, end_time: row.end_time });
+        // Clip wrapping rows to the requested calendar day (same rule as the
+        // production DATE path in scheduling.ts).
+        const isYesterdayRow =
+          typeof row.shift_date === 'string' && row.shift_date !== date;
+        if (isYesterdayRow) {
+          shifts.push({ start_time: '00:00', end_time: row.end_time });
+        } else if (row.end_time < row.start_time) {
+          shifts.push({ start_time: row.start_time, end_time: '24:00' });
+        } else {
+          shifts.push({ start_time: row.start_time, end_time: row.end_time });
+        }
       } else if (row.source === 'appointment' && row.start_time && row.end_time) {
         appointments.push({ start_time: row.start_time, end_time: row.end_time });
       }
@@ -207,6 +222,40 @@ describe('Fix #31: Consolidated getAvailableSlots query', () => {
     expect(result.shifts.length).toBe(1);
     expect(result.shifts[0].start_time).toContain('10:00');
     expect(result.shifts[0].end_time).toContain('14:00');
+  });
+
+  it("HAPPY (PR #443): morning half of night shift comes from YESTERDAY's wrapping row", async () => {
+    // WHO: Night worker 22:00→06:00 dated the evening it started
+    // WHAT: Query next calendar morning → clipped [00:00, 06:00)
+    // WHY: Mirrors production get_available_slots DATE-path residual closed in #443
+    if (!dbAvailable) return;
+
+    const NIGHT_DATE = '2027-06-14';
+    const MORNING_DATE = '2027-06-15';
+    await createService(client, tenantId, 'Overnight Check', 30);
+    const empId = await createEmployee(client, tenantId, 'Night Owl', []);
+    await createScheduleEntry(client, tenantId, empId, NIGHT_DATE, '22:00', '06:00');
+
+    const morning = await queryAvailableSlots('overnight', MORNING_DATE);
+    expect(morning.shifts).toEqual([{ start_time: '00:00', end_time: expect.stringContaining('06:00') }]);
+
+    const evening = await queryAvailableSlots('overnight', NIGHT_DATE);
+    expect(evening.shifts).toEqual([
+      { start_time: expect.stringContaining('22:00'), end_time: '24:00' },
+    ]);
+  });
+
+  it("SAD (PR #443): a day shift dated yesterday never covers today's morning", async () => {
+    if (!dbAvailable) return;
+
+    const YDAY = '2027-06-20';
+    const TODAY = '2027-06-21';
+    await createService(client, tenantId, 'Day Only', 30);
+    const empId = await createEmployee(client, tenantId, 'Day Bird', []);
+    await createScheduleEntry(client, tenantId, empId, YDAY, '08:00', '17:00');
+
+    const result = await queryAvailableSlots('day only', TODAY);
+    expect(result.shifts.length).toBe(0);
   });
 
   it('SAD: is_off override means no shifts returned for that employee', async () => {
