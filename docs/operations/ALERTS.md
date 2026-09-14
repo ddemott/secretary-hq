@@ -129,6 +129,33 @@ Per-event breakout (high signal — tells you _which_ failure):
   annotations:
     summary: 'Voice sessions being force-finalized by the reaper — agent may not be sending voice-session-end'
     runbook: 'docs/operations/RUNBOOK.md — Agent silent'
+
+# Volume metering soft-cap (T-009). Fail-open on cap check: under DB stress the
+# COUNT can error and every start is allowed → unmetered load amplification.
+# Page when the fail-open path fires repeatedly. Also watch start-log failures
+# (H2 fail-soft: live call continues without a voice_sessions row).
+- alert: UsageCapCheckFailedAmplification
+  expr: rate(errors_total{event="usage_cap_check_failed"}[10m]) > 0.05
+  for: 10m
+  labels: { severity: page }
+  annotations:
+    summary: 'usage_cap_check_failed rate high — soft-cap fail-open may be allowing unmetered volume'
+    runbook: 'docs/operations/RUNBOOK.md — Backend down / DB pool saturation'
+
+- alert: VoiceSessionStartFailedSpike
+  expr: rate(errors_total{event="voice_session_start_failed"}[15m]) > 0.05
+  for: 15m
+  labels: { severity: warn }
+  annotations:
+    summary: 'voice-session-start DB failures — calls continue unmetered (fail-soft H2)'
+    runbook: 'docs/operations/RUNBOOK.md — Backend down / DB pool saturation'
+
+- alert: UsageLimitRejections
+  expr: rate(errors_total{event="call_rejected_usage_limit_exceeded"}[15m]) > 0.1
+  for: 30m
+  labels: { severity: warn }
+  annotations:
+    summary: 'Tenants hitting monthly call soft-cap — expected near plan limits; spike may mean free-tier mis-set'
 ```
 
 ### 3.2 HTTP 5xx rate — `page`
