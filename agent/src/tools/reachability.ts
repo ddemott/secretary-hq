@@ -6,6 +6,10 @@
  * Origin: docs/TODO.md reachability audit (2026-07-27, re-audited 2026-08-03).
  * The four "still undecided" tools are decided here as KEEP-UNWIRED — wiring
  * or deleting them is a product call, not a refactor side effect.
+ *
+ * transfer_call LEFT this list 2026-09-14: it is now an always-on checklist
+ * passthrough when the tenant has a forward number (ALWAYS_ON_PASSTHROUGH_TOOLS
+ * + offerTransfer). SIP REFER itself was never the blocker.
  */
 export const DEFINED_UNREACHABLE_ON_QUESTION_TREE: Record<string, string> = {
   start_booking: 'ladder router; production runs question trees (ENABLE_QUESTION_TREE)',
@@ -15,8 +19,6 @@ export const DEFINED_UNREACHABLE_ON_QUESTION_TREE: Record<string, string> = {
   get_scheduling_options: 'superseded by get_available_slots / book_with_scheduling',
   send_self_service_link: 'sms capability; gated off until 10DLC',
   record_sms_consent: 'sms capability; gated off until 10DLC',
-  transfer_call:
-    'no human handoff on a live tree call; kept for capability-gated SIP REFER sessions',
   page_owner_via_sms: 'not selected by any tree; kept, not deleted',
   save_customer_preference: 'not selected by any tree; kept, not deleted',
   get_detailed_customer_history: 'not on a tree; live identity path uses get_customer_context',

@@ -180,12 +180,13 @@ The inbound path: **PSTN caller → Telnyx DID → Telnyx SIP Connection → Liv
 
 ### 7c. Live transfer ("talk to a person") fails
 
-**Check this first, before touching Telnyx config: under the LIVE architecture (question trees, `ENABLE_QUESTION_TREE` on by default), `transfer_call` is not in the model's toolset at all** — `selectedTools()` in `agent/src/checklist/checklistTools.ts` never includes it, on any tree, on any preset. This means a caller who says "representative" (the exact word the greeting's `CLOSER_WITH_TRANSFER` offers when a forward number is configured, `agent/src/greeting.ts`) cannot actually be transferred — there is no tool the model can call to execute it, independent of Telnyx/SIP config. See CLAUDE.md's `/agent` bullet ("Still capability the product believes it has and currently does not... `transfer_call`") — this is a known, currently-open product gap, not a misconfiguration. `docs/planning/TODO.md`'s open "Live validation call" item (§1) is the test that would confirm this on a real call; it has not been run as of this writing.
+`transfer_call` is an always-on checklist passthrough when the tenant has a forward number configured (`offerTransfer` in `checklistAgent` / `checklistTools` — same gate as the greeting's `CLOSER_WITH_TRANSFER`). Callers who say "representative" can be handed off via SIP REFER.
 
-If/when `transfer_call` is wired into a tree and this becomes a real config question:
+If transfer still fails on a live call:
 
-1. REFER is enabled by DEFAULT on Telnyx FQDN connections as of 2026-07-07 — there is no toggle to check in the Telnyx UI. If a transfer attempt still fails at the SIP layer, that would be a Telnyx-side issue to escalate, not a setting to flip here.
-2. **Forward number set?** Dashboard → AI Persona → "Forward Calls to a Person". No number = the greeting doesn't offer the "representative" opt-out at all (`forwardPhone` gates it) — nothing to transfer to either way.
+1. **Forward number set?** Dashboard → AI Persona → "Forward Calls to a Person". No number = the greeting doesn't offer the "representative" opt-out at all (`forwardPhone` gates it) and `selectedTools()` omits `transfer_call` — nothing to transfer to either way.
+2. REFER is enabled by DEFAULT on Telnyx FQDN connections as of 2026-07-07 — there is no toggle to check in the Telnyx UI. If a transfer attempt still fails at the SIP layer, that would be a Telnyx-side issue to escalate, not a setting to flip here.
+3. Confirm the agent log shows `tool_call transfer_call` (not a model improvisation). Missing tool on a tenant that HAS a forward number is a wiring regression — see `ALWAYS_ON_PASSTHROUGH_TOOLS` / `offerTransfer` in `agent/src/checklist/checklistTools.ts`.
 
 ### 7d. Blocked-caller-ID booking can't verify
 

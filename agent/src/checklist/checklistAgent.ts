@@ -65,6 +65,13 @@ export interface ChecklistAgentOptions {
    */
   smsEnabled?: boolean;
   /**
+   * Offer transfer_call on the live checklist toolset. Same gate as the greeting
+   * CLOSER_WITH_TRANSFER (forward number configured + transfer available). When
+   * false/absent the model never sees the tool — a handoff affordance with no
+   * destination is a dead end.
+   */
+  offerTransfer?: boolean;
+  /**
    * What this business actually does, in the owner's words (`tenants.greeting_menu`).
    *
    * WHY THIS EXISTS: the persona line is one sentence — "You are Clara, the AI
@@ -746,6 +753,8 @@ export class ChecklistAgent extends voice.Agent {
         opts.knownCustomer?.name && opts.knownCustomer.name !== 'Unknown'
           ? opts.knownCustomer.name
           : null,
+      // Forward-number gate — same boolean the greeting uses for CLOSER_WITH_TRANSFER.
+      offerTransfer: opts.offerTransfer,
       onSelectionChanged: () => {
         // NEVER updateTools inside the tool's own execute (the router lesson:
         // it swaps out the tool LiveKit is waiting on — "function output

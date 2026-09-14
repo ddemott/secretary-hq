@@ -1493,6 +1493,13 @@ export default defineAgent({
               // Same capability list that decides the TOOLSET, so the prompt and
               // the tools can never disagree about whether this line can text.
               smsEnabled: activeCapabilities.includes('sms'),
+              // Live human handoff — same gate as greeting CLOSER_WITH_TRANSFER
+              // and the forwardPhone handed to buildTools above. When false the
+              // checklist omits transfer_call entirely (no dead-end "representative"
+              // tool with nowhere to send the caller).
+              offerTransfer: Boolean(
+                tenantConfig.transferAvailable && tenantConfig.forwardPhone?.trim()
+              ),
               runtime: {
                 currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
                 // Read at SESSION START, so a very long call drifts — acceptable:

@@ -14,7 +14,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildTools, CAPABILITY_OF, type Capability } from '../tools.js';
-import { TREE_PASSTHROUGH_TOOLS } from '../checklist/checklistTools.js';
+import {
+  ALWAYS_ON_PASSTHROUGH_TOOLS,
+  TREE_PASSTHROUGH_TOOLS,
+} from '../checklist/checklistTools.js';
 import { PLATFORM_TREE_LIBRARY } from '../checklist/trees.js';
 import { DEFINED_UNREACHABLE_ON_QUESTION_TREE } from './reachability.js';
 import type { ToolsClient } from '../toolsClient.js';
@@ -64,9 +67,15 @@ function treePassthroughTools(): string[] {
   return [...new Set(Object.values(TREE_PASSTHROUGH_TOOLS).flat())].sort();
 }
 
-/** Tools from tools.ts that selectedTools() can offer (actions + passthroughs). */
+/** Tools from tools.ts that selectedTools() can offer (actions + passthroughs + always-on). */
 function questionTreeReachableFromToolsTs(): string[] {
-  return [...new Set([...treeActionTools(), ...treePassthroughTools()])].sort();
+  return [
+    ...new Set([
+      ...treeActionTools(),
+      ...treePassthroughTools(),
+      ...ALWAYS_ON_PASSTHROUGH_TOOLS,
+    ]),
+  ].sort();
 }
 
 describe('CAPABILITY_OF covers the live tool inventory', () => {
