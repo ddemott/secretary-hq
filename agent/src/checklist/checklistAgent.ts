@@ -801,6 +801,10 @@ export class ChecklistAgent extends voice.Agent {
       },
     });
 
+    // Prompt offerTransfer must match the toolset the model actually sees —
+    // selectedTools() can still omit transfer_call when the real tool is missing
+    // even if opts.offerTransfer is true. One ToolMap for both so they cannot drift.
+    const initialTools = toolkit.selectedTools();
     super({
       instructions: buildChecklistPrompt({
         persona: opts.persona,
@@ -813,10 +817,10 @@ export class ChecklistAgent extends voice.Agent {
         businessName: opts.businessName,
         businessBlurb: opts.businessBlurb,
         smsEnabled: opts.smsEnabled,
-        offerTransfer: opts.offerTransfer,
+        offerTransfer: Boolean(initialTools.transfer_call),
         runtimeConfig: opts.runtimeConfig,
       }),
-      tools: toolkit.selectedTools(),
+      tools: initialTools,
     });
     this.#toolkit = toolkit;
     this.#tracker = tracker;
