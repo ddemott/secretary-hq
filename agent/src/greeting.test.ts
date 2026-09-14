@@ -74,9 +74,23 @@ describe('buildGreeting — closer depends on real transfer capability', () => {
   // | WHY: legaldocs line 31 — an opt-out strengthens consent "but only promise it if it exists."
   // Offering a transfer the tenant never configured strands the caller and is worse than silence.
   test('offers a human only when forwardPhone is set', () => {
-    expect(buildGreeting(tenant({ forwardPhone: '+16308229086' }))).toContain(CLOSER_WITH_TRANSFER);
+    expect(buildGreeting(tenant({ forwardPhone: '+163****9086' }))).toContain(CLOSER_WITH_TRANSFER);
     expect(buildGreeting(tenant())).toContain(CLOSER_NO_TRANSFER);
     expect(buildGreeting(tenant())).not.toContain('representative');
+  });
+
+  // WHO: production tenant where backend sets transfer_available=false (loop protection:
+  // forward_phone equals the line that forwards IN) | WHAT: no representative offer even
+  // though forwardPhone column is non-null | WHEN: transferAvailable is explicitly false
+  // | WHERE: transferReady gate | WHY: promising a transfer that rings straight back into
+  // the assistant is the loop canTransfer exists to prevent; greeting and toolset must agree.
+  test('transferAvailable=false suppresses the human opt-out even with forwardPhone set', () => {
+    expect(
+      buildGreeting(tenant({ forwardPhone: '+163****9086', transferAvailable: false }))
+    ).not.toContain('representative');
+    expect(
+      buildGreeting(tenant({ forwardPhone: '+163****9086', transferAvailable: true }))
+    ).toContain(CLOSER_WITH_TRANSFER);
   });
 
   // WHO: a tenant whose forward_phone column holds whitespace rather than NULL | WHAT: treated as
