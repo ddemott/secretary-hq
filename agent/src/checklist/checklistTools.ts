@@ -409,6 +409,14 @@ const DEFAULT_MAX_PURPOSE_ROUNDS = 5;
 const ACTION_FAILURE_LIMIT = 2;
 
 /**
+ * Failed transfer_call attempts before the host stops REFERing and forces the
+ * message path. Same budget as ACTION_FAILURE_LIMIT: one retry is enough to
+ * absorb a transient SIP blip; looping forever after "connecting you" is worse
+ * than taking a message. C-TERM residual after #462.
+ */
+const TRANSFER_FAILURE_LIMIT = 2;
+
+/**
  * After this many consecutive REFUSALS the unconfirmed-booking guard stands
  * down and lets the write through.
  *
@@ -550,9 +558,8 @@ export function ragCouldNotAnswer(text: string): boolean {
  *
  * PINNED to transfer.ts: success is ONLY the line starting with
  * "Transfer started". Everything else (JSON `{ error }`, empty, unexpected
- * shapes, timeouts) is failure and must route to message — not leave the
- * caller on an open booking goodbye stall after they asked for a human
- * (C-GATE after #462).
+ * shapes) is failure — used by the host wrap so a false-ok cannot skip the
+ * message fallback (C-GATE after #462 / Copilot on #477).
  */
 export function transferCallFailed(text: string): boolean {
   return !/^Transfer started\b/i.test(text.trim());
@@ -815,6 +822,14 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   // (CALL_IMPROVEMENTS.md #2).
   let identifiedAs: { name: string; phone: string } | null = null;
   let closing = false;
+  /**
+   * Successful transfer_call latches this for the rest of the call. SIP REFER
+   * is once-per-call: a second fire is a double-REFER on the same participant
+   * (C-TERM after #462). Also drives finish_call no-op and selectedTools strip.
+   */
+  let transferred = false;
+  /** Consecutive failed transfer_call executes — see TRANSFER_FAILURE_LIMIT. */
+  let transferFailures = 0;
   const failCounts = new Map<string, number>();
   // Refusals are counted separately from failures: a refusal returns BEFORE the
   // real tool runs, so it can never reach `failCounts` and never trips
@@ -1595,75 +1610,153 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
 
   const baseTools: ToolMap = { set_purpose, record_answer, finish_call };
 
+  /**
+   * Did the real transfer_call report a successful REFER?
+   * Success is ONLY a guidance string starting with "Transfer started"
+   * (tools/transfer.ts). Anything else is failure — never latch terminal
+   * state on a failed handoff (C-TERM / C-GATE after #462).
+   */
+  const transferCallSucceeded = (raw: unknown): boolean => {
+    const text =
+      typeof raw === 'string'
+        ? raw
+        : (() => {
+            try {
+              const s = JSON.stringify(raw);
+              return s === undefined ? String(raw) : s;
+            } catch {
+              return String(raw);
+            }
+          })();
+    return !transferCallFailed(text);
+  };
+
+  /**
+   * C-GATE: after a failed REFER the caller still wanted a human. Host-select
+   * message (+ identity) like RAG unanswered, and drop unfinished booking so
+   * the goodbye gate does not stall them on open booking nodes.
+   * Returns true when selection changed (caller must onSelectionChanged).
+   */
+  const hostSelectMessageAfterTransferFail = (): boolean => {
+    let changed = false;
+    if (
+      tracker.selectedTrees().includes('booking') &&
+      tracker.status('book') !== 'done'
+    ) {
+      tracker.deselect('booking');
+      changed = true;
+    }
+    if (selectableTreeSet.has('message')) {
+      const before = tracker.selectedTrees().slice().sort().join(',');
+      const pick = selectableTreeSet.has('identity')
+        ? (['message', 'identity'] as string[])
+        : (['message'] as string[]);
+      tracker.select(pick);
+      if (tracker.selectedTrees().slice().sort().join(',') !== before) {
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
+  /**
+   * Host-owned transfer_call wrap (C-TERM + C-GATE after #462).
+   *
+   * Plain passthrough left the tool on baseTools for the whole call with no
+   * once-flag: the model could double-REFER, and finish_call could still speak
+   * a farewell on a room that was already leaving via SIP. On ok we latch
+   * transferred+closing, strip the tool via onSelectionChanged, and refuse
+   * further transfer/finish. On failure we host-select message (+ drop
+   * unfinished booking) on the FIRST fail so goodbye does not stall a human
+   * ask, and still cap retries like action tools.
+   */
+  const wrapTransferCall = (real: ToolMap[string]): ToolMap[string] =>
+    llm.tool({
+      description: shape(real).description,
+      parameters: shape(real).parameters,
+      execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
+        // Guidance after the attempt budget is spent. Never tell the model to
+        // set_purpose(message) when message is not in selectableTreeSet — that
+        // tree can be disabled by runtimeConfig and the instruction would be a
+        // dead end (PR review on #478).
+        const afterTransferCap = (): string =>
+          selectableTreeSet.has('message')
+            ? 'TAKE A MESSAGE — it is on your checklist. Never claim they were connected.'
+            : 'Apologize briefly, finish anything still open on the checklist, then finish_call. Never claim they were connected.';
+
+        if (transferred || closing) {
+          return 'Transfer already started or the call is ending — say nothing further. Do not call transfer_call or finish_call again.';
+        }
+        if (transferFailures >= TRANSFER_FAILURE_LIMIT) {
+          return `Transfer is no longer available after repeated failures. ${afterTransferCap()} ${stateBlock()}`;
+        }
+        const raw = await shape(real).execute(args, toolCtx);
+        const text =
+          typeof raw === 'string'
+            ? raw
+            : (() => {
+                try {
+                  const s = JSON.stringify(raw);
+                  return s === undefined ? String(raw) : s;
+                } catch {
+                  return String(raw);
+                }
+              })();
+        if (transferCallSucceeded(raw)) {
+          transferred = true;
+          // Same latch finish_call uses for the double-goodbye race — blocks
+          // farewell speech on a dying post-REFER room without speaking one.
+          closing = true;
+          deps.onSelectionChanged();
+          return text;
+        }
+        transferFailures += 1;
+        // First failure already owns the message lane (C-GATE): do not leave
+        // open booking holding finish_call while the caller asked for a human.
+        if (hostSelectMessageAfterTransferFail()) {
+          getLogger().info(
+            {
+              event: 'checklist_transfer_failed_takes_message',
+              failures: transferFailures,
+              selected: tracker.selectedTrees(),
+            },
+            'transfer_call failed — message tree selected so the caller is not lost on a goodbye stall'
+          );
+          deps.onSelectionChanged();
+        }
+        if (transferFailures >= TRANSFER_FAILURE_LIMIT) {
+          getLogger().warn(
+            {
+              event: selectableTreeSet.has('message')
+                ? 'transfer_failures_force_message'
+                : 'transfer_failures_capped',
+              failures: transferFailures,
+              selected: tracker.selectedTrees(),
+            },
+            'transfer_call failed repeatedly — retries stopped'
+          );
+          return (
+            `${text}\n\nThis has failed ${transferFailures} times in a row — STOP retrying ` +
+            `transfer_call. ${afterTransferCap()} ${stateBlock()}`
+          );
+        }
+        const retryOrFallback = selectableTreeSet.has('message')
+          ? 'The transfer did NOT connect the caller. Apologize briefly — never claim they were connected — and TAKE A MESSAGE (now on your checklist). You may try transfer_call one more time only if they insist on a person right now.'
+          : 'The transfer did NOT connect the caller. Apologize briefly — never claim they were connected. You may try transfer_call one more time, or finish open checklist items and close.';
+        return `${text}\n\n${retryOrFallback} ${stateBlock()}`;
+      },
+    });
+
   // Always-on passthroughs — driven by ALWAYS_ON_PASSTHROUGH_TOOLS so the
   // inventory list and the registration cannot drift. transfer_call also needs
   // offerTransfer (forward-number / transferAvailable gate, same as the greeting
   // closer): every preset gets live handoff without a per-tree action node.
-  // Failure is NOT a bare passthrough: like RAG unanswered → message, a failed
-  // REFER host-selects message (+ identity) so the goodbye gate does not stall
-  // a caller who asked for a human on an unfinished booking checklist (C-GATE).
+  // transfer_call is WRAPPED (not a bare passthrough) so success is terminal.
   for (const name of ALWAYS_ON_PASSTHROUGH_TOOLS) {
     const real = realTools[name];
     if (!real) continue;
     if (name === 'transfer_call' && !deps.offerTransfer) continue;
-    if (name === 'transfer_call') {
-      baseTools[name] = llm.tool({
-        description: shape(real).description,
-        parameters: shape(real).parameters,
-        execute: async (args: unknown, toolCtx: unknown): Promise<string> => {
-          const raw = await shape(real).execute(args, toolCtx);
-          const text =
-            typeof raw === 'string'
-              ? raw
-              : (() => {
-                  try {
-                    const s = JSON.stringify(raw);
-                    return s === undefined ? String(raw) : s;
-                  } catch {
-                    return String(raw);
-                  }
-                })();
-          if (!transferCallFailed(text)) return text;
-
-          let selectionChanged = false;
-          // Caller wanted a human. An open unfinished booking must not hold the
-          // goodbye gate while we take a fallback message — same spirit as the
-          // "no meeting" deselect on booking_wanted=false.
-          if (
-            tracker.selectedTrees().includes('booking') &&
-            tracker.status('book') !== 'done'
-          ) {
-            tracker.deselect('booking');
-            selectionChanged = true;
-          }
-          if (selectableTreeSet.has('message')) {
-            const before = tracker.selectedTrees().slice().sort().join(',');
-            const add: string[] = ['message'];
-            if (selectableTreeSet.has('identity')) add.push('identity');
-            tracker.select(add);
-            if (tracker.selectedTrees().slice().sort().join(',') !== before) {
-              selectionChanged = true;
-            }
-          }
-          if (selectionChanged) {
-            getLogger().info(
-              { event: 'checklist_transfer_failed_takes_message' },
-              'transfer_call failed — message tree selected so the caller is not lost on a goodbye stall'
-            );
-            deps.onSelectionChanged();
-          }
-          return (
-            `${text}\n\nThe transfer did NOT connect the caller. Apologize briefly — never ` +
-            `claim they were connected — and TAKE A MESSAGE so someone can call them back. ` +
-            `Taking the message is now on your checklist; unfinished booking questions are ` +
-            `off it. Do not keep the caller on a goodbye stall for open booking nodes. ` +
-            `${stateBlock()}`
-          );
-        },
-      });
-      continue;
-    }
-    baseTools[name] = real;
+    baseTools[name] = name === 'transfer_call' ? wrapTransferCall(real) : real;
   }
 
   // get_my_appointments — in the toolset EVERY turn, not just when
@@ -2009,6 +2102,11 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
 
   const selectedTools = (): ToolMap => {
     const tools: ToolMap = { ...baseTools };
+    // Terminal lock: after a successful REFER the model must not see transfer_call
+    // advertised again (double-REFER). The wrap also no-ops; strip is the belt.
+    if (transferred) {
+      delete tools['transfer_call'];
+    }
     for (const treeId of tracker.selectedTrees()) {
       for (const site of actionSites.values()) {
         if (site.treeId === treeId && realTools[site.def.tool] && !tools[site.def.tool]) {

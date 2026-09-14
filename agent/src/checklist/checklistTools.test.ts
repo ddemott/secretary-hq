@@ -184,13 +184,91 @@ describe('the toolset composition', () => {
     expect(transfer.execute).toHaveBeenCalledOnce();
   });
 
-  it('transfer failure host-selects message + identity and drops unfinished booking', async () => {
-    // C-GATE after #462: REFER fail left open booking nodes holding finish_call
-    // until FINISH_REFUSAL_LIMIT while the caller had asked for a human.
-    // Mirror RAG unanswered → message: host owns the fallback lane.
+  it('second transfer_call is refused after a successful REFER (no double-REFER)', async () => {
+    // C-TERM after #462: transfer stayed always-on with no once-flag, so the
+    // model could fire transfer_call twice and SIP-REFER the same participant.
+    // Keep a handle to the pre-strip tool object — selectedTools drops it after
+    // ok, but a stale model call must still no-op without a second REFER.
+    const transfer = fakeTool(
+      'Transfer started — the caller is being connected to a team member now.'
+    );
+    const { toolkit, onSelectionChanged } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    const beforeStrip = toolkit.selectedTools();
+    const first = await call(beforeStrip, 'transfer_call', {});
+    expect(first).toContain('Transfer started');
+    expect(transfer.execute).toHaveBeenCalledOnce();
+    expect(onSelectionChanged).toHaveBeenCalled();
+    expect(Object.keys(toolkit.selectedTools())).not.toContain('transfer_call');
+    const second = await call(beforeStrip, 'transfer_call', {});
+    expect(second).toMatch(/already|ending|nothing further|do not/i);
+    expect(transfer.execute).toHaveBeenCalledOnce();
+  });
+
+  it('finish_call is a no-op after transfer_call ok (no farewell on a dying room)', async () => {
+    // C-TERM: finish_call could race a goodbye over SIP REFER success.
+    const transfer = fakeTool(
+      'Transfer started — the caller is being connected to a team member now.'
+    );
+    const { toolkit, closeCall } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'transfer_call', {});
+    const farewell = await call(toolkit.selectedTools(), 'finish_call', {});
+    expect(farewell).toMatch(/already ending|nothing further/i);
+    expect(closeCall).not.toHaveBeenCalled();
+  });
+
+  it('caps failed transfer attempts then forces the message path', async () => {
+    // C-GATE + C-TERM: first failure already host-selects message (goodbye must
+    // not stall a human ask); second failure stops SIP retries.
+    const fail = JSON.stringify({
+      error:
+        'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+    });
+    const transfer = fakeTool(fail);
+    const { toolkit, tracker, onSelectionChanged } = makeKit({
+      offerTransfer: true,
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        take_message: fakeTool(ok({ message_id: 'msg_1' })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    const first = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(first).toContain('did not go through');
+    expect(first).toContain('TAKE A MESSAGE');
+    expect(tracker.selectedTrees()).toContain('message');
+    expect(tracker.selectedTrees()).toContain('identity');
+    expect(onSelectionChanged).toHaveBeenCalled();
+    const second = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(second).toMatch(/STOP retrying|TAKE A MESSAGE/i);
+    expect(tracker.selectedTrees()).toContain('message');
+    // Third call must not hit the SIP executor again.
+    const third = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(third).toMatch(/no longer available|TAKE A MESSAGE|STOP/i);
+    expect(transfer.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('first transfer failure drops unfinished booking so goodbye is not stalled', async () => {
+    // C-GATE: open booking nodes held finish_call after REFER fail while the
+    // caller had asked for a human.
     const transfer = fakeTool(
       JSON.stringify({
-        error: 'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+        error:
+          'The transfer did not go through. Apologize briefly and offer to take a message instead.',
       })
     );
     const { toolkit, tracker, onSelectionChanged } = makeKit({
@@ -211,44 +289,11 @@ describe('the toolset composition', () => {
       trees: ['identity', 'booking'],
     });
     expect(tracker.selectedTrees()).toContain('booking');
-    expect(tracker.selectedTrees()).not.toContain('message');
-
     const res = await call(toolkit.selectedTools(), 'transfer_call', {});
-    expect(transfer.execute).toHaveBeenCalledOnce();
     expect(res).toContain('TAKE A MESSAGE');
-    expect(res).toMatch(/did NOT connect/i);
     expect(tracker.selectedTrees()).toContain('message');
-    expect(tracker.selectedTrees()).toContain('identity');
     expect(tracker.selectedTrees()).not.toContain('booking');
     expect(onSelectionChanged).toHaveBeenCalled();
-  });
-
-  it('transfer success does not select message or deselect booking', async () => {
-    const transfer = fakeTool(
-      'Transfer started — the caller is being connected to a team member now. Do not keep talking; the call is leaving this assistant.'
-    );
-    const { toolkit, tracker, onSelectionChanged } = makeKit({
-      offerTransfer: true,
-      realTools: {
-        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
-        get_my_appointments: fakeTool(ok({ appointments: [] })),
-        book_with_scheduling: fakeTool(ok({ appointment_id: 'appt_1' })),
-        get_available_slots: fakeTool(ok({ open_times: ['3:00 PM'] })),
-        get_service_catalog: fakeTool(ok({ services: [] })),
-        transfer_call: transfer,
-      } as unknown as ToolMap,
-    });
-    await call(toolkit.selectedTools(), 'set_purpose', {
-      work_direction: 'neither_or_unclear',
-      trees: ['identity', 'booking'],
-    });
-    onSelectionChanged.mockClear();
-    const res = await call(toolkit.selectedTools(), 'transfer_call', {});
-    expect(res).toContain('Transfer started');
-    expect(res).not.toContain('TAKE A MESSAGE');
-    expect(tracker.selectedTrees()).toContain('booking');
-    expect(tracker.selectedTrees()).not.toContain('message');
-    expect(onSelectionChanged).not.toHaveBeenCalled();
   });
 
   it('transferCallFailed treats only Transfer started as success', () => {
@@ -264,25 +309,33 @@ describe('the toolset composition', () => {
         })
       )
     ).toBe(true);
-    expect(
-      transferCallFailed(
-        JSON.stringify({
-          error:
-            'No transfer number is set up for this business, so you cannot connect the caller. Offer to take a message instead.',
-        })
-      )
-    ).toBe(true);
-    expect(
-      transferCallFailed(
-        JSON.stringify({
-          error:
-            'The transfer did not go through. Apologize briefly and offer to take a message instead.',
-        })
-      )
-    ).toBe(true);
-    // Ambiguous non-empty output must NOT look like success (skip fallback).
     expect(transferCallFailed('ok')).toBe(true);
     expect(transferCallFailed('')).toBe(true);
+  });
+
+  it('transfer failure cap does not invent message when that tree is disabled', async () => {
+    // runtimeConfig can drop message from selectableTreeIds — guidance must
+    // not tell the model to set_purpose(message) into a refused tree (#478).
+    const fail = JSON.stringify({
+      error:
+        'The transfer did not go through. Apologize briefly and offer to take a message instead.',
+    });
+    const transfer = fakeTool(fail);
+    const { toolkit, tracker } = makeKit({
+      offerTransfer: true,
+      selectableTreeIds: ['identity', 'qa', 'booking'],
+      realTools: {
+        get_company_policy_answer: fakeTool(ok({ answer: 'x' })),
+        get_my_appointments: fakeTool(ok({ appointments: [] })),
+        transfer_call: transfer,
+      } as unknown as ToolMap,
+    });
+    await call(toolkit.selectedTools(), 'transfer_call', {});
+    const second = await call(toolkit.selectedTools(), 'transfer_call', {});
+    expect(second).toMatch(/STOP retrying|finish_call|checklist/i);
+    expect(second).not.toMatch(/set_purpose/i);
+    expect(tracker.selectedTrees()).not.toContain('message');
+    expect(transfer.execute).toHaveBeenCalledTimes(2);
   });
 
   it("selection brings each tree's wrapped action + its read passthroughs", async () => {
