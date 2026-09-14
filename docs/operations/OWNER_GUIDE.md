@@ -114,8 +114,13 @@ Yes — the assistant asks the caller's preferred day/time, offers open slots, a
 widens to the next window if nothing fits. It never imposes a slot.
 
 **What happens if a caller wants a human?**
-If you've set a forward number (Phone Assistant → AI Persona → "Forward Calls to
-a Person"), the AI can transfer the live call to that number.
+Escalation takes a message (with an urgent flag when the caller needs a faster
+callback). Live SIP transfer plumbing exists in the agent, but it is **not**
+exposed on production question-tree calls yet — setting a forward number
+(Phone Assistant → AI Persona → "Forward Calls to a Person") does not currently
+put the caller through to that number on a live tree call. See
+`docs/operations/TRANSFER_CALL_BLIND_SPOTS.md` and the open wire-up item in
+`docs/planning/TODO.md`.
 
 **Do callers get reminders?**
 Yes — confirmation and reminder messages send by SMS/email, subject to the
