@@ -13,7 +13,7 @@ and logged, not fixed" list is superseded by the fixes archived here.
 
 ### Next items — completed fixes (2026-09-09 … 2026-09-11)
 
-## Next items to fix (coverage/build/deploy review)
+#### Source heading (from TODO)
 
 - [x] ~~**PROD WAS SIX MIGRATIONS BEHIND, AND ONE DEPLOYED CODE PATH WAS ALREADY BROKEN BY IT.**~~ — **FOUND AND FIXED 2026-09-09.**
       `schema_migrations` on prod ended at `20260820000000` while `main` carried seven more. The
@@ -158,7 +158,7 @@ and logged, not fixed" list is superseded by the fixes archived here.
 
 ### Flaky gates that blocked prod deploys (2026-08-20 … 2026-09-03)
 
-## 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
+#### 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
 
 A red `main` CI run makes Railway mark that commit's deployments **SKIPPED, and
 SKIPPED is terminal** — turning CI green afterwards does not retry. So a flaky
@@ -213,7 +213,7 @@ in a single statement` timed out on PR #394's Backend job at **5,004 ms
 
 ### Live-call fix series (2026-07-30) — pointer archive
 
-## 📞 Live-call fix series (2026-07-30) — see `docs/planning/CALL_FIX_PLAN.md`
+#### 📞 Live-call fix series (2026-07-30) — see `docs/planning/CALL_FIX_PLAN.md`
 
 The 12 real calls from 2026-07-26/27 (`CALL_IMPROVEMENTS.md`, root) produced an
 8-batch PR plan: **G** (job-call capture completeness — role_description dropped
@@ -230,7 +230,7 @@ recurring failure classes: `docs/planning/CALL_FIX_PLAN.md`.
 
 ### Live-call fix series (2026-08-13) — shipped root cause (open Dale follow-ups remain in TODO)
 
-## 📞 Live-call fix series (2026-08-13) — see `CALL1.md` / `CALL2.md`
+#### 📞 Live-call fix series (2026-08-13) — see archived CALL1/CALL2 evidence (deleted from root after citing batches closed)
 
 Two real calls from the same caller (`+1 262-497-9039`, Camille), three minutes apart,
 on tenant Thinking Hammer: `SCL_3a8SkDKzxN4B` (19:46 CT, message) and
@@ -245,12 +245,12 @@ could select the job tree.** On CALL1 the model read the caller correctly, decla
 16 ms later; the host answered `No tree called "job"`. `capture_job_inquiry` never
 entered the toolset, the goodbye gate never saw the tree, and the call closed clean.
 
-**Shipped on `fix/job-tree-unreachable` and related (all green). See RESOLVED.md for full details, transcripts, root causes (forbidden_trees, unreachable job tree, phantom bookings, stall detectors).**
+**Shipped on `fix/job-tree-unreachable` and related (all green). Full details, transcripts, root causes (forbidden_trees, unreachable job tree, phantom bookings, stall detectors) live earlier in this archive.**
 
 
 ### E2E observation sweep (2026-08-15)
 
-## 🔬 E2E observation sweep (2026-08-15) — all 20 defects + 4 livelocks fixed. Sim suites 100%. See RESOLVED.md for detailed postmortems and the fixes (booking guard, refusal diagnosis, phantom bookings, stall detectors, backfill, placeholder names, filler repetition, etc.). All [x] shipped, sim-questiontree 22/22, agent suite green.
+#### 🔬 E2E observation sweep (2026-08-15) — all 20 defects + 4 livelocks fixed. Sim suites 100%. Detailed postmortems live earlier in this file (booking guard, refusal diagnosis, phantom bookings, stall detectors, backfill, placeholder names, filler repetition, etc.). All [x] shipped, sim-questiontree 22/22, agent suite green.
 
 ---
 
@@ -262,11 +262,10 @@ entered the toolset, the goodbye gate never saw the tree, and the call closed cl
 
 ### Code review 2026-07-13 four-reviewer sweep (already fully resolved)
 
-### 4b. Code review 2026-07-13 — four-reviewer sweep (backend, security, reliability, dead code)
+#### 4b. Code review 2026-07-13 — four-reviewer sweep (backend, security, reliability, dead code)
 
-**All items resolved — moved to `docs/planning/RESOLVED.md` 2026-09-08 (doc-hygiene
-trim; content dated 2026-07-13, re-verified 2026-08-21) — every entry was `[x]`,
-nothing left open.** Covered: self-service SMS
+**All items resolved — archived 2026-09-08 (doc-hygiene trim; content dated 2026-07-13,
+re-verified 2026-08-21) — every entry was `[x]`, nothing left open.** Covered: self-service SMS
 token type confusion, OTP gate coverage gaps, `find-customer-by-name` enumeration,
 reminder retry/metrics/SIGTERM-drain, schedule-extender far-future-shift poisoning,
 alternatives-search duration mismatch, `'Caller'` placeholder, `purge-soft-deleted`
