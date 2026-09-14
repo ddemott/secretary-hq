@@ -37,6 +37,7 @@ import {
   silentHangupsTotal,
   turnLatencyMs,
 } from '../../services/metrics';
+import { evaluateUsageCap } from '../../services/billingUsage';
 
 /**
  * How long a call must last before "the caller never spoke" is evidence of a
@@ -59,7 +60,7 @@ const SILENT_CALL_MIN_SECONDS = 20;
  */
 const CALLER_LINE_RE = /^Caller(?: \[\d+:\d{2}\])?: /m;
 
-export function registerSessionRoutes({ app, withTenantClient }: AgentToolDeps): void {
+export function registerSessionRoutes({ app, pool, withTenantClient }: AgentToolDeps): void {
   // tenant-config — minimal display info the agent worker needs at the
   // start of every call (business name + IANA timezone). Read on connect
   // before the system prompt is built so the LLM greets with the real
@@ -257,6 +258,46 @@ export function registerSessionRoutes({ app, withTenantClient }: AgentToolDeps):
       // `room:<roomName>` when there is none — which is exactly the browser
       // caller-simulator. No third value is invented.
       callsTotal.inc({ source: args.call_id.startsWith('room:') ? 'browser' : 'phone' });
+
+      // Soft tier-cap gate (T-009 / P2 volume metering). Match subscriptionGate
+      // spirit: refuse new work when the tenant is over its plan, but speak a
+      // conversational error_code so the agent can hang up cleanly. Fail-open
+      // on evaluation errors — a metering blip must not silence every line.
+      try {
+        const cap = await evaluateUsageCap(pool, args.tenant_id);
+        if (cap.blocked) {
+          errorsTotal.inc({ event: 'call_rejected_usage_limit_exceeded' });
+          app.log.warn(
+            {
+              event: 'call_rejected_usage_limit_exceeded',
+              tenant_id: args.tenant_id,
+              call_id: args.call_id,
+              plan: cap.plan,
+              used: cap.used,
+              limit: cap.limit,
+            },
+            'voice-session-start refused — tenant at monthly call cap'
+          );
+          return fail(
+            reply,
+            "We're currently at capacity for this billing period. Please try again next month or upgrade your plan.",
+            200,
+            'usage_limit_exceeded'
+          );
+        }
+      } catch (capErr) {
+        errorsTotal.inc({ event: 'usage_cap_check_failed' });
+        app.log.error(
+          {
+            event: 'usage_cap_check_failed',
+            tenant_id: args.tenant_id,
+            call_id: args.call_id,
+            ...pgErrorFields(capErr),
+          },
+          'usage cap check failed — allowing session start (fail-open)'
+        );
+      }
+
       try {
         await withTenantClient(args.tenant_id, async (client) => {
           await client.query('SELECT start_voice_session($1, $2, $3) AS context', [

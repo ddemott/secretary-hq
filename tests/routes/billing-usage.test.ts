@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { getRootClient, createTenant, skipIfDbDown } from '../utils';
 import {
   computeUsageStatements,
+  evaluateUsageCap,
   BILLABLE_MIN_SECONDS,
   PLAN_QUOTAS,
 } from '../../src/services/billingUsage';
@@ -145,26 +146,30 @@ describe('billingUsage — pack math', () => {
   it('HAPPY: overage rounds UP to whole packs, priced at packPriceUsd each', async (ctx) => {
     // WHO: a solo-plan tenant who goes over quota.
     // WHAT: overage rounds up to whole packs at flat pack pricing.
-    // WHEN: answeredCalls exceed includedCalls by 31.
+    // WHEN: answeredCalls exceed includedCalls by 31 (env Solo cap 50 + 31).
     // WHERE: computeUsageStatements() pack math.
     // WHY: undercharging leaks revenue; overcharging torches trust.
     skipIfDbDown(ctx, () => dbAvailable);
+    const prev = process.env.PLAN_CAP_SOLO;
+    process.env.PLAN_CAP_SOLO = '50';
     const packTenant = await createTenant(client, 'Billing Usage Pack Tenant', 'salon');
     try {
       await client.query(`UPDATE tenants SET subscription_plan = 'solo' WHERE tenant_id = $1`, [packTenant]);
       const lastMonth = new Date();
       lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
       lastMonth.setUTCDate(3);
+      const soloCap = 50;
+      const answered = soloCap + 31;
       await client.query(
         `INSERT INTO voice_sessions (tenant_id, call_id, status, started_at, duration_seconds, transcript)
          SELECT $1, 'pack-test-' || g, 'completed', $2::timestamptz, 60,
                 'Assistant: hello' || E'\n' || 'Caller: booking please'
-           FROM generate_series(1, 181) g`,
-        [packTenant, lastMonth.toISOString()]
+           FROM generate_series(1, $3) g`,
+        [packTenant, lastMonth.toISOString(), answered]
       );
 
       const res = await computeUsageStatements(pool, packTenant, 3);
-      const m = res.statements.find((s) => !s.inProgress && s.answeredCalls === 181);
+      const m = res.statements.find((s) => !s.inProgress && s.answeredCalls === answered);
       expect(m).toBeDefined();
       expect(m!.overageCalls).toBe(31);
       expect(m!.packsApplied).toBe(2);
@@ -173,6 +178,76 @@ describe('billingUsage — pack math', () => {
     } finally {
       await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [packTenant]);
       await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [packTenant]);
+      if (prev === undefined) delete process.env.PLAN_CAP_SOLO;
+      else process.env.PLAN_CAP_SOLO = prev;
     }
+  });
+});
+
+describe('billingUsage — soft cap evaluation', () => {
+  it('HAPPY: evaluateUsageCap blocks when answered >= Solo limit', async (ctx) => {
+    // WHO: Solo tenant at monthly cap calling again.
+    // WHAT: cap.blocked true; status blocked.
+    // WHEN: answeredCallsThisMonth === includedCalls (env-capped to 3 for speed).
+    // WHERE: evaluateUsageCap().
+    // WHY: soft-cap gate on voice-session-start must refuse the next call.
+    skipIfDbDown(ctx, () => dbAvailable);
+    const prev = process.env.PLAN_CAP_SOLO;
+    process.env.PLAN_CAP_SOLO = '3';
+    const capTenant = await createTenant(client, 'Billing Usage Cap Tenant', 'salon');
+    try {
+      await client.query(`UPDATE tenants SET subscription_plan = 'solo' WHERE tenant_id = $1`, [
+        capTenant,
+      ]);
+      await client.query(
+        `INSERT INTO voice_sessions (tenant_id, call_id, status, started_at, duration_seconds, transcript)
+         SELECT $1, 'cap-test-' || g, 'completed', now(), 60,
+                'Assistant: hello' || E'\n' || 'Caller: booking please'
+           FROM generate_series(1, 3) g`,
+        [capTenant]
+      );
+      // Same client as the inserts — avoids cross-connection deadlocks with
+      // version-history triggers that lock the tenant row.
+      const cap = await evaluateUsageCap(client, capTenant);
+      expect(cap.limit).toBe(3);
+      expect(cap.used).toBe(3);
+      expect(cap.status).toBe('blocked');
+      expect(cap.blocked).toBe(true);
+      expect(cap.percent).toBe(100);
+    } finally {
+      await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [capTenant]);
+      await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [capTenant]);
+      if (prev === undefined) delete process.env.PLAN_CAP_SOLO;
+      else process.env.PLAN_CAP_SOLO = prev;
+    }
+  });
+
+  it('HAPPY: professional plan never blocks (unlimited)', async (ctx) => {
+    skipIfDbDown(ctx, () => dbAvailable);
+    const proTenant = await createTenant(client, 'Billing Usage Pro Tenant', 'salon');
+    try {
+      await client.query(
+        `UPDATE tenants SET subscription_plan = 'professional' WHERE tenant_id = $1`,
+        [proTenant]
+      );
+      await insertSession(proTenant, {});
+      const cap = await evaluateUsageCap(client, proTenant);
+      expect(cap.limit).toBeNull();
+      expect(cap.status).toBe('unlimited');
+      expect(cap.blocked).toBe(false);
+    } finally {
+      await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [proTenant]);
+      await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [proTenant]);
+    }
+  });
+
+  it('HAPPY: computeUsageStatements includes cap for the dashboard meter', async (ctx) => {
+    skipIfDbDown(ctx, () => dbAvailable);
+    const res = await computeUsageStatements(client, tenantId, 1);
+    expect(res.cap).toBeDefined();
+    expect(res.cap.plan).toBe('solo');
+    expect(res.cap.limit).toBe(PLAN_QUOTAS.solo.includedCalls);
+    expect(typeof res.cap.used).toBe('number');
+    expect(res.cap.warnRatio).toBeGreaterThan(0);
   });
 });

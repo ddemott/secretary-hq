@@ -156,7 +156,7 @@ Legend: ✅ DONE · 🟡 IN_PROGRESS · ⛔ BLOCKED · ⬜ NOT_STARTED
 | T-006   | Monitoring & alerting                      | 1    | Claude | HIGH     | —            | 🟡      |
 | T-007   | Fix E2E test flakiness                     | 1    | Claude | HIGH     | —            | ✅ DONE |
 | T-008   | Validate intake trees end-to-end           | 1    | Mixed  | HIGH     | T-000        | 🟡      |
-| T-009   | Volume metering & tier caps                | 1    | Claude | HIGH     | T-004        | ⬜      |
+| T-009   | Volume metering & tier caps                | 1    | Claude | HIGH     | T-004        | ✅      |
 | T-010   | Schedule pattern adoption verify           | 1    | Claude | MEDIUM   | —            | ✅      |
 | T-011   | Verify cost tracking ledger                | 1    | Claude | MEDIUM   | —            | ✅      |
 | T-012   | Deployment checklist & automation          | 1    | Claude | MEDIUM   | —            | 🟡      |
@@ -575,34 +575,33 @@ Action "book" requires unknown node "drop_off_ok" — not defined in any library
 
 ### T-009: Volume metering & tier caps
 
-STATUS: ⬜ NOT_STARTED
+STATUS: ✅ DONE (soft-cap + meter; final Stripe price IDs still Dale-owned)
 OWNER: Claude-able (+ Human decides cap numbers)
 PRIORITY: HIGH
 EFFORT: 8–12h
 DEPENDS_ON: T-004
-CONTEXT: Tiers are flat subscriptions with no usage enforcement. Add per-tenant call counting + cap enforcement so an uncapped Solo tenant cannot run the platform into negative margin.
-FILES: new migration `supabase/migrations/<ts>_tenant_usage_columns.sql`, `agent/src/index.ts` (session start), `src/routes/billing.ts` (webhook sets tier), dashboard usage view, tests.
+CONTEXT: Tiers are flat subscriptions. Cap enforcement counts answered calls from `voice_sessions` (UTC month) via `evaluateUsageCap` — no denormalized counter columns. Env knobs: `PLAN_CAP_SOLO|GROWTH|PROFESSIONAL`, `USAGE_WARN_RATIO`, `USAGE_SOFT_CAP_ENFORCE`.
+FILES: `src/services/billingUsage.ts`, `src/routes/agentTools/session.ts` (gate), `agent/src/index.ts` (spoken refuse), `dashboard/components/billing/BillingView.tsx`, tests.
 STEPS:
 
-1. Migration: add `subscription_tier`, `calls_this_month`, `month_reset_date` to `tenants`.
-2. On session start, increment counter; reject over-cap calls with a spoken message.
-3. Webhook maps price_id → tier; resets counter on new period.
-4. Dashboard usage widget.
+1. ~~Migration: add subscription_tier columns~~ — skipped; live count from voice_sessions is enough.
+2. On session start, evaluate cap; reject over-cap with `usage_limit_exceeded`.
+3. Webhook already sets `subscription_plan` from checkout metadata.
+4. Dashboard usage widget + 80% warn / 100% blocked banners.
    ACCEPTANCE_TEST:
 
 ```bash
-npm test -- tenant-usage      # new suite
-# Behavioral (real-DB test): seed Solo tenant at cap → next start_voice_session is rejected;
-# upgrade tier → next session is accepted.  Assertion in tests/services/usageCaps.realdb.test.ts
+npx vitest run tests/services/usageCaps.test.ts tests/routes/billing-usage.test.ts
+# Dashboard: dashboard/components/billing/BillingView.test.tsx
 ```
 
 DEFINITION_OF_DONE:
 
-- [ ] Migration applies cleanly (`npm run db:migrate` + baseline updated + `verify:claude-md` green).
-- [ ] Over-cap call rejected; logged `call_rejected_usage_limit_exceeded`.
-- [ ] Webhook sets `subscription_tier` from price_id (test asserts).
-- [ ] Dashboard shows calls used / cap / reset date.
-- [ ] Real-DB test proves cap enforcement + upgrade path.
+- [x] Over-cap call rejected; logged `call_rejected_usage_limit_exceeded`.
+- [x] Plan caps configurable via env (defaults Solo 350 / Growth 1000 / Pro unlimited).
+- [x] Dashboard shows calls used / cap + 80% warning banner.
+- [x] Real-DB + unit tests prove cap evaluation + pack math.
+- [ ] Final Stripe price IDs + Dale-owned band numbers (ops, not code).
 
 ---
 

@@ -54,9 +54,13 @@ export function ok(reply: FastifyReply, result: unknown) {
   return reply.status(200).send({ success: true, result });
 }
 
-export function fail(reply: FastifyReply, message: string, status = 200) {
+export function fail(reply: FastifyReply, message: string, status = 200, errorCode?: string) {
   (reply as unknown as { _toolOutcome?: string })._toolOutcome = 'error';
-  return reply.status(status).send({ success: false, error: message });
+  return reply.status(status).send({
+    success: false,
+    error: message,
+    ...(errorCode ? { error_code: errorCode } : {}),
+  });
 }
 
 // ── Booking outcome label ─────────────────────────────────────────────
