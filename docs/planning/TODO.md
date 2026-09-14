@@ -379,7 +379,7 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
   2. **`vite:dynamic-import-vars`** — `tests/regression/type-safety.test.ts` now imports `` `../../src/routes/${mod}.ts` ``. The plugin needs a static extension in the pattern.
   3. **`pg` overlapping-query deprecation — this one was PRODUCTION code, not test helpers, and it is a real pg@9 break.** Three sites ran `await Promise.all([client.query(…), client.query(…)])` against ONE pooled client: `/analytics/stats`, `/analytics/calls`, and `getCohortAnalytics`. node-postgres serialises on a single client regardless, so `Promise.all` bought **no concurrency at all** — it only started each query before the previous finished, which is exactly what pg@9 removes. `cohorts.ts`'s own header claimed the six queries ran "concurrently… running them in sequence would multiply one round trip by six"; that was never true and is corrected in place. All three now use `queryInSeries(...)` (`src/database/index.ts`), which takes THUNKS so nothing starts out of turn, and uses rest parameters so TypeScript still infers a tuple and each destructured result keeps its own row type. Guarded by `tests/regression/singleClientQueryOverlap.test.ts` — a source scan (comments stripped, thunks exempt) plus an ordering assertion on the helper. Red-green proven: a probe file with the old pattern fails it by name, removing the probe passes.
 - [ ] **(Dale/code)** _(Optional)_ Repoint Railway `healthcheckPath` → `/ready` to gate deploy **promotion** on DB reachability (behavior change — could block promotion during a DB blip; your call).
-- [ ] **(code)** **Website-scan re-scan scheduler** — periodic re-scan of stale KB. Deferred: needs a `last_scanned` column/migration + is a cost/product call.
+- [x] **(code)** **Website-scan re-scan scheduler** — **DONE 2026-09-14.** Migration `20260914000000_tenant_website_scan_tracking` adds `tenants.website_scan_url` + `tenants.website_last_scanned_at` (NULL = never scanned / opt-out). Shared `importWebsiteKnowledge` stamps both on every successful `POST /knowledge/import-website`. Worker `websiteRescanScheduler` (prod ON unless `ENABLE_WEBSITE_RESCAN_SCHEDULER=false`) daily-ticks oldest-stale non-demo tenants, default **30d** stale / **5** per tick (`WEBSITE_RESCAN_STALE_DAYS` / `WEBSITE_RESCAN_BATCH_SIZE` / `WEBSITE_RESCAN_INTERVAL_MS`). Still stages suggestions only — never auto-publishes. No boot stampede (first tick waits one interval). Skip whole tick if no `OPENAI_API_KEY`.
 
 ### Structural refactors (folded in from root `07_11_2026_IMPROVEMENTS.md`, 2026-07-28 — that file is deleted; it duplicated this backlog and sat in the root, which by CLAUDE.md holds only CLAUDE.md / README.md / workflow.config.json / DEMO_SECTION.md)
 
@@ -403,7 +403,7 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
       `AIInsightsView.test.tsx` — that hardcoded the old top-level paths and had to move with it).
       Verified: `tsc --noEmit` clean, dashboard `next build` succeeds, full dashboard suite green
       (1070 tests, 99 files).
-- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema.
+- [ ] **(code)** **Migration chain squash** — **203** files in `supabase/migrations/` (2026-09-14). Do when convenient; `baseline.sql` already carries the collapsed schema.
 
 ---
 
