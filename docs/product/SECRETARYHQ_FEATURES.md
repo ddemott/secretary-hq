@@ -19,7 +19,7 @@
 - ✅ Recognizes returning callers + recalls their history and preferences
 - ✅ Saves customer preferences mid-call ("prefers Maria", "last service: oil change")
 - ✅ Phone verification (OTP via SMS) when caller-ID is blocked, before booking
-- 🔨 Live human transfer is **not** on the current question-tree path; production calls take a message for escalation today. SIP REFER plumbing exists in code for future handoff work.
+- 🔨 Live human transfer is **wired** on the question-tree path when a forward number is set (`transfer_call` always-on passthrough, #462). Without a forward number, production calls take a message for escalation. Live PSTN proof + residual hardening still open (see TODO live-validation / RUNBOOK §7c).
 - ✅ Per-tenant persona — custom voice, greeting, style flags, and system prompt (set on the AI Persona page; `tts_speed` is currently inert under Aura)
 - ✅ Graceful error recovery — never speaks raw errors; recovers in-character
 - ✅ Customer-led booking — asks the caller's preferred time, widens the window if none fit, never imposes a slot
