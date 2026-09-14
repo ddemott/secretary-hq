@@ -231,48 +231,134 @@ describe('BillingView — usage statements', () => {
       subscription_plan: 'solo',
     });
     mockApi.billing.usage.mockResolvedValue({
+    plan: 'solo',
+    quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+    billableMinSeconds: 15,
+    monthBoundaries: 'utc',
+    cap: {
       plan: 'solo',
-      quota: { includedCalls: 150, packCalls: 30, packPriceUsd: 25 },
+      used: 162,
+      limit: 350,
+      percent: 46,
+      status: 'ok',
+      softCapEnforced: true,
+      warnRatio: 0.8,
+      blocked: false,
+    },
+    statements: [
+      {
+        month: '2026-07',
+        totalCalls: 170,
+        answeredCalls: 162,
+        freeCalls: 8,
+        includedCalls: 350,
+        overageCalls: 0,
+        packsApplied: 0,
+        packChargeUsd: 0,
+        inProgress: true,
+      },
+      {
+        month: '2026-06',
+        totalCalls: 90,
+        answeredCalls: 84,
+        freeCalls: 6,
+        includedCalls: 350,
+        overageCalls: 0,
+        packsApplied: 0,
+        packChargeUsd: 0,
+        inProgress: false,
+      },
+    ],
+  });
+
+    render(<BillingView />);
+
+    expect(await screen.findByText('Usage & Statements')).toBeInTheDocument();
+    expect(screen.getByText(/162 of 350 answered calls/i)).toBeInTheDocument();
+    expect(screen.getByText(/8 short\/spam \(free\)/i)).toBeInTheDocument();
+    expect(screen.getByText('2026-06')).toBeInTheDocument();
+    expect(screen.getAllByText('included').length).toBeGreaterThan(0);
+    expect(screen.getByText(/15\+ seconds/i)).toBeInTheDocument();
+    expect(mockApi.billing.usage).toHaveBeenCalledWith('tenant-test', 6);
+  });
+
+  test('HAPPY: 80% warn banner appears when cap.status is warn', async () => {
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'solo',
+    });
+    mockApi.billing.usage.mockResolvedValue({
+      plan: 'solo',
+      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
       billableMinSeconds: 15,
       monthBoundaries: 'utc',
+      cap: {
+        plan: 'solo',
+        used: 280,
+        limit: 350,
+        percent: 80,
+        status: 'warn',
+        softCapEnforced: true,
+        warnRatio: 0.8,
+        blocked: false,
+      },
       statements: [
         {
           month: '2026-07',
-          totalCalls: 170,
-          answeredCalls: 162,
-          freeCalls: 8,
-          includedCalls: 150,
-          overageCalls: 12,
-          packsApplied: 1,
-          packChargeUsd: 25,
-          inProgress: true,
-        },
-        {
-          month: '2026-06',
-          totalCalls: 90,
-          answeredCalls: 84,
-          freeCalls: 6,
-          includedCalls: 150,
+          totalCalls: 290,
+          answeredCalls: 280,
+          freeCalls: 10,
+          includedCalls: 350,
           overageCalls: 0,
           packsApplied: 0,
           packChargeUsd: 0,
-          inProgress: false,
+          inProgress: true,
         },
       ],
     });
 
     render(<BillingView />);
+    expect(await screen.findByRole('status')).toHaveTextContent(/80% of this month/i);
+  });
 
-    expect(await screen.findByText('Usage & Statements')).toBeInTheDocument();
-    expect(screen.getByText(/162 of 150 answered calls/i)).toBeInTheDocument();
-    expect(screen.getByText(/8 short\/spam \(free\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/12 calls over your plan this month/i)).toBeInTheDocument();
-    expect(screen.getByText(/your line keeps answering either way/i)).toBeInTheDocument();
-    expect(screen.getByText('2026-06')).toBeInTheDocument();
-    expect(screen.getByText('included')).toBeInTheDocument();
-    expect(screen.getByText(/\+\$25 packs/i)).toBeInTheDocument();
-    expect(screen.getByText(/15\+ seconds/i)).toBeInTheDocument();
-    expect(mockApi.billing.usage).toHaveBeenCalledWith('tenant-test', 6);
+  test('HAPPY: blocked banner when cap.status is blocked under soft-cap', async () => {
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'solo',
+    });
+    mockApi.billing.usage.mockResolvedValue({
+      plan: 'solo',
+      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+      billableMinSeconds: 15,
+      monthBoundaries: 'utc',
+      cap: {
+        plan: 'solo',
+        used: 350,
+        limit: 350,
+        percent: 100,
+        status: 'blocked',
+        softCapEnforced: true,
+        warnRatio: 0.8,
+        blocked: true,
+      },
+      statements: [
+        {
+          month: '2026-07',
+          totalCalls: 360,
+          answeredCalls: 350,
+          freeCalls: 10,
+          includedCalls: 350,
+          overageCalls: 0,
+          packsApplied: 0,
+          packChargeUsd: 0,
+          inProgress: true,
+        },
+      ],
+    });
+
+    render(<BillingView />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/monthly call cap reached/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/soft-blocked/i);
   });
 
   test('SAD: usage endpoint failure shows an honest error, never fake zero usage', async () => {

@@ -28,14 +28,14 @@ const PLANS: {
     key: 'solo',
     name: 'Solo',
     price: 129,
-    calls: '150 calls/month',
+    calls: '350 calls/month',
     features: ['AI receptionist 24/7', 'Appointment booking', 'SMS reminders', 'Knowledge base'],
   },
   {
     key: 'growth',
     name: 'Growth',
     price: 279,
-    calls: '500 calls/month',
+    calls: '1,000 calls/month',
     features: [
       'Everything in Solo',
       'Call transfer to staff',
@@ -47,7 +47,7 @@ const PLANS: {
     key: 'professional',
     name: 'Professional',
     price: 449,
-    calls: '2,000 calls/month',
+    calls: 'Unlimited calls',
     features: [
       'Everything in Growth',
       'Custom AI persona',
@@ -268,6 +268,41 @@ export default function BillingView() {
 
         {usage && usage.statements.length > 0 ? (
           <div className="space-y-4 mt-3">
+            {usage.cap?.status === 'warn' && (
+              <div
+                role="status"
+                className="rounded-md px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                  color: 'var(--warning)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                }}
+              >
+                You&apos;ve used {usage.cap.percent ?? Math.round((usage.cap.warnRatio || 0.8) * 100)}
+                % of this month&apos;s call allowance
+                {usage.cap.limit != null
+                  ? ` (${usage.cap.used} of ${usage.cap.limit})`
+                  : ''}. New calls keep answering until you hit 100%
+                {usage.cap.softCapEnforced ? ', then the line soft-blocks until next month or an upgrade.' : '.'}
+              </div>
+            )}
+            {usage.cap?.status === 'blocked' && (
+              <div
+                role="alert"
+                className="rounded-md px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  color: 'var(--danger)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                }}
+              >
+                Monthly call cap reached
+                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}.
+                {usage.cap.softCapEnforced
+                  ? ' New inbound calls are soft-blocked until the next billing month — upgrade for more capacity.'
+                  : ' Overage packs will apply; your line keeps answering.'}
+              </div>
+            )}
             {(() => {
               const current = usage.statements.find((statement) => statement.inProgress);
               if (!current) return null;
@@ -303,19 +338,26 @@ export default function BillingView() {
                         className="h-full rounded-full"
                         style={{
                           width: `${percent}%`,
-                          backgroundColor: percent >= 100 ? 'var(--warning)' : 'var(--accent)',
+                          backgroundColor:
+                            percent >= 100
+                              ? 'var(--danger)'
+                              : percent >= Math.round((usage.cap?.warnRatio ?? 0.8) * 100)
+                                ? 'var(--warning)'
+                                : 'var(--accent)',
                         }}
                       />
                     </div>
                   )}
 
-                  {current.overageCalls !== null && current.overageCalls > 0 && (
-                    <p className="text-xs mt-2" style={{ color: 'var(--warning)' }}>
-                      {current.overageCalls} calls over your plan this month —{' '}
-                      {current.packsApplied} call pack{current.packsApplied === 1 ? '' : 's'} (+$
-                      {current.packChargeUsd}) will apply. Your line keeps answering either way.
-                    </p>
-                  )}
+                  {current.overageCalls !== null &&
+                    current.overageCalls > 0 &&
+                    !usage.cap?.softCapEnforced && (
+                      <p className="text-xs mt-2" style={{ color: 'var(--warning)' }}>
+                        {current.overageCalls} calls over your plan this month —{' '}
+                        {current.packsApplied} call pack{current.packsApplied === 1 ? '' : 's'} (+$
+                        {current.packChargeUsd}) will apply. Your line keeps answering either way.
+                      </p>
+                    )}
                 </div>
               );
             })()}
