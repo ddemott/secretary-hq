@@ -4,6 +4,342 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — doc-hygiene: cold historical narrative trimmed from TODO.md
+
+Trimmed from `docs/planning/TODO.md` 2026-09-14 (doc-hygiene; each item below was
+already `[x]` or a finished series pointer, nothing left open in these blocks). Open
+items and unique procedures stayed in TODO. The 2026-09-11 RESOLVED entry's "Found
+and logged, not fixed" list is superseded by the fixes archived here.
+
+### Next items — completed fixes (2026-09-09 … 2026-09-11)
+
+#### Source heading (from TODO)
+
+- [x] ~~**PROD WAS SIX MIGRATIONS BEHIND, AND ONE DEPLOYED CODE PATH WAS ALREADY BROKEN BY IT.**~~ — **FOUND AND FIXED 2026-09-09.**
+      `schema_migrations` on prod ended at `20260820000000` while `main` carried seven more. The
+      gap was not inert: `availabilitySearch.ts` has joined `blackout_dates` since `d8f4e72`
+      (#395, 2026-09-04), that commit is an ancestor of what prod was running, and **the table did
+      not exist there.** So `findNextAvailableSlots` — the "when is your next opening?" path —
+      returned `{"success":false,"error":"Failed to compute available slots"}` on production for
+      five days. Probed directly: the same route WITH a `date` worked (different query), which is
+      exactly why nobody noticed; the failure lived behind a generic error string on the one path
+      that has no date to hand.
+      Applied in order: `20260821000000` (drop n8n webhook), `20260821010000` (drop inert
+      columns), `20260821020000` (narrow dead CRM provider CHECKs), `20260901000000` (vertical
+      intake preset ids), `20260901100000` (starter services, `text[]`→`jsonb`), `20260903000000`
+      (blackout_dates + `BUSINESS_CLOSED`), `20260909120000` (shift boundary slack). Preconditions
+      for the three destructive ones were re-verified against prod first and still held: 0 tenants
+      with an `n8n_webhook_url`, `pg_net` not installed, `tenant_integration_settings` and
+      `entity_sync_map` both empty. Verified after: `blackout_dates` present,
+      `shift_covers_booking` present and called 3× by the booking RPC, `n8n_webhook_url` gone,
+      `example_services` now `jsonb`, and the next-available path answering
+      _"The soonest I can get you in is tomorrow at 1:30 PM…"_.
+      **The lesson worth keeping: "deploy verified" was checked against `/health` and a booking,
+      and both were green while a third path was dead.** A merge that ships code and a migration
+      together can half-land — the code always deploys, the migration only if someone runs it —
+      and nothing in CI or the health board notices the half. Before calling a deploy done, compare
+      `max(schema_migrations.version)` on prod against the newest file in `supabase/migrations/`.
+- [x] ~~**The morning half of a night shift can never be booked.**~~ — **FIXED 2026-09-11**,
+      migration `20260911010000_night_shift_morning_half.sql`. Coverage was matched on the SLOT's
+      own local date, so a night shift's row (dated the evening it started) was never consulted
+      for anything after midnight — 22:00→06:00 booked fine at 23:00 but refused a 02:00 slot the
+      next morning with `EMPLOYEE_NOT_SCHEDULED`. New `shift_row_covers_booking()` wraps
+      `shift_covers_booking()` and adds the missing case: a row dated YESTERDAY covers TODAY's
+      slot only when it is itself a wrapping night shift (end < start) reaching that far, and
+      today's slot doesn't itself wrap into a third day. Six call sites in
+      `book_with_scheduling_atomic` widened from `es.shift_date = v_shift_date` to
+      `es.shift_date IN (v_shift_date, v_shift_date - 1)` + the new function, plus
+      `availabilitySearch.ts`'s suggest-side JOIN in the same commit (suggest and enforce must
+      read the calendar the same way — the 2026-07-17 midnight-wrap lesson). `book_appointment_atomic`
+      (dashboard path) is untouched — it validates one chosen resource/employee against one day's
+      row by design and has never modeled night shifts; that gap is pre-existing and separate.
+      **Residual, deliberately out of scope:** the `get_available_slots` DATE path
+      (`src/routes/agentTools/scheduling.ts` `effective_shifts` CTE) has the identical
+      same-date-only join and was not touched — it renders a single day's shifts/appointments in
+      JS and was not part of this bug's repro. No live tenant runs night shifts, so this is not an
+      active gap; fix it in the same pass as the day it matters. New tests:
+      `tests/services/night-shift-availability.test.ts` (HAPPY: 02:00 books against a 22:00→06:00
+      row; SAD: a day shift never gains cross-day coverage) and
+      `tests/services/availability-search.test.ts` (suggest-side parity, post-midnight-only search
+      window).
+- [x] ~~**A caller who declines the meeting can leave the call unable to END.**~~ — **FIXED
+      2026-09-11.** Found in `sim-questiontree` JOB-DIRECT (never graded — rate limits — so no
+      grader saw it), on `main`. The opener "talk to someone about a job opportunity for Dale"
+      selected `identity + job + booking`; the caller then answered the meeting offer "just
+      pass the details along" (`details_only`). Booking stayed selected with nothing left to do,
+      so the goodbye gate refused `finish_call` ("Not yet — the checklist is not complete"),
+      while the agent itself told the caller "there's no appointment to book". One run ended in
+      a goodbye loop ("You're welcome! … Take care!" / "Thanks, Mike. If you need anything
+      else…") with no `finish_call` at all. `checklistTools.ts` turned `wants_meeting` into
+      `select(['booking'])`; nothing did the inverse. Added the missing `details_only` handler:
+      deselects `booking` (the caller's own "no meeting" is the clearest signal there is),
+      guarded on the booking action not already being `done` — a meeting booked earlier in the
+      call by whatever route is real progress and is never un-booked by a later, unrelated
+      answer. Same structural-guarantee shape as the `meeting_offer → booking` escalation, in
+      reverse. New tests in `checklistTools.test.ts`: the goodbye loop reproduced then fixed end
+      to end (select booking directly, decline the offer, finish the intake, `finish_call`
+      actually closes), plus a guard test pinning that an already-booked meeting survives a
+      later `details_only`.
+- [x] ~~**An urgent message can be saved as ordinary while the caller is told "urgent".**~~ —
+      **FIXED 2026-09-11.** Found in `sim-questiontree` URGENT CALLER (graded FAIL, correctly),
+      on `main`: the caller said "urgently" in her opener and "It's really urgent" again; the
+      model tried `record_answer("is_urgent")`, was refused (not a checklist node), then called
+      `take_message` WITHOUT `is_urgent: true` — and told her "I've saved your urgent message for
+      Dale". The question-tree path had NO urgency handling at all: no node in any tree, no
+      `ACTION_ARG_BACKFILL` entry, no host detection. Migration 20260801020000 says the flag "is
+      set from the caller's own words", but only the model was ever asked to do it — a prompt
+      request, not a guarantee. New `messageSoundsUrgent()` matches "urgent(ly)", "emergency",
+      "as soon as possible"/"ASAP", "right away" against the FINAL message text (post-backfill,
+      so it catches `message_body` even when the model never retyped it) — checked per
+      OCCURRENCE with a negation guard, so "not urgent" / "isn't an emergency" never false-positive
+      (Copilot review) — and `buildActionArgs` applies it to every `take_message` call.
+      RAISE-ONLY means MONOTONIC, not "never touches the model's value": when the caller's own
+      words say urgent, `is_urgent` is forced to `true` even over an explicit `false` from the
+      model (the caller's words outrank the model's guess); when nothing in the message says
+      urgent, whatever the model passed is left untouched — the flag can only ever move toward
+      `true`, never away from it, matching the DB column's own raise-only contract. New tests in
+      `checklistTools.test.ts`: the matcher itself (incl. negation), the raise when the message
+      text says urgent (including over an explicit `is_urgent: false`), and the no-op when
+      nothing in the message says urgent.
+- [x] ~~**A wrong node id makes the agent RE-ASK the caller instead of retrying.**~~ — **FIXED
+      2026-09-11.** Found reading `sim-questiontree` transcripts, on `main`. ONE-BREATH
+      ("everything volunteered in the opener, nothing re-asked") was graded PASS while the
+      transcript showed the opposite: the caller gave company, full-time, senior QA, $120–140k,
+      hybrid and the address in her first sentence; the model recorded them under invented ids
+      (`role_type`, `role_title`, `role_salary_range`, `role_location`), `tracker.ts`'s `record()`
+      refused each with `"<id>" is not on this call's checklist. Record only the ids the checklist
+      shows.` — which named no valid id — and the model then asked her for all of it again ("Like
+      I said…", twice). Same class as the 2026-08-19 `hiring_for_own_company` prefix fix: the
+      refusal must hand the model the ids it CAN record, so a wrong id costs a silent retry, not
+      the caller's patience. Fix: the `UnknownNodeError` now appends `Open ids you may record
+      now: <the frontier's current open ASK node ids>` — the same "list what's actually valid"
+      shape as `UnknownTreeError` on `set_purpose`. Also fixed the grader: it only checked one
+      hard-coded re-ask phrasing (the caller's name), which is exactly why this scenario passed
+      despite the transcript showing a real re-ask. Added a generic tripwire instead — the
+      persona's own behaviour instruction ("repeat it with mild impatience — 'like I said, …'")
+      fires ONLY when the agent actually re-asks something already said, so `sim-questiontree.ts`
+      now fails ONE-BREATH if the caller ever says "like I said" for ANY reason, not just the name.
+      New unit test in `tracker.test.ts` pins the error message; the grader fix has no separate
+      unit test (it's the harness itself).
+- [x] ~~**The dashboard booking form and the phone disagree on an UNLINKED service.**~~ — **FIXED
+      2026-09-11**, migration `20260911000000_book_appointment_atomic_strict_links.sql`.
+      `book_appointment_atomic` (dashboard path) now applies the identical STRICT rule
+      `book_with_scheduling_atomic` got in `20260909210000`: when `p_service_id` is passed, only
+      ACTIVE `service_employee` / `service_resource` links decide who and where —
+      `required_skills` / `required_resources` tag arrays are never read — and a service with no
+      active linked resource (or, when an employee is being assigned, no active linked employee)
+      is refused before any other check, same wording the phone path already speaks ("No room or
+      line is set up for this kind of appointment" / "No one is assigned to take this kind of
+      appointment"). Retired the fall-open "configure-as-you-go" contract the mapping model
+      shipped with. Test coverage rewritten: `tests/routes/book-appointment-mapping.test.ts`
+      (UNLINKED-SERVICE + LEGACY-TAGS-IGNORED cases replacing the old OPEN-SERVICE/LEGACY-FALLBACK
+      pair), `tests/regression/high-bugs.test.ts` BUG-009 (both directions — reject-on-unlinked,
+      allow-on-linked-regardless-of-tags), `tests/regression/low-bugs.test.ts` BUG-040 (link the
+      fixture resource so the auto-calculate-end-time cases don't trip the new gate), and
+      `dashboard/e2e/wizard-solo-path.spec.ts` (rewritten to the STRICT refusal message). Baseline
+      regenerated (`npm run db:baseline`). Tag columns (`employees.skills`,
+      `services.required_skills`) NOT dropped — `book_with_scheduling_atomic` still reads them for
+      callers that omit `p_service_id`; retiring them is still open, not part of this fix.
+      **Audited 2026-09-13 — KEEP, not dead code.** Probed prod directly: 53 employees carry
+      non-empty `skills`, 106 services carry non-empty `required_skills`, 104 carry
+      `required_resources` — but 0 of the 22 appointments booked in the last 90 days had a NULL
+      `service_id`, meaning the tag-based fallback branch in `book_with_scheduling_atomic`
+      (`p_service_id IS NULL`) has fired on exactly zero real bookings in that window; every live
+      booking now goes through the STRICT skill-map path. That does NOT make the columns dead,
+      though: `SkillManagementView.tsx` is a live dashboard tab an owner uses to name and assign
+      skills, `availabilitySearch.ts` still reads `emp.skills` for its suggestion tie-break sort
+      and (when no service is given) its skill filter, and `QuickBookPanel.tsx` sorts on skill
+      count. Dropping the columns would break real, currently-reachable dashboard UI for a
+      booking-time fallback path that just happens to see no traffic because every current tenant
+      always names a service. Closing this as: retire the DEAD branch someday if the skill-map
+      model fully replaces free-text booking, but the columns themselves stay — they back a
+      product feature (per-employee/per-service tagging), not a stale migration artifact.
+
+
+### Flaky gates that blocked prod deploys (2026-08-20 … 2026-09-03)
+
+#### 🔴 Flaky gates that block PROD DEPLOYS (2026-08-20)
+
+A red `main` CI run makes Railway mark that commit's deployments **SKIPPED, and
+SKIPPED is terminal** — turning CI green afterwards does not retry. So a flaky
+test is not a nuisance here, it is a mechanism that silently stops merged code
+from reaching production while every service reports healthy. Both of these
+turned `main` red on `2aa61d4`.
+
+> **THE PATTERN MATTERS MORE THAN ANY ONE OF THESE.** Three _different_ tests
+> turned CI red on 2026-08-20 — `purge-soft-deleted` (timeout mismatch),
+> `customer-preferences-config` (E2E, cause unproven), and
+> `SetupWizard > shows success state with phone number after activation`
+> (dashboard, passes locally, 1,115 ms under CI load). Only the first had a
+> diagnosed cause. In a repo where a red `main` makes Railway skip the deploy
+> **terminally**, CI flakiness is not a test-hygiene issue — it is an
+> availability issue for shipping. If a fourth appears, stop adding features and
+> treat runner contention as the bug: the common factor in all three is a
+> wall-clock expectation meeting a loaded runner.
+
+- [x] **`scripts/purge-soft-deleted.test.ts` — two timeouts that disagreed.** The
+      harness gives its subprocess a 60s budget (`spawnSync timeout: 60_000`)
+      while vitest's default test timeout is 5s, and the shorter one was arrived
+      at by accident. Every case spawns `npx tsx`, paying npx resolution plus a
+      TypeScript compile before the script runs — seconds, not milliseconds. On a
+      loaded runner the happy-path case took **5,862 ms** and vitest killed it at
+      5,000. All five cases now carry an explicit `SUBPROCESS_TEST_TIMEOUT_MS`
+      matched to the subprocess budget, so a genuine hang is reported by
+      `spawnSync` with its exit status and output rather than by vitest with a
+      bare "timed out". Same class as the `PERF_ASSERT` fix: **the test was
+      asserting the machine's speed, not the code's behaviour.**
+- [x] **THE FOURTH ONE ARRIVED (2026-09-03), and it is the same shape.**
+      `tests/services/deadlock-prevention.test.ts > clearDB truncates all tables
+in a single statement` timed out on PR #394's Backend job at **5,004 ms
+      against vitest's default 5,000 ms budget** — a four-millisecond miss on a
+      test that does a real `TRUNCATE ... CASCADE` over every seeded table. It
+      passes locally in ~3 s and had never failed before. The prediction in the
+      box above was correct: the common factor is a wall-clock expectation
+      meeting a loaded runner, and nothing about the code changed.
+      Fixed the way the other two were — an explicit
+      `TRUNCATE_TEST_TIMEOUT_MS = 30_000` matched to the DATABASE work, with the
+      assertions untouched (one statement, no deadlock, table empty). A genuine
+      deadlock still hangs and still fails; the timeout now means "the DB never
+      answered" rather than "the runner was busy".
+      **Standing verdict, now with four data points: any test that asserts real
+      I/O under vitest's 5 s default is a deploy outage waiting for a busy
+      runner.** The next one gets a budget at the time it is written, not after
+      it reddens `main`.
+- [x] ~~**Dashboard flake, not yet diagnosed** — `SetupWizard.test.tsx > shows success state with phone number after activation`~~ — **FIXED 2026-09-03, PR #391 (`2ab4363`, T-007). This entry had gone stale — it sat unmarked for two weeks after its own fix shipped.** Root cause: Testing Library's `waitFor` defaults to a 1000ms ceiling; CI run `33249344101` (2026-08-29) failed at 1110ms because the runner was slow, not because the component was wrong. Fixed once, centrally, with `configure({ asyncUtilTimeout })` in `dashboard/vitest.setup.ts` (a ceiling that threatened every async dashboard test, not just this one). Acceptance was 20/20 local runs. **Re-verified here 2026-09-08**: `npx vitest run components/SetupWizard.test.tsx -t "shows success state with phone number after activation"` → 1 passed.
+- [x] ~~**`customer-preferences-config.spec.ts` — root cause NOT yet proven.**~~ — **FIXED 2026-09-03, same PR #391 (`2ab4363`, T-007) as the item above. Also stale.** Root cause was NOT timing: a wrong-tenant-row bug. `useActiveTenantId()` falls back to `useSuperAdminTenants`'s auto-selected `tenantsArray[0]` when a super-admin session has no `managedTenantId` yet, and the spec's save landed on tenant `d5e3c6a1…` (Thinking Hammer) while its reset/assert targeted `00000000…` (platform) — which was still NULL, read as "textarea comes back empty." The unqualified `UPDATE tenants SET … ` (no WHERE clause) in `afterAll` masked this by also clearing the real row. Fixed with a shared `dashboard/e2e/helpers/aiPersona.ts`: pins the managed tenant via `addInitScript` before navigation, asserts the config GET was for the pinned tenant, waits on the `update-config` POST response instead of the "Saved!" label, and scopes both specs' resets to `WHERE tenant_id = $1`. Acceptance was 201/201 Playwright runs at `--repeat-each 20`. **Re-verified here 2026-09-08**: `npx playwright test e2e/customer-preferences-config.spec.ts` → 2 passed.
+
+---
+
+
+### Live-call fix series (2026-07-30) — pointer archive
+
+#### 📞 Live-call fix series (2026-07-30) — see `docs/planning/CALL_FIX_PLAN.md`
+
+The 12 real calls from 2026-07-26/27 (`CALL_IMPROVEMENTS.md`, root) produced an
+8-batch PR plan: **G** (job-call capture completeness — role_description dropped
+end-to-end, outcome mislabel, false "message" promise, stall detector, offer-meeting
+on the live path) → **H** (per-call tool-call log + transcript fidelity) → **A**
+(caller context/appointments reach the model) + **B** (booking mechanics, timezone,
+cross-call duplicates, roster) → **C** (availability reason codes) → **D**
+(corrections propagate) → **E** (junk "Caller" rows, urgency) → **F** (silence
+handling, greeting metric, inbox unification). Full detail, cut lines, and the four
+recurring failure classes: `docs/planning/CALL_FIX_PLAN.md`.
+
+---
+
+
+### Live-call fix series (2026-08-13) — shipped root cause (open Dale follow-ups remain in TODO)
+
+#### 📞 Live-call fix series (2026-08-13) — see archived CALL1/CALL2 evidence (deleted from root after citing batches closed)
+
+Two real calls from the same caller (`+1 262-497-9039`, Camille), three minutes apart,
+on tenant Thinking Hammer: `SCL_3a8SkDKzxN4B` (19:46 CT, message) and
+`SCL_KLvqZ2JkaQFU` (19:49 CT, booked). Both were recruiting calls. Both wrote **zero**
+`job_inquiries` rows. Full transcripts, persisted tool traces, and per-finding evidence
+in `CALL1.md` / `CALL2.md` at repo root.
+
+**Root cause, one line:** `job` sat in `forbidden_trees` on all three presets while
+`ChecklistOverrides` could only SUBTRACT blocks — so **no configuration of any tenant
+could select the job tree.** On CALL1 the model read the caller correctly, declared
+`work_direction: caller_offers_owner_work`, and re-issued `set_purpose` to add `job`
+16 ms later; the host answered `No tree called "job"`. `capture_job_inquiry` never
+entered the toolset, the goodbye gate never saw the tree, and the call closed clean.
+
+**Shipped on `fix/job-tree-unreachable` and related (all green). Full details, transcripts, root causes (forbidden_trees, unreachable job tree, phantom bookings, stall detectors) live earlier in this archive.**
+
+
+### E2E observation sweep (2026-08-15)
+
+#### 🔬 E2E observation sweep (2026-08-15) — all 20 defects + 4 livelocks fixed. Sim suites 100%. Detailed postmortems live earlier in this file (booking guard, refusal diagnosis, phantom bookings, stall detectors, backfill, placeholder names, filler repetition, etc.). All [x] shipped, sim-questiontree 22/22, agent suite green.
+
+---
+
+
+### P0 Telnyx REFER config — nothing to configure
+
+- [x] **(Dale)** Enable **call transfer / REFER** on the Telnyx SIP Connection (`livekit-outbound`). ~~Until then `transfer_call` fails at runtime and the agent silently degrades to taking a message.~~ **RESOLVED 2026-07-07**: No toggle exists in Telnyx UI — FQDN connections support SIP REFER by default. Nothing to configure.
+
+
+### Code review 2026-07-13 four-reviewer sweep (already fully resolved)
+
+#### 4b. Code review 2026-07-13 — four-reviewer sweep (backend, security, reliability, dead code)
+
+**All items resolved — archived 2026-09-08 (doc-hygiene trim; content dated 2026-07-13,
+re-verified 2026-08-21) — every entry was `[x]`, nothing left open.** Covered: self-service SMS
+token type confusion, OTP gate coverage gaps, `find-customer-by-name` enumeration,
+reminder retry/metrics/SIGTERM-drain, schedule-extender far-future-shift poisoning,
+alternatives-search duration mismatch, `'Caller'` placeholder, `purge-soft-deleted`
+`--older-than` NaN, `/metrics` timing-safe compare, `GET /templates/full` column
+leak, `isTenantExempt` (no-op rewrite), and the dead-code sweep (orphaned reminder
+implementation, n8n webhook trigger, `shared/dateTime.ts`, `TelephonyProvider`
+Twilio residue, self-managed migration transactions, inert columns).
+
+
+### P2 — three backend suite warnings + pg@9 single-client overlap (also 2026-09-08 RESOLVED entry)
+
+- [x] ~~**(code)** **Three warnings the backend suite printed on every green run**~~ — **ALL THREE FIXED 2026-09-08.** Verified by removing the suppression and reading a full run: `configLoader` 0, `DeprecationWarning` 0, `dynamic-import-vars` 0, suite `3029 passed (254 files)`. (`ai_cost_model_unpriced` x4 stays — that is the SAD path doing its job on fixture models with no price entry.)
+  1. **Vite `configLoader: 'native'`** — `vitest.config.ts` → **`vitest.config.mts`**, which is what the warning asked for. `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` is gone from `npm test`; it was hiding the warning, not fixing it, and native config loading is scheduled to become Vite's default. The rename broke `tests/services/deadlock-prevention.test.ts`, which read the config off disk by name — the same off-disk coupling CLAUDE.md flags for `available-slots.test.ts`. It now DISCOVERS the config file, because the assertion is about `fileParallelism: false` and not about an extension; an absent config still fails loudly.
+  2. **`vite:dynamic-import-vars`** — `tests/regression/type-safety.test.ts` now imports `` `../../src/routes/${mod}.ts` ``. The plugin needs a static extension in the pattern.
+  3. **`pg` overlapping-query deprecation — this one was PRODUCTION code, not test helpers, and it is a real pg@9 break.** Three sites ran `await Promise.all([client.query(…), client.query(…)])` against ONE pooled client: `/analytics/stats`, `/analytics/calls`, and `getCohortAnalytics`. node-postgres serialises on a single client regardless, so `Promise.all` bought **no concurrency at all** — it only started each query before the previous finished, which is exactly what pg@9 removes. `cohorts.ts`'s own header claimed the six queries ran "concurrently… running them in sequence would multiply one round trip by six"; that was never true and is corrected in place. All three now use `queryInSeries(...)` (`src/database/index.ts`), which takes THUNKS so nothing starts out of turn, and uses rest parameters so TypeScript still infers a tuple and each destructured result keeps its own row type. Guarded by `tests/regression/singleClientQueryOverlap.test.ts` — a source scan (comments stripped, thunks exempt) plus an ordering assertion on the helper. Red-green proven: a probe file with the old pattern fails it by name, removing the probe passes.
+
+
+### Dashboard component subdirectory migration (DONE 2026-09-12)
+
+- [x] ~~**(code)** **Finish the dashboard component subdirectory migration**~~ — **DONE 2026-09-12.**
+      Zero loose `.tsx`/`.ts` files remain at `dashboard/components/` (was 35, 2026-09-05 count).
+      Moved: `AIConfigView`→`aiconfig/`, `BusinessSettingsView`/`BusinessTypeSection`/`SetupView`→`business/`,
+      `CustomerDetailPanel`→`crm/`, `DashboardHome`→`home/`, `DeletedRecordsPanel`→`records/`,
+      `EmployeeManagementView`→`employees/`, `ResourceManagerView`→`resources/`, `SchedulerView`→`scheduler/`,
+      `ServiceAssignmentView`→`services/`, `SettingsView`→`settings/`, `ShiftManagementView`→`shifts/`,
+      `SkillAssignmentsView`→`skill-map/` (consolidates with `SkillRelationshipMap`),
+      `SkillManagementView`/`SkillMatrixView`→`skills/` (joins `SkillMatrix`), `TeamAccessView`→`team/`,
+      `VoiceCallsView`→`voice/`; cross-cutting tests `critical-fixes.test.tsx` + `vocabulary-guard.test.ts`→`ui/`
+      per this entry's own note. `SetupWizard.tsx` (a one-line re-export shim for `SetupWizard/index.tsx`)
+      deleted outright — importers of `'./SetupWizard'` now resolve straight to the directory, unchanged
+      behavior. The orphaned `EmployeeServiceAssignmentView.test.tsx` (misnamed — it actually tested
+      `EmployeeManagementView`) renamed to `EmployeeManagementView.smoke.test.tsx` alongside its real subject.
+      Every relative import updated (including several PRE-EXISTING "subdirectory pin" guard tests in
+      unmoved sibling files — `CRMView.test.tsx`, `AuditLogView.test.tsx`, `BillingView.test.tsx`,
+      `AIInsightsView.test.tsx` — that hardcoded the old top-level paths and had to move with it).
+      Verified: `tsc --noEmit` clean, dashboard `next build` succeeds, full dashboard suite green
+      (1070 tests, 99 files).
+
+
+### Wizard Phase B + abandoned-test-number reaper
+
+- [x] ~~**Wizard Phase B**~~ — reversed from "held" and **shipped 2026-07-05/06** (PRs #204–#208): draft-commit `SetupWizard` + `GoLivePanel` + E2E coverage, merged to main, no prod migration needed. Full writeup + lessons in `docs/planning/RESOLVED.md`.
+- [x] ~~**Wizard Phase B follow-up: abandoned-test-number reaper**~~ — **DONE 2026-09-12** (query
+      only, as scoped — "queryable, not built"). `scripts/find-abandoned-test-numbers.ts`: a
+      `phone_status='active'` DID with no `forwarded_from_phone` and no `voice_sessions` in the
+      last N days (default 14, `--older-than`) is billing Telnyx every month with no live purpose.
+      Report-only by design — it never releases a number or touches Telnyx; deciding "abandoned
+      enough to release" stays a human call, mirroring `purge-soft-deleted.ts`'s dry-run-first
+      philosophy (except here there is no `--execute` at all, since deprovisioning is a
+      platform-owner ops action, not something to automate blind). The query is exported
+      (`findAbandonedTestNumbers`) and shared verbatim with its real-DB test
+      (`tests/regression/abandonedTestNumbers.realdb.test.ts`, 6 cases: flags the genuinely
+      abandoned tenant; never flags one with `forwarded_from_phone` set, one called inside the
+      window, one soft-deleted, or one never phone-activated; re-opens as abandoned once a past
+      call ages out of the window) plus a CLI-guard test
+      (`scripts/find-abandoned-test-numbers.test.ts`, same `--older-than` misparse class
+      `purge-soft-deleted.ts` was fixed for on PR #351 — a dropped guard here costs a misleading
+      report, not a destructive purge, but a misleading report about which real phone numbers to
+      release is still the wrong answer). Full backend suite green (3099 tests).
+
+
+### Dense-view decomposition — five shipped slices (remaining open work stays in TODO)
+
+- [ ] **Dense-view decomposition** — track, don't piecemeal: `SettingsView`, `TenantEditPanel`, `CRMView`, `AppointmentView`, `DashboardHome`, `CustomerDetailPanel`, scheduler orchestration, `ShiftManagementView`, `ServiceAssignmentView`/`SkillAssignmentsView`/`SkillMatrixView`. Split each overloaded view into focused sub-components (no file over ~300 lines); sequence with C1+C2 to avoid duplicated churn.
+  - _First slice DONE 2026-07-05 (PR #201):_ `VoiceCallsView` 1185→711, extracted `components/voice/` (`callFormatters`, `outcome`, `CallRows`, `MessagesInbox` — each <300 lines; also closed a swallowed-failure defect in the inbox).
+  - _Second slice DONE 2026-07-06 (PR #211):_ `KnowledgeBaseView` 1143→408 (`components/knowledge/`), `AnalyticsView` 970→265 (`components/analytics/`), `ShiftManagementView` 960→402 (`components/shifts/`), `DashboardHome` 838→318 (`components/home/`), `ServiceAssignmentView` 816→395 (`components/services/`). 874 dashboard tests green.
+  - _Third slice DONE 2026-07-06 (PR #212):_ `AppointmentDetailPanel` 605→248 + `CustomerDetailPanel` 606→124 + `CRMView` 719→288 + `useCustomerForm` hook; `AIConfigView` 673→240 + 5 aiconfig sub-components; `BusinessSettingsView` 612→195 + 4 settings sub-components; `TenantEditPanel` 531→255 + 2 admin sub-components; `AppointmentView` 768→300 + `AppointmentCalendar` + `useAppointmentCRUD`; `VoiceCallsView` 711→243 + `CallListPanel` + `CallDetailPanel`; `SchedulerView` 532→253 + `SchedulerToolbar` + `useSchedulerActions`. 874 dashboard tests green. (`CRMView` landed at 288 lines post-decompose — at the limit, no further split needed.)
+  - _Fourth slice DONE 2026-07-07 (PR #217):_ `AnalyticsMetricsGrid` 575→69 (+ `CorePerformanceMetrics` / `EngagementRetentionMetrics` / `ServiceCohortMetrics`); `RecordHistoryModal` 636→282 (+ `VersionTimeline` + `FieldRestorePanel` + `recordHistoryHelpers`); `DeletedRecordsPanel` 455→227 (+ `DeletedRecordRow` + `CopyFieldsModal`); `EmployeeManagementView` (+ `EmployeeCard` + `EmployeeEditModal`); `ResourceManagerView` (+ `ResourceCard` + `ResourceEditModal`); `TeamAccessView` 346→232 (+ `InviteTeamMemberModal`); `BusinessTypeSection` 371→269 (+ `TemplatePreviewModal`); `OutlookLayout` 692→465 (+ `layout/TenantSwitcherDropdown` + `ProfileMenuDropdown` + `ThemeSelectorDropdown` + `MobileTabBar`); `CustomerSidebar` 335→301 (+ `crm/CustomerListItem`); `api.ts` namespaced → `Api.{resource}.{action}()`; `ToggleSwitch` shared primitive. 874/874 dashboard + 2324/2324 backend tests green.
+  - _Fifth slice DONE 2026-07-07 (PR #218):_ `SkillMatrixView` 334→212 (+ `skills/SkillMatrix`). Also: 55 new dashboard tests for coverage hotspots (ThemeContext, VocabularyContext, TimeInput, logger, Toast, FeedbackButton) — 874→929 dashboard tests.
+  - _Coverage batch 2 DONE 2026-07-07 (PR #219):_ 81 new dashboard tests targeting 0%-coverage views — `coverage.ts`, `VersionBadge`, `SkillManagementView`, `BillingView`, `KnowledgeSuggestions`, `MessagesInbox`, `CRMIntegrationCard` — 929→1010 dashboard tests. **Remaining:** `NewSchedulerView` (1582 — do with C1+C2 scheduler consolidation); other over-300 files are unavoidable coordination code (wizard state machines, layout shell, GoLivePanel).
+
+
+---
+
 ## 2026-09-11 — "The owner" is said as Dale everywhere, and the booking RPC stops booking the past, nobody, or the wrong room
 
 **"The owner" in the PROMPT was a request; the voice path is now a guarantee.** Dale:
@@ -52,10 +388,10 @@ with a sentence that names the fix. Repro tests failed with the exact TypeError 
 the fix. The sim also stops hiding crashes: only provider errors count as "never reached
 the model"; a code throw is a FAIL with its stack.
 
-**Found and logged, not fixed** (all on `main`, see `TODO.md`): an urgent message saved
-as ordinary, a declined meeting that leaves the goodbye gate shut, a wrong node id that
-makes the agent re-ask, the morning half of a night shift unbookable, and the dashboard
-path still falling back to skill tags on an unlinked service.
+**Found on `main` the same day, fixed 2026-09-11** (archived under the 2026-09-14
+doc-hygiene entry below / above in newest-first order): urgent message raise-only,
+declined-meeting goodbye gate, wrong-node-id open-ids refusal, night-shift morning half,
+and dashboard `book_appointment_atomic` STRICT skill-map parity.
 
 ---
 
