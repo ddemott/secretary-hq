@@ -418,6 +418,28 @@ describe('stripHistoricalSections', () => {
   });
 });
 
+/**
+ * When this suite itself runs as a descendant of a real git hook invocation
+ * (e.g. `git push` → husky's pre-push → `npm test` → vitest → this file),
+ * git has already set `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE` etc. in
+ * the ambient environment so hooks know which repo invoked them. `execSync`
+ * inherits that env wholesale by default, so `git init`/`git commit` against
+ * the THROWAWAY tmpdir below were silently operating on the REAL enclosing
+ * repo instead — `cwd` alone does not protect against this, an explicit
+ * `GIT_DIR` wins. Same fix, same root cause, as `cleanGitEnv()` in
+ * `scripts/git-hooks/pre-push.test.ts` — that file's header documents the
+ * original discovery (a real repo's `.git/config` found corrupted with this
+ * test's own fake identity after a nested run); this file had the identical
+ * unguarded pattern and was never given the same fix.
+ */
+function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+}
+
 describe('resolveBranchRef', () => {
   // Real git, deliberately — this is the one exception to the file header's
   // "no shelling out" rule. The bug this guards (PR #453, 2026-09-13) is a
@@ -434,11 +456,12 @@ describe('resolveBranchRef', () => {
     //      bug being guarded against, not a property this test may lean on).
     const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
     const originalCwd = process.cwd();
+    const gitEnv = cleanGitEnv();
     try {
-      execSync('git init -q -b main .', { cwd: dir });
-      execSync('git config user.email test@example.com', { cwd: dir });
-      execSync('git config user.name test', { cwd: dir });
-      execSync('git commit -q --allow-empty -m init', { cwd: dir });
+      execSync('git init -q -b main .', { cwd: dir, env: gitEnv });
+      execSync('git config user.email test@example.com', { cwd: dir, env: gitEnv });
+      execSync('git config user.name test', { cwd: dir, env: gitEnv });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir, env: gitEnv });
 
       process.chdir(dir);
       expect(resolveBranchRef('main')).toBe('main');
@@ -458,13 +481,14 @@ describe('resolveBranchRef', () => {
     //      leaves behind, without needing a second real remote repo.
     const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
     const originalCwd = process.cwd();
+    const gitEnv = cleanGitEnv();
     try {
-      execSync('git init -q -b feature .', { cwd: dir });
-      execSync('git config user.email test@example.com', { cwd: dir });
-      execSync('git config user.name test', { cwd: dir });
-      execSync('git commit -q --allow-empty -m init', { cwd: dir });
-      const sha = execSync('git rev-parse HEAD', { cwd: dir }).toString().trim();
-      execSync(`git update-ref refs/remotes/origin/main ${sha}`, { cwd: dir });
+      execSync('git init -q -b feature .', { cwd: dir, env: gitEnv });
+      execSync('git config user.email test@example.com', { cwd: dir, env: gitEnv });
+      execSync('git config user.name test', { cwd: dir, env: gitEnv });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir, env: gitEnv });
+      const sha = execSync('git rev-parse HEAD', { cwd: dir, env: gitEnv }).toString().trim();
+      execSync(`git update-ref refs/remotes/origin/main ${sha}`, { cwd: dir, env: gitEnv });
 
       process.chdir(dir);
       expect(resolveBranchRef('main')).toBe('origin/main');
