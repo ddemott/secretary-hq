@@ -37,13 +37,14 @@ date nav, zoom, refresh, "+ New" quick-book) sits above all four; state
 is lifted into `SchedulerView` and threaded down. URL sync (`?subtab=` /
 `?daymode=`) already exists and would need to survive any reshape.
 
-**One finding worth flagging separately from this proposal:**
-`dashboard/components/scheduler/StaffSwimLaneView.tsx` (541 lines) is dead
-code — grep shows zero imports anywhere outside the file itself, and it has
-no test file. It looks like an earlier iteration of what `NewSchedulerView`
-now does. Not in scope to delete here (that's a one-line follow-up someone
-should file, not a scheduler-redesign decision), but any consolidation work
-should not accidentally treat it as a live surface.
+**Correction (caught by review before merge):** an earlier draft of this doc
+claimed `StaffSwimLaneView.tsx` was dead code with no test file. That's false —
+`scheduler.test.tsx` imports it directly and exercises it across a dozen
+`describe('StaffSwimLaneView', ...)` cases. It's unused by any *runtime*
+component (`NewSchedulerView` superseded it in the live app), but it is a
+covered surface, not dead code. Any consolidation work should keep that
+coverage passing or deliberately migrate/retire it — not delete it as if
+nothing depends on it.
 
 `dashboard/components/scheduler/scheduler.test.tsx` (942 lines) and
 `NewSchedulerView.test.tsx` (1,215 lines) are the coverage that any
@@ -154,8 +155,9 @@ quick-book, employee-focus panel) is the real lift.
 
 - No code changes in this PR. This is a proposal doc only.
 - Not deciding between A/B/C here — that's Dale's call.
-- Not touching `StaffSwimLaneView.tsx` (dead code, separate one-line cleanup
-  ticket, not part of this design).
+- Not touching `StaffSwimLaneView.tsx` — unused by the live app but still
+  covered by `scheduler.test.tsx`; retiring or migrating it is a separate
+  decision, not part of this design.
 - Not scoping the `NewSchedulerView` decomposition in detail — flagged as
   coupled work above, not designed here.
 - Not estimating effort/size — that depends entirely on which option Dale
