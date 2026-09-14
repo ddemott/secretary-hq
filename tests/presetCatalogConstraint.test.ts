@@ -10,8 +10,8 @@
  *   ERROR: new row for relation "tenants" violates check constraint
  *          "tenants_checklist_preset_id_valid"
  *
- * `scripts/pin-owner-for-hire-preset.sql` is the ops step HANDOFF.md tells Dale
- * to run against production after the agent deploys. It would have aborted.
+ * `scripts/pin-owner-for-hire-preset.sql` is the ops step `docs/planning/TODO.md`
+ * tells Dale to run against production after the agent deploys. It would have aborted.
  *
  * WHAT MAKES THIS CLASS OF BUG NASTY: nothing is red. TypeScript is happy —
  * both sides of the drift are in different languages. The unit tests are happy —

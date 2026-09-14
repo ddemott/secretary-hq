@@ -12,7 +12,7 @@
 > is never passed to the model at all (`ChecklistAgent` takes a one-line persona).
 >
 > **Editing a rung here changes nothing about a real call.** See
-> `docs/QUESTION_TREE_ARCHITECTURE.md` and CLAUDE.md → `/agent` for the live flow.
+> `docs/voice/QUESTION_TREE_ARCHITECTURE.md` and CLAUDE.md → `/agent` for the live flow.
 > Kept because it is the rollback path, and because the lessons below are the same
 > lessons the trees encode.
 

@@ -212,7 +212,7 @@ in a single statement` timed out on PR #394's Backend job at **5,004 ms
 
 ---
 
-## 📞 Live-call fix series (2026-07-30) — see `docs/CALL_FIX_PLAN.md`
+## 📞 Live-call fix series (2026-07-30) — see `docs/planning/CALL_FIX_PLAN.md`
 
 The 12 real calls from 2026-07-26/27 (`CALL_IMPROVEMENTS.md`, root) produced an
 8-batch PR plan: **G** (job-call capture completeness — role_description dropped
@@ -222,7 +222,7 @@ on the live path) → **H** (per-call tool-call log + transcript fidelity) → *
 cross-call duplicates, roster) → **C** (availability reason codes) → **D**
 (corrections propagate) → **E** (junk "Caller" rows, urgency) → **F** (silence
 handling, greeting metric, inbox unification). Full detail, cut lines, and the four
-recurring failure classes: `docs/CALL_FIX_PLAN.md`.
+recurring failure classes: `docs/planning/CALL_FIX_PLAN.md`.
 
 ---
 
@@ -287,8 +287,10 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
   4. Validate transfer: say "talk to a person" → your cell rings + Calls tab shows the transcript.
      **This step will fail as currently built — see the new item directly below.** Item 282 above (REFER config) is resolved, but that was never the actual blocker: `transfer_call` is not in the model's toolset under the live question-tree architecture at all (confirmed: absent from every `selectedTools()` branch in `agent/src/checklist/checklistTools.ts`; `docs/operations/RUNBOOK.md` §7c). Run this step anyway to CONFIRM the failure mode on a real call (does the model apologize and take a message, or does something worse happen?), not expecting it to pass.
   5. Validate dialog: agent asks preferred time, widens when none fit, never imposes a slot, recalls preferences across calls.
+  6. Validate the booked time is what was said, not an earlier slot. `docs/planning/RESOLVED.md` (2026-07-04) logged a `[~]` **partial**: `book_with_scheduling_atomic` books the EARLIEST open slot ≥ `window_from`, so a caller-named "4:30" could book 4:00 — code mitigation shipped (tool description + prompt sharpened to set `window_from` to exactly the picked time), but it was never live-proved and no later TODO item picked it up. Confirm the agent both books AND confirms back the actual `booked_start`, not the caller's stated time restated blindly.
      (PSTN inbound itself already confirmed 2026-06-30; this closes the booking + transfer + preference legs.)
 - [ ] **(code)** **Wire `transfer_call` into the question-tree toolset — no live human handoff exists today.** The greeting's `CLOSER_WITH_TRANSFER` line (`agent/src/greeting.ts`) tells every caller with a forward number configured: `If you'd rather speak with a person, just say "representative."` Nothing acts on that word — `transfer_call` (`agent/src/tools/transfer.ts`) is never a base tool, a `TREE_PASSTHROUGH_TOOLS` entry, or any tree's action node under `ChecklistAgent`, which is what every live call runs. A caller who says "representative" gets whatever the model improvises, not a transfer. SIP REFER itself is not the blocker (enabled by default on Telnyx FQDN connections since 2026-07-07) — this is purely a missing tool-wiring gap in the checklist architecture. Needs a design decision on WHICH tree(s) should carry it (every preset? a new always-on passthrough?) before implementation, not just a mechanical wire-up.
+- [ ] **(Dale)** **Delete or merge the duplicate active `Dale DeMott` employee row in prod.** `docs/planning/RESOLVED.md` (2026-07-03) logged this `[~]` **partial**: the app-level guard that stops a NEW duplicate (409 on a normalized-name collision with an existing non-deleted employee) shipped, but the pre-existing duplicate row in prod — one soft-deleted, one active — was left for a manual cleanup that needed prod DB access no session has. Never resurfaced as its own TODO item since.
 - [ ] **(code)** **Confirm whether the Aura TTS zero-bytes bug reaches prod.** CLAUDE.md's TTS section documents an unresolved 2026-08-14 finding: Deepgram Aura's WebSocket `speak` path returned ZERO audio bytes on one local dev host while the HTTP `collect` path worked fine on the same key/voice — `agent/src/greetingPickup.ts` and `AURA_TTS_STREAMING=false` exist as a workaround, but **prod has never been shown to have this fault; it's one host, not a confirmed platform-wide issue.** No TODO item tracks resolving the open question either way. Run `cd agent && npm run verify:tts` against prod credentials (or check prod logs for a silent-greeting pattern) to settle whether this is a real prod risk or a dev-host-only artifact, then either close it out or escalate.
 
 ### 2. Billing — be able to take money
@@ -413,7 +415,7 @@ Each status re-verified against the code on 2026-07-28, not carried over on trus
 - [ ] **Product expansion** — booking widget/embed; granular RBAC beyond owner/front_desk; white-label / reseller theming; public API; PDF + analytics export (CSV export shipped #189); SSO/SAML; international numbers (US-centric today); multi-DID per tenant.
 - [ ] **Schedule sub-view consolidation (C1+C2)** — merge the 4 scheduler sub-views (calendar/staff/resources/list) → 2 (calendar Day/Month + Team/Resources) with one unified header. `dashboard/components/SchedulerView.tsx`. (large/UX; from the former IMPROVEMENT_IDEAS.) **Open — needs a UX design pass with Dale before build** (it changes the scheduler layout; brainstorm the target shape first).
 - [ ] **Threaded demo mode (E1)** — replace the static `/demo` page with a session flag (`isDemoMode`) injecting read-only sample data into the live dashboard shell (stays in sync with real UI automatically). (large.)
-- [ ] **Future CRM/platform candidates** (build-deferred per the `docs/STRATEGY.md` vendor heuristic — "how does this vendor make money?") — QuickBooks/Xero, Toast, Apple Calendar (safe infra/transaction partners); Microsoft Teams (notify-only); Vagaro/Mindbody, Acuity/Calendly (competitor-ish → shallow read or import-only).
+- [ ] **Future CRM/platform candidates** (build-deferred per the `docs/product/STRATEGY.md` vendor heuristic — "how does this vendor make money?") — QuickBooks/Xero, Toast, Apple Calendar (safe infra/transaction partners); Microsoft Teams (notify-only); Vagaro/Mindbody, Acuity/Calendly (competitor-ish → shallow read or import-only).
 
 ---
 

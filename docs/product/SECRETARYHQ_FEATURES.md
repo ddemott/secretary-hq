@@ -2,7 +2,7 @@
 
 > Organized outline of SecretaryHQ's capabilities. Status legend:
 > **✅ built** (works today) · **🔨 in progress** · **💡 planned** (captured in
-> `docs/STRATEGY.md`, demand-gated). Last updated 2026-08-14.
+> `docs/product/STRATEGY.md`, demand-gated). Last updated 2026-08-14.
 >
 > One line: **an AI receptionist that answers the phone, books the work,
 > remembers the customer — and gives the owner just enough of a back office to
@@ -67,7 +67,7 @@
 ## 7. Integrations
 
 - ✅ Calendar sync — Google Calendar, Outlook (booking → owner's calendar)
-- ✅ CRM sync — Square only (`src/services/crm/squareSync.ts` + `squareClient.ts`, route `src/routes/square.ts`). _(Jobber, HubSpot, ServiceTitan **removed** 2026-06-12 as competitors — see `docs/STRATEGY.md`; the provider-agnostic sync layer was kept and drives Square.)_
+- ✅ CRM sync — Square only (`src/services/crm/squareSync.ts` + `squareClient.ts`, route `src/routes/square.ts`). _(Jobber, HubSpot, ServiceTitan **removed** 2026-06-12 as competitors — see `docs/product/STRATEGY.md`; the provider-agnostic sync layer was kept and drives Square.)_
 - ✅ Voice + telephony stack — Telnyx (PSTN), LiveKit (media), Deepgram Nova-3 (STT) + Deepgram Aura (TTS), OpenAI GPT-4.1-mini for the live voice LLM (xAI Grok removed 2026-06-25)
 - ✅ Phone provisioning — search / buy / route a phone number (Telnyx)
 
@@ -94,7 +94,7 @@
 
 - ✅ Stripe subscription billing of the business — Solo / Growth / Pro _(built; needs live keys + path verification)_
 - ✅ Webhook-driven subscription activation + access gating
-- 💡 **Pricing model:** value-aligned **volume** pricing — metered on bookings/calls, never per-seat or per-minute; predictable bands (decision captured, build deferred — `docs/STRATEGY.md`)
+- 💡 **Pricing model:** value-aligned **volume** pricing — metered on bookings/calls, never per-seat or per-minute; predictable bands (decision captured, build deferred — `docs/product/STRATEGY.md`)
 - 🚫 We do **NOT** process the business's customers' service payments (deliberate — no PCI/payout liability; stays with their POS/Square)
 
 ## 11. Platform & Observability
@@ -107,7 +107,7 @@
 
 ## 12. Roadmap / Captured Ideas (💡 not built — demand-gated)
 
-From `docs/STRATEGY.md`:
+From `docs/product/STRATEGY.md`:
 
 - **Owner AI copilot** — in-dashboard assistant: "set my Saturday hours", "why did I miss calls Tuesday?" (the natural surface for WHY-reporting + onboarding)
 - **Website-scan onboarding** — auto-fill the knowledge base from the owner's existing site + post-scan gap-fill (the ultimate "tiny yes")
@@ -122,4 +122,4 @@ From `docs/STRATEGY.md`:
 - **Receptionist-first, cross-platform / no-platform** — works whether the business runs Square, a spreadsheet, or nothing. The platform incumbents (Jobber/ServiceTitan/Housecall Pro) require buying their whole suite to get a receptionist.
 - **Non-trades verticals** — salons, auto/tire, fitness, food — where no incumbent bundles a receptionist.
 - **Own the operational system-of-record, not a full CRM** — sell the front door; the light back office is what makes them stay.
-- See `docs/STRATEGY.md` (positioning) + `docs/COMPETITOR_WEAKPOINTS.md` (attack map).
+- See `docs/product/STRATEGY.md` (positioning) + `docs/product/COMPETITOR_WEAKPOINTS.md` (attack map).
