@@ -89,7 +89,7 @@ particular vendor.
 > Sizing, if you ever evaluate a hosted backend: the registry declares 10 metrics,
 > each hard-capped at `MAX_LABEL_CARDINALITY = 1000` (`src/services/metrics.ts:29`),
 > so the absolute worst case is 10,000 active series. In practice
-> `http_request_duration_ms` dominates (~32 route modules × 3 status families ×
+> `http_request_duration_ms` dominates (~29 route modules × 3 status families ×
 > 12 series each) and the total lands around 2–3K. See the status note at the top
 > of this file for why no vendor was chosen.
 
