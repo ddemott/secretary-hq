@@ -204,10 +204,9 @@ export async function withWebsiteRescanLock<T>(
   const client: PoolClient = await pool.connect();
   let held = false;
   try {
-    const locked = await client.query<{ ok: boolean }>(
-      'SELECT pg_try_advisory_lock($1) AS ok',
-      [lockKey]
-    );
+    const locked = await client.query<{ ok: boolean }>('SELECT pg_try_advisory_lock($1) AS ok', [
+      lockKey,
+    ]);
     if (!locked.rows[0]?.ok) {
       return { acquired: false };
     }
@@ -262,20 +261,14 @@ export async function rescanStaleWebsitesNow(
     maxFails?: number;
     openAiKey?: string;
     /** Inject for tests — default builds from the live pool. */
-    withTenantClient?: <T>(
-      tenantId: string,
-      fn: (client: import('pg').PoolClient) => Promise<T>
-    ) => Promise<T>;
+    withTenantClient?: <T>(tenantId: string, fn: (client: PoolClient) => Promise<T>) => Promise<T>;
     query?: <T extends Record<string, unknown>>(
       sql: string,
       params?: unknown[]
     ) => Promise<{ rows: T[] }>;
     importFn?: typeof importWebsiteKnowledge;
     recordFailureFn?: (
-      withTenantClient: <T>(
-        tenantId: string,
-        fn: (client: import('pg').PoolClient) => Promise<T>
-      ) => Promise<T>,
+      withTenantClient: <T>(tenantId: string, fn: (client: PoolClient) => Promise<T>) => Promise<T>,
       tenantId: string,
       maxFails?: number
     ) => Promise<{ failCount: number; quarantined: boolean }>;
