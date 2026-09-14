@@ -150,7 +150,7 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
 
 ### Structural refactors
 
-- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema.
+- [ ] **(code)** **Migration chain squash** — **202** files in `supabase/migrations/` (2026-09-13). Do when convenient; `baseline.sql` already carries the collapsed schema. **PLAN ONLY 2026-09-14 — unsafe to execute without Dale prod gate** (prod `schema_migrations` head, data-migration/seed parity, role-grant restore, no checked-in chain-delete runbook). Full procedure + entry criteria: [`docs/planning/MIGRATION_CHAIN_SQUASH_PLAN.md`](./MIGRATION_CHAIN_SQUASH_PLAN.md). Do **not** delete migration files until that plan’s §3 criteria are green.
 
 Dashboard component subdirectory migration finished 2026-09-12 (zero loose `.tsx`/`.ts`
 at `dashboard/components/`). Backend suite warning cleanup (incl. pg@9 single-client
