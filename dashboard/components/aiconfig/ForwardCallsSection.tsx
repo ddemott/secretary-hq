@@ -43,6 +43,8 @@ export function ForwardCallsSection({
         {forwardLoops && (
           <p
             id="forward-loop-error"
+            role="alert"
+            aria-live="assertive"
             className="text-sm"
             style={{ color: 'var(--danger, #dc2626)' }}
           >
@@ -61,8 +63,8 @@ export function ForwardCallsSection({
           Owner Notification Phone
         </h2>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Messages a caller leaves always show up in your Calls inbox right away. This number is
-          where the AI will also text you an alert.
+          Messages a caller leaves always show up in your Calls inbox right away. Once text alerts
+          go live, this is the number the AI will also text.
         </p>
         <p className="text-sm" style={{ color: 'var(--warning)' }}>
           Text alerts aren&apos;t live yet on this platform (carrier registration is still pending)
