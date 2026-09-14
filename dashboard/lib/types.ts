@@ -381,7 +381,8 @@ export interface AiCostBreakdown extends AiCostSummary {
 }
 
 export interface PlanQuota {
-  includedCalls: number;
+  /** null = unlimited (Professional). */
+  includedCalls: number | null;
   packCalls: number;
   packPriceUsd: number;
 }
@@ -398,12 +399,28 @@ export interface MonthlyStatement {
   inProgress: boolean;
 }
 
+export type UsageCapLevel = 'ok' | 'warn' | 'blocked' | 'unlimited';
+
+export interface UsageCapEvaluation {
+  plan: string | null;
+  used: number;
+  limit: number | null;
+  percent: number | null;
+  status: UsageCapLevel;
+  softCapEnforced: boolean;
+  warnRatio: number;
+  blocked: boolean;
+  /** True when limit came from free-tier fallback (null/unknown plan). */
+  freeTierApplied?: boolean;
+}
+
 export interface UsageStatementResult {
   plan: string | null;
   quota: PlanQuota | null;
   billableMinSeconds: number;
   monthBoundaries: 'utc';
   statements: MonthlyStatement[];
+  cap?: UsageCapEvaluation;
 }
 
 export interface Vocabulary {

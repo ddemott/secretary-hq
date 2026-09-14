@@ -21,6 +21,8 @@ import {
 import { assertRowAffected, requireValidUUID } from './routeHelpers';
 import { SUPER_ADMIN_TENANT_ID } from '../constants';
 import type { CustomerContext, VoiceSession, VoiceSessionDisplay } from '../types/voiceCrm';
+import { evaluateUsageCap } from '../services/billingUsage';
+import { errorsTotal } from '../services/metrics';
 
 const StartSessionSchema = z.object({
   call_id: z.string().min(1),
@@ -127,7 +129,8 @@ export function registerVoiceRoutes(
    * POST /voice/session/start
    * Start a voice session and get customer context
    *
-   * Called by the LiveKit agent when a call starts
+   * Legacy/dashboard path (live agent uses /agent-tools/voice-session-start).
+   * Same soft-cap gate as agent-tools so this entrypoint cannot bypass metering.
    */
   app.post(
     '/voice/session/start',
@@ -145,6 +148,38 @@ export function registerVoiceRoutes(
       }
 
       const { call_id, caller_phone } = parsed.data;
+
+      // Soft tier-cap gate — shared evaluateUsageCap with agent-tools path.
+      // Fail-open on evaluation errors (availability over a metering blip).
+      try {
+        const cap = await evaluateUsageCap(pool, tenantId);
+        if (cap.blocked) {
+          errorsTotal.inc({ event: 'call_rejected_usage_limit_exceeded' });
+          logEvent(req, 'call_rejected_usage_limit_exceeded', {
+            call_id,
+            plan: cap.plan,
+            used: cap.used,
+            limit: cap.limit,
+          });
+          return reply.status(200).send({
+            success: false,
+            error:
+              "We're currently at capacity for this billing period. Please try again next month or upgrade your plan.",
+            error_code: 'usage_limit_exceeded',
+          });
+        }
+      } catch (capErr) {
+        errorsTotal.inc({ event: 'usage_cap_check_failed' });
+        req.log?.error?.(
+          {
+            event: 'usage_cap_check_failed',
+            tenant_id: tenantId,
+            call_id,
+            err: capErr instanceof Error ? capErr.message : String(capErr),
+          },
+          'usage cap check failed — allowing session start (fail-open)'
+        );
+      }
 
       const context = await withTenantClient(tenantId, async (client) => {
         // Use the database function to start session and get context
@@ -683,11 +718,12 @@ export function registerVoiceRoutes(
    * Soft-delete a single call record (owner-gated).
    *
    * Sets is_deleted/deleted_at/deleted_by — the row + its caller PII and
-   * transcript are RETAINED but hidden from every list + analytics query (all of
-   * which filter `is_deleted = false`). Recoverable; this is deliberately NOT a
-   * hard DELETE (hard erasure of caller_phone/transcripts is the legal-held
-   * GDPR/retention work). Owner-only because call records carry caller PII —
-   * mirrors the audit-log / export gating; front-desk logins get 403.
+   * transcript are RETAINED but hidden from list + analytics queries (filter
+   * `is_deleted = false`). Soft-delete does NOT erase monthly usage metering
+   * (billingUsage counts billable rows including is_deleted). Recoverable; this
+   * is deliberately NOT a hard DELETE (hard erasure of caller_phone/transcripts
+   * is the legal-held GDPR/retention work). Owner-only because call records
+   * carry caller PII — mirrors the audit-log / export gating; front-desk gets 403.
    */
   app.delete(
     '/voice/session/:id',

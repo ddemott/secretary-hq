@@ -609,13 +609,15 @@ export default defineAgent({
       client = earlyClient;
 
       // Call logging (2026-06-11): persist a voice_sessions row so the
-      // dashboard Calls tab + customer call history populate. START is
-      // fire-and-forget — it must NEVER delay the greeting or risk dead air,
-      // so a failure is logged and swallowed. END is awaited inside the
-      // shutdown callback so duration lands before the job tears down.
-      // finalizeCall is assigned inside the callId block below and invoked from
-      // the session 'close' event (registered after session.start). Declared at
-      // this scope so the close handler can see it. Null when there's no callId.
+      // dashboard Calls tab + customer call history populate. Soft-cap
+      // refusals (usage_limit_exceeded) MUST be awaited — otherwise the agent
+      // greets and runs a full call the plan already blocked. Other start
+      // failures stay non-fatal so a logging blip never risks dead air.
+      // END is awaited inside the shutdown callback so duration lands before
+      // the job tears down. finalizeCall is assigned inside the callId block
+      // below and invoked from the session 'close' event (registered after
+      // session.start). Declared at this scope so the close handler can see
+      // it. Null when there's no callId.
       let finalizeCall: ((hook: 'close' | 'shutdown' | 'outage') => Promise<void>) | null = null;
       // Skipped when callId is absent (nothing to key the session on).
       if (sessionCtx.callId) {
@@ -628,35 +630,40 @@ export default defineAgent({
         // branches log the breadcrumb that this call never created a
         // voice_sessions row (so it won't show in the Calls tab). The backend
         // logs the pg SQLSTATE/constraint; this is the agent-side marker.
-        void client
-          .call('/agent-tools/voice-session-start', {
-            tenant_id: sessionCtx.tenantId,
-            call_id: callId,
-            caller_phone: sessionCtx.callerPhone ?? null,
-          })
-          .then((res) => {
-            if (!res.ok) {
-              callLog.error(
-                {
-                  event: 'voice_session_start_failed',
-                  forwarded_line: sessionCtx.callerPhone == null,
-                  status: res.status ?? null,
-                  error_message: res.error,
-                },
-                'call-logging START failed (non-fatal to the live call) — this call will NOT appear in the Calls tab'
-              );
-            }
-          })
-          .catch((e: unknown) =>
-            callLog.error(
+        const startRes = await client.call('/agent-tools/voice-session-start', {
+          tenant_id: sessionCtx.tenantId,
+          call_id: callId,
+          caller_phone: sessionCtx.callerPhone ?? null,
+        });
+        if (!startRes.ok) {
+          if (startRes.errorCode === 'usage_limit_exceeded') {
+            callLog.warn(
               {
-                event: 'voice_session_start_failed',
+                event: 'call_rejected_usage_limit_exceeded',
                 forwarded_line: sessionCtx.callerPhone == null,
-                error_message: e instanceof Error ? e.message : String(e),
+                status: startRes.status ?? null,
+                error_message: startRes.error,
               },
-              'call-logging START threw (non-fatal to the live call) — this call will NOT appear in the Calls tab'
-            )
+              'tenant at monthly call cap — speaking capacity message and ending call'
+            );
+            await runFallback(
+              ctx,
+              startRes.error ||
+                "We're currently at capacity for this billing period. Please try again next month.",
+              config
+            );
+            return;
+          }
+          callLog.error(
+            {
+              event: 'voice_session_start_failed',
+              forwarded_line: sessionCtx.callerPhone == null,
+              status: startRes.status ?? null,
+              error_message: startRes.error,
+            },
+            'call-logging START failed (non-fatal to the live call) — this call will NOT appear in the Calls tab'
           );
+        }
         // Fire-once writer of the call's completion record. Invoked from BOTH
         // the session 'close' event (participant hangup — the reliable signal)
         // and ctx.addShutdownCallback (job teardown — backstop). On a single

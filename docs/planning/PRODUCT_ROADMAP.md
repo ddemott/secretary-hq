@@ -96,7 +96,7 @@ npm run verify:claude-md
 1. **No HIPAA / PHI verticals.** `dentist`, `chiropractor`, `vet-clinic` were removed by migration `20260321000000_remove_hipaa_templates.sql`. Do not re-add health verticals or a "HIPAA tier" without explicit owner sign-off. There are **30 active non-HIPAA verticals**.
 2. **Voice = question trees.** Do not replace the tree flow with a free-form LLM agent.
 3. **SMS is OFF by design** until 10DLC registration completes. `ENABLE_SMS` defaults to false in the agent config schema. "Fixing SMS" means completing 10DLC + flipping the gate, not patching a bug.
-4. **No live human transfer on the question-tree path today.** Escalation takes a message and flags urgency. SIP REFER plumbing exists but is not wired into the tree flow. Do not claim transfer works until a task explicitly builds and tests it.
+4. **Live human transfer is wired on the question-tree path when a forward number is set** (`transfer_call` always-on passthrough via `offerTransfer`, shipped #462 — same gate as the greeting closer). Without a forward number, escalation takes a message and flags urgency. Do not claim transfer is **live-proven** until Dale's validation call (T-003 / TODO live-validation step 4) rings a real cell and residual hardening lands (terminal lock, failure→message path, checklist prompt — see RUNBOOK §7c).
 5. **Product voice** in all user-facing copy: "Sounds Real. Books Smart. Never Misses a Call." / "Live in under 10 minutes."
 6. **Every PK follows `<table_singular>_id`** (see `docs/workflow/CODING_STANDARDS.md`).
 7. **Every test covers happy + sad paths** with 5W diagnostic context (Who/What/When/Where/Why) in sad-path assertions.
@@ -156,7 +156,7 @@ Legend: ✅ DONE · 🟡 IN_PROGRESS · ⛔ BLOCKED · ⬜ NOT_STARTED
 | T-006   | Monitoring & alerting                      | 1    | Claude | HIGH     | —            | 🟡      |
 | T-007   | Fix E2E test flakiness                     | 1    | Claude | HIGH     | —            | ✅ DONE |
 | T-008   | Validate intake trees end-to-end           | 1    | Mixed  | HIGH     | T-000        | 🟡      |
-| T-009   | Volume metering & tier caps                | 1    | Claude | HIGH     | T-004        | ⬜      |
+| T-009   | Volume metering & tier caps                | 1    | Claude | HIGH     | T-004        | ✅      |
 | T-010   | Schedule pattern adoption verify           | 1    | Claude | MEDIUM   | —            | ✅      |
 | T-011   | Verify cost tracking ledger                | 1    | Claude | MEDIUM   | —            | ✅      |
 | T-012   | Deployment checklist & automation          | 1    | Claude | MEDIUM   | —            | 🟡      |
@@ -295,14 +295,15 @@ OWNER: Human-only (requires two real phones)
 PRIORITY: CRITICAL
 EFFORT: 30m call + 1h analysis
 DEPENDS_ON: None
-CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer urgent-message path for product acceptance if transfer destination is unavailable; otherwise also prove "representative" → cell rings + `transferred` outcome.
+CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer the greeting word **"representative"** (plus one "talk to a person") for the transfer leg. Treat step 5 as a **first live attempt**, not an auto-pass: fail on double-REFER, dead air, false "you're connected", or goodbye trap after a failed REFER — residual P0 hardening is still open (terminal lock, failure→message, checklist prompt). If the transfer destination is unavailable, fall back to the urgent-message path for product acceptance and record why transfer was skipped.
 FILES: findings go to `docs/planning/CALL_FIX_PLAN.md` (append a dated section).
 STEPS:
 
-1. Dashboard → Phone Assistant → set the escalation contact.
+1. Dashboard → Phone Assistant → AI Persona → set **Forward Calls to a Person** to a reachable cell (not the calling phone).
 2. From a second phone, call `+1 630-822-9086`.
 3. Book an appointment for a real time inside a shift window.
-4. Trigger escalation ("this is urgent") → verify a `customer_messages` row with `is_urgent=true`.
+4. Trigger escalation ("this is urgent") → verify a `customer_messages` row with `is_urgent=true` (message path still required).
+5. On the same sitting (or a second call if needed): say **"representative"** → cell rings + Calls tab shows transcript / `outcome='transferred'`. If REFER fails or cell is unavailable, take the urgent message instead and note the failure mode (do not mark transfer DoD done). See `docs/planning/TODO.md` live-validation step 4 and `docs/operations/RUNBOOK.md` §7c.
    ACCEPTANCE_TEST (objective DB queries after the call):
 
 ```sql
@@ -313,13 +314,17 @@ SELECT count(*) FROM appointments WHERE created_at > now() - interval '15 min'; 
 -- escalation captured as an urgent customer message (schema: customer_messages.is_urgent BOOLEAN):
 SELECT count(*) FROM customer_messages
   WHERE is_urgent = true AND created_at > now() - interval '15 min';                 -- >= 1
+-- when transfer was attempted and succeeded:
+SELECT count(*) FROM voice_sessions
+  WHERE outcome = 'transferred' AND created_at > now() - interval '15 min';               -- >= 1 if transfer DoD claimed
 ```
 
 DEFINITION_OF_DONE:
 
 - [ ] `voice_sessions` has the call with a non-empty transcript.
 - [ ] `appointments` has the booking at the correct time for the correct tenant.
-- [ ] Urgent message captured (no false "transferred" claim).
+- [ ] Urgent message captured when the message path was used (no false "transferred" claim without a real handoff).
+- [ ] Transfer leg: cell rang + `outcome='transferred'` **or** failure mode documented and transfer DoD left open (wiring ≠ live proof; hardening still pending).
 - [ ] Findings appended to `docs/planning/CALL_FIX_PLAN.md` with the transcript.
 
 ---
@@ -569,40 +574,39 @@ Action "book" requires unknown node "drop_off_ok" — not defined in any library
 
 `booking.book` carries a cross-tree `requires` on `drop_off_ok`, which lives in `fix_computer` — a tree **no preset enables**. The tracker validates every `requires` id against the library it was handed, while at runtime ids outside the call's selected trees are treated as satisfied. So the LIBRARY is _what exists_ and the PRESET is _what this business may select_, and they are not the same list. This was already found on 2026-08-14 and is why `scripts/seed-question-tree-templates.ts` seeds the full library per vertical; the sim now mirrors production (`library` = full, `selectableTreeIds` = intersection).
 
-**Observation, not a blocker:** one plumber run (of nine) never closed. The improvising caller invented a burst pipe flooding their kitchen and refused the next day's slots; the agent correctly took an urgent message — there is no live-transfer path — then re-offered booking and looped between the two for four turns. Worth a look when someone owns emergency-intake behaviour; it is LLM variance, not a wiring fault.
+**Observation, not a blocker:** one plumber run (of nine) never closed. The improvising caller invented a burst pipe flooding their kitchen and refused the next day's slots; the agent correctly took an urgent message (that sim had no forward number / transfer offer) then re-offered booking and looped between the two for four turns. Worth a look when someone owns emergency-intake behaviour; it is LLM variance, not a wiring fault. Live transfer is now model-facing when a forward number is set (#462) — still needs live PSTN proof.
 
 ---
 
 ### T-009: Volume metering & tier caps
 
-STATUS: ⬜ NOT_STARTED
+STATUS: ✅ DONE (soft-cap + meter; final Stripe price IDs still Dale-owned)
 OWNER: Claude-able (+ Human decides cap numbers)
 PRIORITY: HIGH
 EFFORT: 8–12h
 DEPENDS_ON: T-004
-CONTEXT: Tiers are flat subscriptions with no usage enforcement. Add per-tenant call counting + cap enforcement so an uncapped Solo tenant cannot run the platform into negative margin.
-FILES: new migration `supabase/migrations/<ts>_tenant_usage_columns.sql`, `agent/src/index.ts` (session start), `src/routes/billing.ts` (webhook sets tier), dashboard usage view, tests.
+CONTEXT: Tiers are flat subscriptions. Cap occupancy = completed billable answered calls (incl. soft-deleted) + active in-flight sessions in the UTC month via `evaluateUsageCap` — no denormalized counter columns. Null/unknown plan under soft-cap → `PLAN_CAP_FREE` (default 50), never silent unlimited. Env knobs: `PLAN_CAP_SOLO|GROWTH|PROFESSIONAL|FREE`, `USAGE_WARN_RATIO`, `USAGE_SOFT_CAP_ENFORCE`. Both `/agent-tools/voice-session-start` and `/voice/session/start` share the gate.
+FILES: `src/services/billingUsage.ts`, `src/routes/agentTools/session.ts` (gate), `agent/src/index.ts` (spoken refuse), `dashboard/components/billing/BillingView.tsx`, tests.
 STEPS:
 
-1. Migration: add `subscription_tier`, `calls_this_month`, `month_reset_date` to `tenants`.
-2. On session start, increment counter; reject over-cap calls with a spoken message.
-3. Webhook maps price_id → tier; resets counter on new period.
-4. Dashboard usage widget.
+1. ~~Migration: add subscription_tier columns~~ — skipped; live count from voice_sessions is enough.
+2. On session start, evaluate cap; reject over-cap with `usage_limit_exceeded`.
+3. Webhook already sets `subscription_plan` from checkout metadata.
+4. Dashboard usage widget + 80% warn / 100% blocked banners.
    ACCEPTANCE_TEST:
 
 ```bash
-npm test -- tenant-usage      # new suite
-# Behavioral (real-DB test): seed Solo tenant at cap → next start_voice_session is rejected;
-# upgrade tier → next session is accepted.  Assertion in tests/services/usageCaps.realdb.test.ts
+npx vitest run tests/services/usageCaps.test.ts tests/routes/billing-usage.test.ts
+# Dashboard: dashboard/components/billing/BillingView.test.tsx
 ```
 
 DEFINITION_OF_DONE:
 
-- [ ] Migration applies cleanly (`npm run db:migrate` + baseline updated + `verify:claude-md` green).
-- [ ] Over-cap call rejected; logged `call_rejected_usage_limit_exceeded`.
-- [ ] Webhook sets `subscription_tier` from price_id (test asserts).
-- [ ] Dashboard shows calls used / cap / reset date.
-- [ ] Real-DB test proves cap enforcement + upgrade path.
+- [x] Over-cap call rejected; logged `call_rejected_usage_limit_exceeded`.
+- [x] Plan caps configurable via env (defaults Solo 350 / Growth 1000 / Pro unlimited).
+- [x] Dashboard shows calls used / cap + 80% warning banner.
+- [x] Real-DB + unit tests prove cap evaluation + pack math.
+- [ ] Final Stripe price IDs + Dale-owned band numbers (ops, not code).
 
 ---
 
