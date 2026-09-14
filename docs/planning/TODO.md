@@ -23,8 +23,8 @@ morning half, declined-meeting goodbye gate, urgent-message raise-only, wrong-no
 re-ask, unlinked-service STRICT parity, flaky CI gates) archived in
 `docs/planning/RESOLVED.md` (2026-09-14 doc-hygiene entry).
 
-- **OPEN, needs Dale's ear, not mine:** flag is on. Remaining question is whether the filler _sounds_ like cover and not a stutter on a real call (2800ms deadline, `HOLD_LINE`). Place one real test call; keep or set `ENABLE_OUTPUT_WATCHDOG=false`. CI cannot grade this.
-- Fill real TELNYX_PUBLIC_KEY in .env
+- [x] **TELNYX_PUBLIC_KEY** — **CLOSED 2026-09-14.** Set on Railway `secretary-hq` prod (with API key, SIP connection, phone). Voice path working. Local `.env` may still use a placeholder for dev only.
+- **HOLD_LINE filler sound** — not a launch blocker. Watchdog flag can stay on; if filler ever sounds like a stutter on a real call, set `ENABLE_OUTPUT_WATCHDOG=false` or retune. CI cannot grade this.
 
 ---
 
