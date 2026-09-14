@@ -4,6 +4,26 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-14 — Website-scan re-scan scheduler
+
+P2 backlog item closed. Deferred pieces were a durable `last_scanned` marker and a
+cost/product call on interval + caps.
+
+**Migration `20260914000000_tenant_website_scan_tracking`:** `tenants.website_scan_url`
++ `tenants.website_last_scanned_at` (both nullable). NULL URL = never scanned / opt-out —
+scheduler skips; no separate enable flag.
+
+**Shared `importWebsiteKnowledge`:** scrape → extract → stage suggestions → stamp URL +
+last_scanned. Used by `POST /knowledge/import-website` and the worker. Still stages only
+— never auto-publishes to the live KB.
+
+**Worker `websiteRescanScheduler`:** daily tick (no boot stampede), oldest-stale first,
+non-demo only. Defaults: stale **30 days**, batch **5**/tick (`WEBSITE_RESCAN_STALE_DAYS` /
+`WEBSITE_RESCAN_BATCH_SIZE` / `WEBSITE_RESCAN_INTERVAL_MS`). Gated by
+`ENABLE_WEBSITE_RESCAN_SCHEDULER` via `workerEnabled` (prod ON unless exact `false`).
+Skip whole tick if no `OPENAI_API_KEY`. One tenant failure does not stop the batch
+(`website_rescan_tenant_failed`).
+
 ## 2026-09-14 — Railway healthcheckPath stays `/health` (declined `/ready` gate)
 
 **Decision: DO NOT repoint** `railway.json` `deploy.healthcheckPath` from `/health` → `/ready`.
@@ -2791,8 +2811,8 @@ Tiers (Solo/Growth/Pro) + price ID env vars exist.
 ## 5. Onboarding, Knowledge & Setup
 
 - Wizard (solo + team modes), 30 business templates (now in seed + `business_templates` table), vocabulary system, first-run tour, setup progress pill, and `/demo` ephemeral tenant are strong.
-- **Website scan onboarding**: Core fetch + LLM extract + `knowledge_suggestion` staging + dedicated Step 7 (`Step7WebsiteScan.tsx`) + prefill of later policy questions step shipped 2026-06-12. **SHIPPED since**: per-question suggestion review UI (`KnowledgeSuggestions`), scan happy-path + wizard click-path E2E, and cost/rate-limit guardrails (`src/services/scanRateLimit.ts`). **Still pending**: periodic re-scan of stale KB (deferred — needs a `last_scanned` column + is a cost/product call).
-- Knowledge base: File upload, `knowledgeIngestion.ts` (chunking + embeddings), pgvector RAG via `/agent-tools/policy-answer` + `shared/expandQueryForEmbedding.ts` (recent accuracy win). `simulate rag` harness reports 100% hit-rate on known seeds. **SHIPPED**: caller-facing source citations (`[From "<title>"]` in `policy-answer`) + admin "explain this answer" debugger (`POST /knowledge/explain` + `ExplainAnswerView`). **Still missing**: periodic re-scan.
+- **Website scan onboarding**: Core fetch + LLM extract + `knowledge_suggestion` staging + dedicated Step 7 (`Step7WebsiteScan.tsx`) + prefill of later policy questions step shipped 2026-06-12. **SHIPPED since**: per-question suggestion review UI (`KnowledgeSuggestions`), scan happy-path + wizard click-path E2E, cost/rate-limit guardrails (`src/services/scanRateLimit.ts`), and **periodic re-scan** (`websiteRescanScheduler` + `tenants.website_scan_url` / `website_last_scanned_at`, 2026-09-14).
+- Knowledge base: File upload, `knowledgeIngestion.ts` (chunking + embeddings), pgvector RAG via `/agent-tools/policy-answer` + `shared/expandQueryForEmbedding.ts` (recent accuracy win). `simulate rag` harness reports 100% hit-rate on known seeds. **SHIPPED**: caller-facing source citations (`[From "<title>"]` in `policy-answer`) + admin "explain this answer" debugger (`POST /knowledge/explain` + `ExplainAnswerView`) + periodic website re-scan (2026-09-14).
 - Policy questions: Static bank + tenant customs.
 - No "import from existing calendar/CRM" step beyond the website scan.
 
