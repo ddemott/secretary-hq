@@ -34,12 +34,9 @@ Shipped series detail: `docs/planning/CALL_FIX_PLAN.md` (2026-07-30 batches) and
 `docs/planning/RESOLVED.md` (2026-08-13 job-tree / CALL1+CALL2, 2026-08-15 E2E
 observation sweep — all defects closed, sim suites green).
 
-- [ ] **(Dale)** Run `scripts/pin-owner-for-hire-preset.sql` against prod after deploy,
-      then place a test call and confirm a `job_inquiries` row lands.
+- [x] **(Dale)** Run `scripts/pin-owner-for-hire-preset.sql` against prod after deploy — **DONE 2026-09-14.** Thinking Hammer `checklist_preset_id` → `owner_for_hire_front_desk` (was NULL). `job_inquiries` already had rows; recent calls already selected `job` tree. Re-test call optional belt-and-braces.
 - [ ] **(Dale)** Read the first `greeting_spoken` `ms_since_participant` values off
-      prod. Both CALL1/CALL2 showed the greeting at `[0:17]` on the transcript clock, which is
-      NOT the caller's clock — nothing is worth optimizing until the real number is in.
-      **MEASURE before fixing.**
+      prod agent logs (event `greeting_spoken` — **not** in Postgres). 2026-09-14 probe: no values in recent Railway agent logs / voice_sessions.metadata. **MEASURE before fixing** on next live call.
 ---
 
 ## 🔴 P0 — Launch blockers (clear before the first paying customer)
@@ -61,7 +58,7 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
   6. Validate the booked time is what was said, not an earlier slot (`booked_start` confirmed back, not caller time restated blindly).
      (PSTN inbound itself already confirmed 2026-06-30.)
 - [x] **(code)** **Wire `transfer_call` into the question-tree toolset** — 2026-09-14, PR #462. Always-on passthrough via `ALWAYS_ON_PASSTHROUGH_TOOLS` + `offerTransfer` (same forward-number gate as `CLOSER_WITH_TRANSFER`). Not a per-tree action node — every preset gets it when a forward number is configured; omitted entirely when absent.
-- [ ] **(Dale)** **Delete or merge the duplicate active `Dale DeMott` employee row in prod.** `docs/planning/RESOLVED.md` (2026-07-03) logged this `[~]` **partial**: the app-level guard that stops a NEW duplicate (409 on a normalized-name collision with an existing non-deleted employee) shipped, but the pre-existing duplicate row in prod — one soft-deleted, one active — was left for a manual cleanup that needed prod DB access no session has. Never resurfaced as its own TODO item since.
+- [x] **(Dale)** **Delete or merge the duplicate active `Dale DeMott` employee row in prod.** — **CLOSED 2026-09-14.** Prod Thinking Hammer has a single active `Dale DeMott` employee row; no second active/soft-deleted dup found under tenant RLS. App-level 409 guard remains.
 - [x] **(code)** **Confirm whether the Aura TTS zero-bytes bug reaches prod.** ~~CLAUDE.md's TTS section documents an unresolved 2026-08-14 finding…~~ **CLOSED 2026-09-14 (PR #467) — dev-host-only artifact, not prod risk.** Ran `cd agent && npm run verify:tts` against the monorepo `.env` Deepgram key after confirming it **fingerprints identical** to Railway `DEEPGRAM_API_KEY` (same sha256_12 / len / prefix+suffix). Result: **10/10 SPEAKS** (6 Aura voices + greeting/hold/recovery/tool-fallback), each path returning ~100k–290k audio bytes over the **WebSocket** speak path. Prod `AURA_TTS_STREAMING` is **UNSET** (streaming default stays on). Keep `greetingPickup.ts` + `AURA_TTS_STREAMING=false` escape hatch + `verify:tts` gate; do not flip the prod default. Evidence: `docs/planning/RESOLVED.md` (2026-09-14 Aura zero-bytes).
 
 ### 2. Billing — be able to take money
