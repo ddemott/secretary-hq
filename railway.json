@@ -5,6 +5,7 @@
     "buildCommand": "npm install --include=dev && npm run build"
   },
   "deploy": {
+    "preDeployCommand": "npm run db:migrate",
     "startCommand": "node dist/src/index.js",
     "healthcheckPath": "/health",
     "restartPolicyType": "ON_FAILURE",
