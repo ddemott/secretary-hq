@@ -81,6 +81,7 @@ async function registerSoloTenant(req: APIRequestContext): Promise<RegisteredTen
       owner_name: ownerName,
       email,
       password: 'password123',
+      consent_attested: true,
     },
   });
   expect(res.status(), 'register must succeed').toBe(201);

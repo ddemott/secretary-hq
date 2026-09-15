@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict CMpGAyQUij0xo2Cb1HPJLuO79BBogRQ92foKyc88x9aowJhccfgcvdFp2pcaZ1y
+\restrict ehBX8juEUsTxts7KcpX8ywCSHQrhcuTykDwid6s5gme7dcM7xCrVVdYVekox2ML
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4485,6 +4485,10 @@ CREATE TABLE public.tenants (
     website_last_scanned_at timestamp with time zone,
     website_scan_fail_count integer DEFAULT 0 NOT NULL,
     website_scan_last_attempt_at timestamp with time zone,
+    legal_consent_attested_at timestamp with time zone,
+    legal_consent_attested_by uuid,
+    legal_consent_ip inet,
+    legal_consent_user_agent text,
     CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text]))))
 );
 
@@ -4690,6 +4694,34 @@ from auto re-scan once the count reaches WEBSITE_RESCAN_MAX_FAILS (default 5).';
 COMMENT ON COLUMN public.tenants.website_scan_last_attempt_at IS 'Wall-clock of the last website-scan attempt (success or failure). Used with
 website_scan_fail_count for exponential backoff so dead URLs leave the
 oldest-stale queue between retries.';
+
+
+--
+-- Name: COLUMN tenants.legal_consent_attested_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.legal_consent_attested_at IS 'When the /register legal-consent checkbox was attested and the backend accepted the registration. NULL = pre-migration tenant or admin-created (no self-serve attestation to record).';
+
+
+--
+-- Name: COLUMN tenants.legal_consent_attested_by; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.legal_consent_attested_by IS 'user_id of the owner who attested at registration (self-attestation — same person as the new account). FK users(user_id).';
+
+
+--
+-- Name: COLUMN tenants.legal_consent_ip; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.legal_consent_ip IS 'Best-effort request IP captured at registration (x-forwarded-for first hop, else socket IP). Nullable — never blocks registration if unavailable.';
+
+
+--
+-- Name: COLUMN tenants.legal_consent_user_agent; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.legal_consent_user_agent IS 'Best-effort request User-Agent header captured at registration. Nullable — never blocks registration if unavailable.';
 
 
 --
@@ -6594,6 +6626,14 @@ ALTER TABLE ONLY public.tenants
 
 
 --
+-- Name: tenants tenants_legal_consent_attested_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_legal_consent_attested_by_fkey FOREIGN KEY (legal_consent_attested_by) REFERENCES public.users(user_id);
+
+
+--
 -- Name: unanswered_questions unanswered_questions_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7342,5 +7382,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict CMpGAyQUij0xo2Cb1HPJLuO79BBogRQ92foKyc88x9aowJhccfgcvdFp2pcaZ1y
+\unrestrict ehBX8juEUsTxts7KcpX8ywCSHQrhcuTykDwid6s5gme7dcM7xCrVVdYVekox2ML
 

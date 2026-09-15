@@ -5,6 +5,7 @@
  */
 
 import { createHash, randomBytes } from 'crypto';
+import { isIP } from 'net';
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -32,6 +33,12 @@ const RegisterSchema = z.object({
   owner_name: z.string().min(1).max(200),
   email: z.string().email(),
   password: z.string().min(6).max(200),
+  // Backend-enforced mirror of the /register page's legal-consent checkbox.
+  // Must be the literal boolean `true` — missing, false, or any other value
+  // fails Zod validation and the request never reaches createTenantWithOwner.
+  // A client-side-only checkbox left this bypassable via a direct API call,
+  // which defeats the ToS/DPA liability-shift the checkbox exists for.
+  consent_attested: z.literal(true, 'You must agree to the Terms of Service to register'),
 });
 
 const ForgotSchema = z.object({ email: z.string().email() });
@@ -43,6 +50,33 @@ const ResetSchema = z.object({
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Best-effort request IP for audit trails (e.g. legal_consent_ip below).
+ *
+ * `x-forwarded-for` is typed `string | string[] | undefined` by Node's
+ * IncomingHttpHeaders — most proxies join duplicates into one comma-
+ * separated string, but that's a convention, not a guarantee, and a
+ * `.split()` on an array would throw. It is also attacker-influenceable
+ * (a client or misconfigured proxy can put anything in it), and
+ * `legal_consent_ip` is an INET column: a value that isn't a real IP
+ * would fail the INSERT and take the whole registration down with it —
+ * exactly the kind of "audit trail breaks the main flow" failure this
+ * column must never cause. Returns null (never throws) on anything that
+ * doesn't parse as a real IPv4/IPv6 address.
+ */
+function extractRequestIp(req: AppRequest): string | null {
+  const forwarded = req.headers['x-forwarded-for'];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
+  const candidate = first || req.ip || null;
+  return candidate && isIP(candidate) ? candidate : null;
+}
+
+/** Best-effort request User-Agent — same array-safety reasoning as above. */
+function extractUserAgent(req: AppRequest): string | null {
+  const ua = req.headers['user-agent'];
+  return (Array.isArray(ua) ? ua[0] : ua) || null;
 }
 
 export function registerAuthRoutes(
@@ -136,6 +170,13 @@ export function registerAuthRoutes(
       }
       const { business_name, business_type, owner_name, email, password } = parsed.data;
 
+      // Best-effort audit trail for the consent attestation — same
+      // x-forwarded-for-first-hop convention as /forgot-password above and
+      // consent_records.ip_address. Never blocks registration if absent
+      // or malformed (see extractRequestIp).
+      const ip = extractRequestIp(req);
+      const userAgent = extractUserAgent(req);
+
       const result = await createTenantWithOwner(pool, {
         tenantName: business_name,
         businessType: business_type,
@@ -143,6 +184,7 @@ export function registerAuthRoutes(
         ownerPassword: password,
         ownerFullName: owner_name,
         duplicateCheck: 'email',
+        legalConsent: { ip, userAgent },
       });
 
       if (!result.ok) {

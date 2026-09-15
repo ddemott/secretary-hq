@@ -166,6 +166,112 @@ describe('createTenantWithOwner — happy paths', () => {
     expect(userInsertParams[5]).toBeNull();
   });
 
+  it('4a. legalConsent present: stamps legal_consent_* on tenants after the user INSERT', async () => {
+    // WHO: a self-serve /register signup that passed RegisterSchema's
+    //      consent_attested: true gate.
+    // WHAT: BEGIN → SELECT (none) → INSERT tenant → INSERT user →
+    //       UPDATE tenants SET legal_consent_attested_at = NOW(),
+    //       legal_consent_attested_by = <new userId>, ip, user agent →
+    //       copy templates → COMMIT. The attested_by is the NEW user's
+    //       own id — self-serve registration is self-attestation.
+    // WHERE: /register route, which always passes legalConsent.
+    // WHY: Zod validation alone doesn't persist proof consent was given;
+    //      this is the write that actually closes the liability-shift gap.
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [] }, // SELECT user (none)
+      { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
+      { rows: [{ user_id: USER_ID }] }, // INSERT user
+      { rows: [] }, // UPDATE tenants legal_consent_*
+      { rows: [] }, // copy_question_tree_templates_to_tenant
+      { rows: [] }, // COMMIT
+    ]);
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'ConsentCo',
+      businessType: 'salon',
+      ownerEmail: 'consent@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Consent Owner',
+      duplicateCheck: 'email',
+      legalConsent: { ip: '198.51.100.7', userAgent: 'Mozilla/5.0' },
+    });
+
+    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+    expect(consentUpdate).toBeDefined();
+    expect(consentUpdate?.text).toMatch(/UPDATE tenants/i);
+    expect(consentUpdate?.text).toContain('legal_consent_attested_by');
+    expect(consentUpdate?.text).toContain('legal_consent_ip');
+    expect(consentUpdate?.text).toContain('legal_consent_user_agent');
+    expect(consentUpdate?.params).toEqual([USER_ID, '198.51.100.7', 'Mozilla/5.0', TENANT_ID]);
+    // The UPDATE must run AFTER the user INSERT (attested_by needs the
+    // new user's id) and BEFORE COMMIT.
+    const updateIndex = queries.findIndex((q) => /legal_consent_attested_at/i.test(q.text));
+    const userInsertIndex = queries.findIndex((q) => /INSERT INTO users/i.test(q.text));
+    expect(updateIndex).toBeGreaterThan(userInsertIndex);
+    expect(queries[queries.length - 1].text).toBe('COMMIT');
+  });
+
+  it('4b. legalConsent omitted (admin create flow): no legal_consent_* UPDATE is issued', async () => {
+    // WHO: platform admin using POST /tenants/create on someone's behalf.
+    // WHAT: the admin flow never passes legalConsent, so no UPDATE
+    //       touching legal_consent_* columns should ever run — those
+    //       tenants stay NULL, which is the documented, deliberate
+    //       behavior (an admin isn't the business owner attesting
+    //       anything).
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [] }, // SELECT tenants (none)
+      { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
+      { rows: [{ user_id: USER_ID }] }, // INSERT user
+      { rows: [] }, // COMMIT
+    ]);
+
+    await createTenantWithOwner(pool, {
+      tenantName: 'AdminCreated',
+      businessType: 'salon',
+      ownerEmail: 'admincreated@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Admin Created Owner',
+      duplicateCheck: 'tenant_name',
+    });
+
+    const consentUpdate = queries.find((q) => /legal_consent/i.test(q.text));
+    expect(consentUpdate).toBeUndefined();
+  });
+
+  it('4c. legalConsent with null ip/userAgent still stamps attested_at/attested_by', async () => {
+    // WHO: a registration whose request carried no resolvable IP/UA
+    //      (e.g. a test harness or a proxy that stripped headers).
+    // WHAT: the audit-trail fields are best-effort and nullable — a
+    //       missing IP/UA must never block recording that consent WAS
+    //       given, which is the part that actually matters legally.
+    const { pool, queries } = buildMockPool([
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ tenant_id: TENANT_ID }] },
+      { rows: [{ user_id: USER_ID }] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+    ]);
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'NoHeaderCo',
+      businessType: 'salon',
+      ownerEmail: 'noheader@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'No Header Owner',
+      duplicateCheck: 'email',
+      legalConsent: { ip: null, userAgent: null },
+    });
+
+    expect(result.ok).toBe(true);
+    const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+    expect(consentUpdate?.params).toEqual([USER_ID, null, null, TENANT_ID]);
+  });
+
   it('4. bcrypt hash is passed to user INSERT, not the raw password', async () => {
     // WHO: Any caller — both flows must store hashes, never plaintext.
     // WHAT: The user INSERT's password_hash param ($3) must look like a
