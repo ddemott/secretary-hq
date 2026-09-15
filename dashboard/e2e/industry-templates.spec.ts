@@ -123,6 +123,7 @@ async function registerTenant(
       owner_name: ownerName,
       email: `industry-${businessType}-${suffix}@example.test`,
       password: 'password123',
+      consent_attested: true,
     },
   });
   expect(res.status(), `register for business_type=${businessType}`).toBe(201);
