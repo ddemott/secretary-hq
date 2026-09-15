@@ -3,9 +3,7 @@
 providers = ["node"]
 
 [phases.setup]
-# postgresql: psql client needed for railway.json's deploy.preDeployCommand
-# (npm run db:migrate -> scripts/setup-db.sh), which runs before the app starts.
-nixPkgs = ["nodejs_22", "postgresql"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
 cmds = ["npm install --include=dev"]

@@ -73,3 +73,62 @@ jobs:
       - name: Plaintext secret scan
         if: always() && steps.drift.conclusion != 'cancelled'
         run: npx tsx scripts/scan-secrets.ts
+
+  # T-013 (2026-09-15). Prod DB migrations are NOT automated — Railway's
+  # deploy pipeline deploys CODE on every merge to main, but someone has to
+  # remember to separately run `npm run db:migrate` against prod. That step
+  # got skipped across 3+ days of individually-merged PRs (2026-09-11 →
+  # 09-15), leaving prod running without STRICT skill-map links, night-shift
+  # coverage, and past-time/closed-day booking guards until caught by hand.
+  #
+  # A `railway.json` `preDeployCommand` was tried and reverted the same day:
+  # it reuses Railway's own `DATABASE_URL`, which is the intentionally
+  # restricted `app_user` role (no DDL rights, by design — see root
+  # CLAUDE.md's RLS section) and fails on every deploy. Automating this
+  # properly means either a second live prod credential in Railway's env-var
+  # pool or loosening `app_user`'s privileges — both real security tradeoffs
+  # not worth making to solve "someone forgot a manual step." A cheap
+  # reminder solves the actual failure mode (a human forgot) with none of
+  # that cost.
+  migration-reminder:
+    name: Migration reminder
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comment if this PR adds a migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1 --quiet
+          NEW_MIGRATIONS="$(git diff --name-only --diff-filter=A "origin/$BASE_REF"...HEAD -- supabase/migrations/ || true)"
+
+          if [ -z "$NEW_MIGRATIONS" ]; then
+            echo "No new migration files in this PR."
+            exit 0
+          fi
+
+          echo "New migration file(s):"
+          echo "$NEW_MIGRATIONS"
+
+          MARKER="<!-- migration-reminder-bot -->"
+          EXISTING="$(gh pr view "$PR_NUMBER" --json comments --jq ".comments[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)"
+          if [ -n "$EXISTING" ]; then
+            echo "Reminder already posted on this PR, not duplicating."
+            exit 0
+          fi
+
+          FILE_LIST="$(echo "$NEW_MIGRATIONS" | sed 's/^/- `/; s/$/`/')"
+          gh pr comment "$PR_NUMBER" --body "$MARKER
+          ⚠️ **This PR adds a database migration.** Prod migrations are not automated (see \`docs/planning/TODO.md\`) — after this merges, run \`npm run db:migrate\` against prod, or it will silently sit unapplied like the 10 that piled up 2026-09-11 → 09-15.
+
+          $FILE_LIST"
