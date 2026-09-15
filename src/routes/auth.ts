@@ -32,6 +32,12 @@ const RegisterSchema = z.object({
   owner_name: z.string().min(1).max(200),
   email: z.string().email(),
   password: z.string().min(6).max(200),
+  // Backend-enforced mirror of the /register page's legal-consent checkbox.
+  // Must be the literal boolean `true` — missing, false, or any other value
+  // fails Zod validation and the request never reaches createTenantWithOwner.
+  // A client-side-only checkbox left this bypassable via a direct API call,
+  // which defeats the ToS/DPA liability-shift the checkbox exists for.
+  consent_attested: z.literal(true, 'You must agree to the Terms of Service to register'),
 });
 
 const ForgotSchema = z.object({ email: z.string().email() });
@@ -136,6 +142,15 @@ export function registerAuthRoutes(
       }
       const { business_name, business_type, owner_name, email, password } = parsed.data;
 
+      // Best-effort audit trail for the consent attestation — same
+      // x-forwarded-for-first-hop convention as /forgot-password above and
+      // consent_records.ip_address. Never blocks registration if absent.
+      const ip =
+        (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
+        req.ip ||
+        null;
+      const userAgent = req.headers['user-agent'] || null;
+
       const result = await createTenantWithOwner(pool, {
         tenantName: business_name,
         businessType: business_type,
@@ -143,6 +158,7 @@ export function registerAuthRoutes(
         ownerPassword: password,
         ownerFullName: owner_name,
         duplicateCheck: 'email',
+        legalConsent: { ip, userAgent },
       });
 
       if (!result.ok) {
