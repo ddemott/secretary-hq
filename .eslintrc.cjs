@@ -26,10 +26,7 @@ module.exports = {
     sourceType: 'module',
   },
   plugins: ['@typescript-eslint'],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended-type-checked',
-  ],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended-type-checked'],
   ignorePatterns: [
     'dist/',
     'node_modules/',
@@ -39,6 +36,21 @@ module.exports = {
     'agent/',
     'supabase/',
     'docs/',
+    // Runtime-only, never tracked in git: full nested checkouts created by
+    // `git worktree add` for isolated agent sessions (see Agent tool
+    // `isolation: "worktree"`). None of these files are in
+    // tsconfig.eslint.json's `include` (which only matches root-relative
+    // src/**, shared/**, scripts/**, tests/**), so `eslint .` was enumerating
+    // every nested copy's source tree as lint targets it can't actually
+    // resolve a TS project for — pure waste at best. Found 2026-09-14 while
+    // debugging a full-repo `eslint .` OOM during a multi-agent batch with
+    // several worktrees accumulated; this exclusion is correct hygiene
+    // regardless, but did NOT fully explain the OOM on its own (it still
+    // reproduced under an 8GB NODE_OPTIONS override after this fix — some
+    // other factor, not isolated further, accounts for the rest. 16GB
+    // cleared it). Same class of exclusion as the dashboard/agent/supabase/
+    // docs sibling trees above.
+    '.claude/',
     '*.config.js',
     '*.config.cjs',
     '*.config.ts',
@@ -68,28 +80,37 @@ module.exports = {
     // CI. Promote to 'error' per family once the count hits zero — same
     // play as the no-explicit-any cleanup.
     '@typescript-eslint/no-floating-promises': 'error',
-    '@typescript-eslint/no-misused-promises': ['error', {
-      // Allow void-returning async handlers in places that expect
-      // void callbacks (e.g., Fastify route handlers — handled via
-      // `withHandler`, so the floating-promise check is enough).
-      checksVoidReturn: false,
-    }],
+    '@typescript-eslint/no-misused-promises': [
+      'error',
+      {
+        // Allow void-returning async handlers in places that expect
+        // void callbacks (e.g., Fastify route handlers — handled via
+        // `withHandler`, so the floating-promise check is enough).
+        checksVoidReturn: false,
+      },
+    ],
     '@typescript-eslint/await-thenable': 'error',
     '@typescript-eslint/require-await': 'error',
     '@typescript-eslint/restrict-template-expressions': 'error',
     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
     '@typescript-eslint/no-base-to-string': 'error',
-    '@typescript-eslint/no-unused-vars': ['error', {
-      argsIgnorePattern: '^_',
-      varsIgnorePattern: '^_',
-      // Allow unused destructured siblings — common when extracting a
-      // single field: `const { foo, ...rest } = obj`.
-      ignoreRestSiblings: true,
-    }],
-    '@typescript-eslint/consistent-type-imports': ['error', {
-      prefer: 'type-imports',
-      fixStyle: 'inline-type-imports',
-    }],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        // Allow unused destructured siblings — common when extracting a
+        // single field: `const { foo, ...rest } = obj`.
+        ignoreRestSiblings: true,
+      },
+    ],
+    '@typescript-eslint/consistent-type-imports': [
+      'error',
+      {
+        prefer: 'type-imports',
+        fixStyle: 'inline-type-imports',
+      },
+    ],
     // `require()` in .cjs config files is normal; turn off the rule
     // entirely rather than try to scope it per-file.
     '@typescript-eslint/no-var-requires': 'off',
@@ -106,7 +127,13 @@ module.exports = {
     {
       // Tests can use looser rules — fixtures often need any-shapes
       // to model unhappy paths the production types don't allow.
-      files: ['**/*.test.ts', '**/*.spec.ts', 'src/test-utils*.ts', 'tests/utils.ts', 'tests/mock.ts'],
+      files: [
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        'src/test-utils*.ts',
+        'tests/utils.ts',
+        'tests/mock.ts',
+      ],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/no-unsafe-assignment': 'off',
@@ -126,4 +153,4 @@ module.exports = {
       },
     },
   ],
-}
+};

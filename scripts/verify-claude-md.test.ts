@@ -18,6 +18,7 @@ import {
   extractSection,
   stripHistoricalSections,
   resolveBranchRef,
+  cleanGitEnv,
 } from './verify-claude-md';
 
 describe('checkCount', () => {
@@ -418,6 +419,10 @@ describe('stripHistoricalSections', () => {
   });
 });
 
+// `cleanGitEnv` is imported from the production module now — see its
+// doc comment there for why `resolveBranchRef` itself needed the fix, not
+// just this suite's own throwaway-repo setup calls.
+
 describe('resolveBranchRef', () => {
   // Real git, deliberately — this is the one exception to the file header's
   // "no shelling out" rule. The bug this guards (PR #453, 2026-09-13) is a
@@ -434,11 +439,12 @@ describe('resolveBranchRef', () => {
     //      bug being guarded against, not a property this test may lean on).
     const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
     const originalCwd = process.cwd();
+    const gitEnv = cleanGitEnv();
     try {
-      execSync('git init -q -b main .', { cwd: dir });
-      execSync('git config user.email test@example.com', { cwd: dir });
-      execSync('git config user.name test', { cwd: dir });
-      execSync('git commit -q --allow-empty -m init', { cwd: dir });
+      execSync('git init -q -b main .', { cwd: dir, env: gitEnv });
+      execSync('git config user.email test@example.com', { cwd: dir, env: gitEnv });
+      execSync('git config user.name test', { cwd: dir, env: gitEnv });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir, env: gitEnv });
 
       process.chdir(dir);
       expect(resolveBranchRef('main')).toBe('main');
@@ -458,13 +464,14 @@ describe('resolveBranchRef', () => {
     //      leaves behind, without needing a second real remote repo.
     const dir = mkdtempSync(join(tmpdir(), 'verify-claude-md-branchref-'));
     const originalCwd = process.cwd();
+    const gitEnv = cleanGitEnv();
     try {
-      execSync('git init -q -b feature .', { cwd: dir });
-      execSync('git config user.email test@example.com', { cwd: dir });
-      execSync('git config user.name test', { cwd: dir });
-      execSync('git commit -q --allow-empty -m init', { cwd: dir });
-      const sha = execSync('git rev-parse HEAD', { cwd: dir }).toString().trim();
-      execSync(`git update-ref refs/remotes/origin/main ${sha}`, { cwd: dir });
+      execSync('git init -q -b feature .', { cwd: dir, env: gitEnv });
+      execSync('git config user.email test@example.com', { cwd: dir, env: gitEnv });
+      execSync('git config user.name test', { cwd: dir, env: gitEnv });
+      execSync('git commit -q --allow-empty -m init', { cwd: dir, env: gitEnv });
+      const sha = execSync('git rev-parse HEAD', { cwd: dir, env: gitEnv }).toString().trim();
+      execSync(`git update-ref refs/remotes/origin/main ${sha}`, { cwd: dir, env: gitEnv });
 
       process.chdir(dir);
       expect(resolveBranchRef('main')).toBe('origin/main');
