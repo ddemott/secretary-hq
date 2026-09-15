@@ -7,8 +7,8 @@
 -- POST /register call with no consent field at all created a fully
 -- functional tenant with zero record consent was ever given. That defeats
 -- the liability-shift purpose the whole ToS/DPA/consent-checkbox flow
--- exists for (see components/legal/LegalDocLayout.tsx, root CLAUDE.md
--- /dashboard section).
+-- exists for (see dashboard/components/legal/LegalDocLayout.tsx, root
+-- CLAUDE.md /dashboard section).
 --
 -- Same shape as 20260711000000_tenant_call_disclosure.sql's attestation
 -- columns: an attestation that is not recorded is worthless as evidence,
