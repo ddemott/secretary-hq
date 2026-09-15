@@ -100,7 +100,7 @@ function makeKit() {
       library: tenantTrees,
       runtimeConfig: materializeRuntimeConfig(OWNER_FOR_HIRE_PRESET),
     }),
-    realTools: fakes as unknown as llm.ToolContext,
+    realTools: fakes,
     onSelectionChanged: vi.fn(),
     closeCall,
   });

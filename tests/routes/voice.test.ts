@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
+import type * as BillingUsageModule from '../../src/services/billingUsage';
 import { registerVoiceRoutes } from '../../src/routes/voice';
 import { createMockClient, createMockPool, createMockWithTenantClient } from '../mock';
 import type * as BillingUsageModule from '../../src/services/billingUsage';

@@ -202,6 +202,18 @@ export default function AIConfigView() {
           variant={success ? 'success' : 'primary'}
           className="px-6 py-2.5"
           disabled={!dirty || saving || forwardLoops}
+          // The disabled state has three causes (nothing changed, a save in
+          // flight, or the forwarding-loop guard below), and only the third is
+          // ever surprising — "nothing changed" and "saving" are visually
+          // self-evident. Point screen readers at the loop error so its
+          // explanation isn't only reachable by scrolling down the page to
+          // find it.
+          aria-describedby={forwardLoops ? 'forward-loop-error' : undefined}
+          title={
+            forwardLoops
+              ? "Can't save: the forwarding number would loop the call back to the assistant."
+              : undefined
+          }
         >
           {success ? 'Saved!' : 'Save Changes'}
         </Button>
@@ -222,6 +234,11 @@ export default function AIConfigView() {
             <MessageSquare className="w-5 h-5 mr-2" style={{ color: 'var(--accent-soft)' }} />
             First Message (Greeting)
           </h2>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            The very first thing a caller hears, right before the required AI-assistant disclosure
+            below. Keep it short — every extra word here is a word between the caller picking up and
+            getting to what they called about.
+          </p>
           <Input
             value={config.first_message || ''}
             onChange={(e) => handleUpdate({ first_message: e.target.value })}
