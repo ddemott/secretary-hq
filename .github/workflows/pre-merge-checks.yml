@@ -103,7 +103,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # continue-on-error: this job is an informational nudge, never a gate.
+      # gh's default token is read-only on a fork PR (and in some other
+      # restricted contexts), which would make `gh pr comment` fail — that
+      # must never turn a soft reminder into a hard required-check block.
       - name: Comment if this PR adds a migration
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -128,7 +133,11 @@ jobs:
           fi
 
           FILE_LIST="$(echo "$NEW_MIGRATIONS" | sed 's/^/- `/; s/$/`/')"
-          gh pr comment "$PR_NUMBER" --body "$MARKER
-          ⚠️ **This PR adds a database migration.** Prod migrations are not automated (see \`docs/planning/TODO.md\`) — after this merges, run \`npm run db:migrate\` against prod, or it will silently sit unapplied like the 10 that piled up 2026-09-11 → 09-15.
+          BODY="$(cat <<BODYEOF
+          $MARKER
+          ⚠️ **This PR adds a database migration.** Prod migrations are not automated — see \`docs/planning/RESOLVED.md\` (2026-09-15 entry) for why. After this merges, run \`npm run db:migrate\` against prod (\`scripts/setup-db.sh\`), or it will silently sit unapplied like the 10 that piled up 2026-09-11 → 09-15.
 
-          $FILE_LIST"
+          $FILE_LIST
+          BODYEOF
+          )"
+          gh pr comment "$PR_NUMBER" --body "$(echo "$BODY" | sed 's/^[[:space:]]*//')"
