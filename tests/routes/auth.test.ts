@@ -588,6 +588,103 @@ describe('Auth Routes — Handler-Level', () => {
         TENANT_ID_MOCK,
       ]);
     });
+
+    // WHO: a request that arrives through an intermediary that represents
+    //   repeated headers as an array (Node's IncomingHttpHeaders types
+    //   x-forwarded-for/user-agent as `string | string[] | undefined`,
+    //   not just `string | undefined`).
+    // WHAT: a naive `.split(',')` on an array would throw. This must not
+    //   crash the request — it must degrade to a best-effort read instead.
+    // WHY: an automated review of this PR flagged the original cast
+    //   (`as string | undefined`) as unsound against the real header type.
+    it('does not crash when x-forwarded-for / user-agent arrive as arrays (WHO: intermediary that arrays repeated headers | WHAT: registration must still succeed | WHERE: /register header extraction | WHY: audit-trail plumbing must never be able to break the main flow)', async () => {
+      const { mockClient: client, queryResponses, queries } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // SELECT existing — none
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // UPDATE tenants legal_consent_*
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'ArrayHeaderCo',
+        business_type: 'salon',
+        owner_name: 'Array Owner',
+        email: 'arrayheader@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      req.headers = {
+        'x-forwarded-for': ['198.51.100.9', '10.0.0.1'],
+        'user-agent': ['ArrayAgent/2.0'],
+      } as unknown as typeof req.headers;
+      const reply = createMockReply();
+
+      await expect(route.handler(req, reply)).resolves.not.toThrow();
+
+      expect(reply.statusCode).toBe(201);
+      const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+      expect(consentUpdate?.params).toEqual([
+        USER_ID_MOCK,
+        '198.51.100.9',
+        'ArrayAgent/2.0',
+        TENANT_ID_MOCK,
+      ]);
+    });
+
+    // WHO: a request whose x-forwarded-for was set to garbage by a
+    //   misconfigured proxy or a client probing the endpoint directly.
+    // WHAT: legal_consent_ip is an INET column — a non-IP value would
+    //   fail the INSERT and take the whole registration down with it.
+    // WHY: an automated review of this PR flagged that the original code
+    //   could write non-IP values into an INET column. The extraction
+    //   must validate and fall back to null rather than ever writing
+    //   garbage into that column.
+    it('stores null ip when x-forwarded-for is not a real IP address (WHO: malformed/garbage header | WHAT: registration must still succeed, ip column stays null | WHERE: /register header extraction | WHY: an INET column rejects non-IP values, which would 500 the whole registration)', async () => {
+      const { mockClient: client, queryResponses, queries } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // SELECT existing — none
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // UPDATE tenants legal_consent_*
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'GarbageHeaderCo',
+        business_type: 'salon',
+        owner_name: 'Garbage Owner',
+        email: 'garbageheader@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      req.headers = { 'x-forwarded-for': 'unknown', 'user-agent': 'RealBrowser/1.0' };
+      // req.ip on the mock request also isn't a real IP here — nothing
+      // valid to fall back to, which is exactly the case that must
+      // resolve to null rather than throwing or writing garbage.
+      (req as { ip?: string }).ip = 'not-an-ip';
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(201);
+      const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+      expect(consentUpdate?.params).toEqual([
+        USER_ID_MOCK,
+        null,
+        'RealBrowser/1.0',
+        TENANT_ID_MOCK,
+      ]);
+    });
   });
 
   // ── /auth/refresh ───────────────────────────────────────────────────
