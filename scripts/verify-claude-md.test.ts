@@ -18,6 +18,7 @@ import {
   extractSection,
   stripHistoricalSections,
   resolveBranchRef,
+  cleanGitEnv,
 } from './verify-claude-md';
 
 describe('checkCount', () => {
@@ -418,27 +419,9 @@ describe('stripHistoricalSections', () => {
   });
 });
 
-/**
- * When this suite itself runs as a descendant of a real git hook invocation
- * (e.g. `git push` → husky's pre-push → `npm test` → vitest → this file),
- * git has already set `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE` etc. in
- * the ambient environment so hooks know which repo invoked them. `execSync`
- * inherits that env wholesale by default, so `git init`/`git commit` against
- * the THROWAWAY tmpdir below were silently operating on the REAL enclosing
- * repo instead — `cwd` alone does not protect against this, an explicit
- * `GIT_DIR` wins. Same fix, same root cause, as `cleanGitEnv()` in
- * `scripts/git-hooks/pre-push.test.ts` — that file's header documents the
- * original discovery (a real repo's `.git/config` found corrupted with this
- * test's own fake identity after a nested run); this file had the identical
- * unguarded pattern and was never given the same fix.
- */
-function cleanGitEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('GIT_')) delete env[key];
-  }
-  return env;
-}
+// `cleanGitEnv` is imported from the production module now — see its
+// doc comment there for why `resolveBranchRef` itself needed the fix, not
+// just this suite's own throwaway-repo setup calls.
 
 describe('resolveBranchRef', () => {
   // Real git, deliberately — this is the one exception to the file header's
