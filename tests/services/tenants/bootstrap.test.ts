@@ -30,11 +30,10 @@ function buildMockPool(responses: Array<{ rows: unknown[]; rowCount?: number }>)
     release: vi.fn(),
   };
 
-  const pool = {
-    connect: vi.fn(async () => client),
-  } as unknown as Pool;
+  const connect = vi.fn(async () => client);
+  const pool = { connect } as unknown as Pool;
 
-  return { pool, client, queries };
+  return { pool, client, queries, connect };
 }
 
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -479,7 +478,7 @@ describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
   it.each(['dental', 'Dental Office', 'veterinary-clinic', 'chiropractic', 'optometry', 'Family Medical Group', 'HIPAA Provider'])(
     '10. rejects business_type %j before opening a connection — no BEGIN, no INSERT',
     async (businessType) => {
-      const { pool, queries } = buildMockPool([]);
+      const { pool, queries, connect } = buildMockPool([]);
 
       const result = await createTenantWithOwner(pool, {
         tenantName: 'Should Not Exist',
@@ -496,6 +495,7 @@ describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
       });
       // No connection was ever checked out — the denylist check runs before
       // `pool.connect()`, so nothing here can leak a pool slot either.
+      expect(connect).not.toHaveBeenCalled();
       expect(queries).toHaveLength(0);
     }
   );

@@ -18,6 +18,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { AppFastifyInstance } from '../types/fastify';
 import { errorsTotal } from '../services/metrics';
 import { captureException } from '../services/sentry';
+import { SUPER_ADMIN_TENANT_ID } from '../constants';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -212,7 +213,7 @@ export function requireSuperAdmin(req: AppRequest, reply: FastifyReply): boolean
     void reply.status(401).send({ success: false, error: 'Authentication required' });
     return false;
   }
-  if (req.auth.tenant_id !== '00000000-0000-0000-0000-000000000000') {
+  if (req.auth.tenant_id !== SUPER_ADMIN_TENANT_ID) {
     void reply.status(403).send({ success: false, error: 'Forbidden: super-admin only' });
     return false;
   }
@@ -220,22 +221,26 @@ export function requireSuperAdmin(req: AppRequest, reply: FastifyReply): boolean
 }
 
 /**
- * Guards owner-only mutations: returns true if the caller's role is
- * 'owner' or the caller is the platform super-admin, sends 401 (no auth)
- * or 403 (authenticated but not an owner) and returns false otherwise.
+ * Guards owner-only routes: returns true if the caller's role is 'owner'
+ * or the caller is the platform super-admin, sends 401 (no auth) or 403
+ * (authenticated but not an owner) and returns false otherwise. Used on
+ * both mutating routes and a handful of sensitive reads (e.g.
+ * `GET /tenants/:id/config`, which exposes the call-transfer destination
+ * and attested legal-disclosure text) where a front-desk login should not
+ * see or change the value.
  *
  * Dashboard tab visibility (`OutlookLayout.tsx`'s `isFrontDeskOnly`) hides
  * these actions from front_desk logins, but that is client-side only — a
  * front-desk JWT could call the route directly. This is the server-side
  * enforcement. Added 2026-09-16 after an audit found a broad class of
- * mutating routes relied on the UI hiding alone (docs/planning/TODO.md).
+ * routes relied on the UI hiding alone (docs/planning/TODO.md).
  */
 export function requireOwnerRole(req: AppRequest, reply: FastifyReply): boolean {
   if (!req.auth) {
     void reply.status(401).send({ success: false, error: 'Authentication required' });
     return false;
   }
-  if (req.auth.tenant_id === '00000000-0000-0000-0000-000000000000') return true;
+  if (req.auth.tenant_id === SUPER_ADMIN_TENANT_ID) return true;
   if (req.auth.role !== 'owner') {
     void reply.status(403).send({ success: false, error: 'Forbidden: owner role required' });
     return false;
