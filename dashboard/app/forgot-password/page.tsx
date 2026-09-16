@@ -23,8 +23,17 @@ export default function ForgotPasswordPage() {
       if (res.ok) {
         setSubmitted(true);
       } else {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? 'Something went wrong. Please try again.');
+        const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        if (res.status === 429) {
+          // Fastify rate-limit (3 requests / hour on this route) throws its own
+          // error shape: `error` is the generic HTTP reason phrase ("Too Many
+          // Requests"), `message` carries the actual "retry in N" wait time.
+          // Showing the bare reason phrase left a locked-out owner with no
+          // idea how long to wait before trying again.
+          setError(data.message ?? 'Too many requests. Please wait a while and try again.');
+        } else {
+          setError(data.error ?? 'Something went wrong. Please try again.');
+        }
       }
     } catch {
       setError('Connection error. Please try again.');
@@ -120,6 +129,7 @@ export default function ForgotPasswordPage() {
                 <button
                   type="submit"
                   disabled={loading}
+                  aria-busy={loading}
                   className="w-full py-4 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
