@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-14 for filesystem/package facts (29 top-level route modules, 202 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5) and live suite totals (backend 3,147 / 263 files, dashboard 1,126 / 104 files, agent 1,048 / 61 files — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
+**Last verified:** 2026-09-15 for filesystem/package facts (29 top-level route modules, 204 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5) and live suite totals (backend 3,194 / 267 files, dashboard 1,138 / 104 files, agent 1,061 / 61 files — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -46,7 +46,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 27 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (13 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
 - **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 202 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
+- **DB**: Postgres + pgvector on Supabase, 204 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -70,7 +70,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
 │   └── 104 Vitest test files     React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               203 SQL migrations
+│   ├── migrations/               204 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts
@@ -777,7 +777,7 @@ Every component consumes CSS custom properties (`--bg`, `--fg`, `--accent`, `--b
 
 ### 16.7 Test harness
 
-Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,126 passing tests** across **104 files** (2026-09-14). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
+Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,138 passing tests** across **104 files** (2026-09-15). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
 
 ### 16.8 Dev server
 
@@ -817,13 +817,13 @@ All async work is **best-effort**. If a sync fails, the user-facing operation st
 
 ### 18.2 Backend (`npm test`)
 
-Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-09-14): 3,147 passing across 263 files, full green.** The 2026-08-18 `rlsIsolation` / `app_user` failure is gone — `scripts/start-test-db.sh` + `scripts/setup-test-db.ts` bootstrap the role.
+Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-09-15): 3,194 passing across 267 files, full green.** The 2026-08-18 `rlsIsolation` / `app_user` failure is gone — `scripts/start-test-db.sh` + `scripts/setup-test-db.ts` bootstrap the role.
 
-### 18.3 Dashboard (`cd dashboard && npm test` — 1,126 passing / 104 files on 2026-09-14)
+### 18.3 Dashboard (`cd dashboard && npm test` — 1,138 passing / 104 files on 2026-09-15)
 
 Vitest + React Testing Library (jsdom). Renders components with all 4 providers (Session, Theme, Vocabulary, AppointmentDetail). Tests interactions (click, keyboard, form submission), accessibility (role/tabIndex/aria attributes), and error states.
 
-### 18.4 Agent (`cd agent && npm test` — 1,048 passing / 61 files on 2026-09-14)
+### 18.4 Agent (`cd agent && npm test` — 1,061 passing / 61 files on 2026-09-15)
 
 Vitest. Covers the LiveKit Agents worker: prompt assembly, the 27 defined tool schemas (`agent/src/tools/`), `toolsClient`, transcript recording, call-outcome tracking, the bounded post-call summary, and the TTS dead-air fallback.
 
