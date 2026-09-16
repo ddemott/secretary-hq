@@ -54,7 +54,10 @@ import { registerVersionHistoryRoutes } from '../../src/routes/versionHistory';
 // Test-only request shape: the preHandler injects tenantId (normally set by
 // tenantMiddleware after JWT validation) for requireTenantId to read. Same
 // wiring as the mocked src/versionHistory.test.ts.
-type TenantRequest = FastifyRequest & { tenantId?: string };
+type TenantRequest = FastifyRequest & {
+  tenantId?: string;
+  auth?: { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+};
 
 /**
  * One entry per table in the route's VERSIONED_TABLES / PK_COLUMN_BY_TABLE
@@ -170,6 +173,14 @@ beforeAll(async () => {
       const headerTenant = request.headers['x-tenant-id'];
       if (typeof headerTenant === 'string' && headerTenant) {
         request.tenantId = headerTenant;
+        // Owner by default — restore-fields/soft-delete/restore/copy-fields
+        // are owner-gated (requireOwnerRole, 2026-09-16 role-check audit).
+        request.auth = {
+          tenant_id: headerTenant,
+          user_id: '00000000-0000-0000-0000-000000000001',
+          email: 'owner@test.local',
+          role: 'owner',
+        };
       }
     });
     registerVersionHistoryRoutes(app, pool, createWithTenantClient(pool));
