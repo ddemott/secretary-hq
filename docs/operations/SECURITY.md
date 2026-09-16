@@ -2,7 +2,7 @@
 
 **Last full review:** 2026-05-09 (security review pass 1 + pass 2 — webhook signature verification, RLS coverage, JWT/refresh, AGENT_SECRET rotation)
 
-**Since then, verified separately and folded in below:** the anonymous `?tenant_id=` read/write/delete hole (2026-05-21), the 2026-07-13→08-02 RLS-is-decorative finding and its closure — production now connects as `app_user`, which cannot bypass policies, probed directly on 2026-08-02 (38/38 tables, 52 policies) and re-probed in CI by `tests/regression/rlsIsolation.test.ts`.
+**Since then, verified separately and folded in below:** the anonymous `?tenant_id=` read/write/delete hole (2026-05-21), the 2026-07-13→08-02 RLS-is-decorative finding and its closure — production now connects as `app_user`, which cannot bypass policies, probed directly on 2026-08-02 (38/38 tables, 52 policies; both counts are point-in-time and have since moved to 42 tables / 61 policies — see the banner below) and re-probed in CI by `tests/regression/rlsIsolation.test.ts`.
 
 This is a baseline of the production-surface security posture so future audits start from a known shape rather than re-deriving it. Each section names the threat, the current control, where it lives, and any gaps left open with a rationale.
 
@@ -32,8 +32,16 @@ Out of scope (not a multi-tenant SaaS concern at this stage): DDoS, application-
 > ```
 > GET /ready  ->  { "rls_enforced": true, "db_role": "app_user", ... }   # the process's OWN connection
 > pg_roles    ->  app_user  rolsuper=f  rolbypassrls=f
-> 38 of 38 tables with RLS enabled · 52 policies · 0 reading current_setting() raw
+> 38 of 38 tables with RLS enabled · 52 policies · 0 reading current_setting() raw   (as of 2026-08-02)
 > ```
+>
+> **That table/policy count is a snapshot, not a fixed fact — re-measured 2026-09-16 at 42 tables / 61
+> policies** (`SELECT count(*) FROM pg_tables WHERE schemaname='public' AND rowsecurity` /
+> `SELECT count(*) FROM pg_policies WHERE schemaname='public'` against a fully-migrated local DB, 204/204
+> migrations applied), and it moves in both directions as tables are added, dropped, or merged — same
+> drift `docs/operations/DEPLOYMENT.md` carried the stale "38" figure for until corrected in #515. Don't
+> pin either number as current in a future edit; re-run those two queries, or read
+> `tests/regression/rlsIsolation.test.ts`, which re-proves isolation (not the count) in CI on every build.
 >
 > **How to verify it — and how not to.** `SET ROLE app_user` from a `postgres` session is REFUSED, so a
 > probe written that way silently runs as `postgres`, which bypasses RLS. Its "cross-tenant rows" prove
@@ -88,7 +96,7 @@ Out of scope (not a multi-tenant SaaS concern at this stage): DDoS, application-
 
 - `tenants.id` is a UUID; every tenant-scoped table has a `tenant_id` column FK'd to it with `ON DELETE CASCADE`.
 - `set_tenant_context(uuid)` sets a session-local GUC (`app.current_tenant_id`); `withTenantClient(tenantId, fn)` in `src/database/index.ts` wraps every tenant-scoped route in a checkout-set-fn-clear-release lifecycle.
-- All 29 tenant-scoped tables **declare** `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` + a policy of the shape `tenant_id::text = current_setting('app.current_tenant_id', true)`. **They are enforced — see the banner above.** (`message_delivery_status` got its RLS + 2 policies in migration `20260724000050`; it had been enabled with ZERO policies in prod, i.e. deny-all, and functioned only because the app role bypassed. `schema_migrations` is the one deliberate exemption: no tenant dimension, and RLS on it deny-alls the migration runner under `app_user` — see migration `20260802000000`. NB the schema-alignment guard compares tables and columns, **not RLS flags**, so RLS drift between prod and `baseline.sql` is still something only a direct probe will catch.)
+- Every tenant-scoped table **declares** `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` + a policy of the shape `tenant_id::text = current_setting('app.current_tenant_id', true)` (42 tables as of 2026-09-16, up from an earlier "29" figure this line pinned for months — see the re-measurement note in the banner above; re-verify with the same `pg_tables` query rather than trusting either number going forward). **They are enforced — see the banner above.** (`message_delivery_status` got its RLS + 2 policies in migration `20260724000050`; it had been enabled with ZERO policies in prod, i.e. deny-all, and functioned only because the app role bypassed. `schema_migrations` is the one deliberate exemption: no tenant dimension, and RLS on it deny-alls the migration runner under `app_user` — see migration `20260802000000`. NB the schema-alignment guard compares tables and columns, **not RLS flags**, so RLS drift between prod and `baseline.sql` is still something only a direct probe will catch.)
 - The application middleware adds defense in depth: `tenantMiddleware` in `src/middleware.ts` rejects any request that supplies `?tenant_id=<other>` or `body.tenant_id=<other>` differing from the JWT's `tenant_id` (unless caller is super-admin). Closed cross-tenant override gap on 2026-05-06.
 - **Unauthenticated tenant-route access closed 2026-05-21.** The 2026-05-06 override guard only fired when a `jwtTenant` already existed — it never covered the case of _no JWT at all_. An anonymous request (no `Authorization` header) with `?tenant_id=<uuid>` (or a body `tenant_id`) had `tenantMiddleware`'s `candidate || jwtTenant` resolve to the attacker-supplied value; `requireTenantId` accepted it (it also read `body.tenant_id` directly); `withTenantClient` scoped RLS to it; and the route returned that tenant's data — read **and** write **and** delete — with zero authentication. RLS faithfully scoped to the attacker-chosen tenant; RLS was never authentication. Fix: `tenantMiddleware` now rejects any non-public, non-tenant-exempt request lacking `req.auth` with `401` before any tenant resolution; `requireTenantId` no longer falls back to `body.tenant_id` and returns `401` (not the misleading `400`) when there is no authenticated session. Public routes (login, password reset, demo, metrics, OAuth callbacks, HMAC-signed webhooks) and secret-authed `/agent-tools/*` (tenant-exempt) are unaffected.
 - `/tenants/*` admin routes gated by `requireSuperAdmin()` (added 2026-05-06).
