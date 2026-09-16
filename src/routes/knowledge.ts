@@ -575,11 +575,7 @@ export function registerKnowledgeRoutes(
       if (!tenantId) return;
 
       // Owner-only: this is an admin/debug surface over the whole KB.
-      if (req.auth && req.auth.tenant_id !== SUPER_ADMIN_TENANT_ID && req.auth.role !== 'owner') {
-        return reply
-          .status(403)
-          .send({ success: false, error: 'Only owners can use the answer debugger' });
-      }
+      if (!requireOwnerRole(req, reply)) return;
 
       const parsed = explainSchema.safeParse(req.body);
       if (!parsed.success) {

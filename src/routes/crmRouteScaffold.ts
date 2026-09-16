@@ -33,6 +33,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { createOAuthCallbackHandler } from '../services/oauthCallbackFactory';
@@ -74,6 +75,10 @@ export function registerCrmScaffoldRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only (mirrors billing.ts's checkout/portal and
+      // provisioning.ts's activate/deactivate): connecting a real external
+      // OAuth account is a business-configuration decision, not front-desk.
+      if (!requireOwnerRole(req, reply)) return;
 
       if (!config.isEnabled()) {
         return reply.status(503).send({
@@ -129,6 +134,8 @@ export function registerCrmScaffoldRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only: disconnecting a real external OAuth account.
+      if (!requireOwnerRole(req, reply)) return;
 
       await withTenantClient(tenantId, (client) =>
         disconnectCrmIntegration(client, tenantId, provider)
@@ -145,6 +152,8 @@ export function registerCrmScaffoldRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only: triggers a full bidirectional sync with a real external system.
+      if (!requireOwnerRole(req, reply)) return;
 
       const result = await config.fullSync(pool, tenantId);
       return reply.send({ success: true, ...result });
