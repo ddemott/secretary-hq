@@ -275,4 +275,58 @@ describe('ProfileView', () => {
       );
     });
   });
+
+  describe('UX review 2026-09-15 (owner-judgment pass)', () => {
+    test('HAPPY: the Appearance section says the theme choice is browser-local, not account-wide', () => {
+      // WHO: an owner who picks a theme here, then opens the dashboard on a
+      //      second device or browser.
+      // WHAT: the page header calls this page "Your account details and
+      //      preferences", but setTheme() (ThemeContext.tsx) only ever writes
+      //      to localStorage — there is no backend column and nothing syncs
+      //      it, verified by grep (zero "theme" references in dashboard/lib/
+      //      api.ts or src/routes/users.ts). Without a caption, the "account
+      //      preferences" framing implies persistence this control doesn't
+      //      have, and the owner lands back on Navy elsewhere with no
+      //      explanation.
+      // WHERE: ProfileView "Appearance" fieldset.
+      // WHY: honest scope beats a silent surprise — same "don't overclaim"
+      //      rule the Speaking-pace caption follows on AIConfigView (#492).
+      render(<ProfileView />);
+      expect(screen.getByText(/saved to this browser only.*won.t follow you/i)).toBeInTheDocument();
+    });
+
+    test('HAPPY: the Change password link explains what clicking it does', () => {
+      // WHO: an owner in the Security card deciding whether to click "Change
+      //      password", which navigates away from the dashboard entirely.
+      // WHAT: the other two rows in this fieldset each explain themselves
+      //      (the session-expiry fact; the log-out-everywhere caption below
+      //      the danger button) — this link was the one control with zero
+      //      indication of what happens next before leaving the page.
+      // WHERE: ProfileView "Security" fieldset, the Change password row.
+      // WHY: a control with no explanation next to two that have one reads
+      //      as inconsistent and leaves the owner guessing whether they're
+      //      about to be signed out, asked for their current password, or
+      //      something else entirely.
+      render(<ProfileView />);
+      expect(
+        screen.getByText(/emails a reset link to your account address.*30 minutes/i)
+      ).toBeInTheDocument();
+      // The caption sits with the link, not buried in the log-out paragraph.
+      const link = screen.getByRole('link', { name: /change password/i });
+      expect(link).toHaveAttribute('href', '/forgot-password');
+    });
+
+    test('SAD: the Appearance caption stays put across a theme switch (no reappearing/duplicating copy)', () => {
+      // WHO: an owner clicking through multiple themes in one sitting.
+      // WHAT: the new caption is static guidance, not state-dependent — it
+      //      must render exactly once regardless of which theme is active,
+      //      unlike the aria-pressed state which does change per-button.
+      // WHERE: ProfileView "Appearance" fieldset.
+      // WHY: guards against a future edit accidentally duplicating the
+      //      caption per theme button instead of once for the section.
+      render(<ProfileView />);
+      fireEvent.click(screen.getByText('Light'));
+      expect(screen.getAllByText(/saved to this browser only/i)).toHaveLength(1);
+    });
+  });
 });
