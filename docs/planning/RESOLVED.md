@@ -4,7 +4,7 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
-## 2026-09-16 — Systemic no-server-side-role-check audit: fixed in one batch (PRs #512/#508/consolidated sweep)
+## 2026-09-16 — Systemic no-server-side-role-check audit: fixed in one batch (PR #522, closing the findings tracked as PRs #512/#508/the consolidated sweep)
 
 Closes out the full "no server-side role check is systemic" finding (roady's 2026-09-16 audit sweep, `docs/planning/TODO.md`): every route below trusted `OutlookLayout.tsx`'s client-side `isFrontDeskOnly` tab-hiding as its only access control, so a front-desk JWT (devtools, saved request replay) could call any of them directly and it succeeded. Fix is the same shape everywhere — a new shared `requireOwnerRole(req, reply)` guard (`src/middleware/fastify-middleware.ts`, alongside `requireAuth`/`requireSuperAdmin`: 401 if unauthenticated, 403 if authenticated but not `role === 'owner'`, bypassed for the platform super-admin tenant) — added as the first line of every listed handler, matching the pre-existing pattern at `/customers/import`.
 
