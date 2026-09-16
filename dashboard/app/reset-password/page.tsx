@@ -37,10 +37,21 @@ function ResetPasswordInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, new_password: password }),
       });
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        message?: string;
+      };
       if (res.ok && data.success) {
         setDone(true);
         setTimeout(() => router.push('/dashboard'), 2500);
+      } else if (res.status === 429) {
+        // Fastify rate-limit (5 attempts / 15 minutes on this route) throws its
+        // own error shape: `error` is the generic HTTP reason phrase ("Too
+        // Many Requests"), `message` carries the actual "retry in N" wait
+        // time. The bare reason phrase left the caller with no idea how long
+        // to wait.
+        setError(data.message || 'Too many attempts. Please wait a while and try again.');
       } else {
         setError(data.error || 'Reset failed. The link may have expired.');
       }
@@ -81,10 +92,23 @@ function ResetPasswordInner() {
             <>
               {error && (
                 <div
+                  id="reset-password-error"
                   role="alert"
                   className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm rounded-r-md"
                 >
-                  {error}
+                  <p>{error}</p>
+                  {/* The two password fields and the submit button are all disabled
+                      whenever there's no token — a locked-out state with no route
+                      forward other than scrolling down to the small "Back to login"
+                      link and re-clicking "Forgot password?" from scratch. Give the
+                      direct next step right where the reason is explained. */}
+                  {!token && (
+                    <p className="mt-2">
+                      <a href="/forgot-password" className="font-semibold hover:underline">
+                        Request a new reset link
+                      </a>
+                    </p>
+                  )}
                 </div>
               )}
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -119,6 +143,8 @@ function ResetPasswordInner() {
                       placeholder="At least 6 characters"
                       autoComplete="new-password"
                       disabled={!token}
+                      aria-describedby={!token ? 'reset-password-error' : undefined}
+                      title={!token ? 'Missing reset token — request a new link below.' : undefined}
                     />
                   </div>
                 </div>
@@ -153,12 +179,17 @@ function ResetPasswordInner() {
                       placeholder="Re-enter password"
                       autoComplete="new-password"
                       disabled={!token}
+                      aria-describedby={!token ? 'reset-password-error' : undefined}
+                      title={!token ? 'Missing reset token — request a new link below.' : undefined}
                     />
                   </div>
                 </div>
                 <button
                   type="submit"
                   disabled={loading || !token}
+                  aria-busy={loading}
+                  aria-describedby={!token ? 'reset-password-error' : undefined}
+                  title={!token ? 'Missing reset token — request a new link below.' : undefined}
                   className="w-full py-4 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
