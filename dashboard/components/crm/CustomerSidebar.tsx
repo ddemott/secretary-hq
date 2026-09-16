@@ -236,9 +236,6 @@ export function CustomerSidebar({
 
         <div
           ref={listRef}
-          id="crm-customer-list"
-          role="listbox"
-          aria-label="Customers"
           className="flex-1 overflow-y-auto pb-20 md:pb-0"
           onKeyDown={(e) => {
             if (filteredCustomers.length === 0) return;
@@ -312,16 +309,18 @@ export function CustomerSidebar({
               )}
             </div>
           )}
-          {filteredCustomers.map((c, idx) => (
-            <CustomerListItem
-              key={c.customer_id}
-              customer={c}
-              isSelected={selectedCustomer?.customer_id === c.customer_id}
-              isFocused={focusedIdx === idx}
-              onClick={() => onSelectCustomer(c)}
-              onMouseEnter={() => setFocusedIdx(-1)}
-            />
-          ))}
+          <div id="crm-customer-list" role="listbox" aria-label="Customers">
+            {filteredCustomers.map((c, idx) => (
+              <CustomerListItem
+                key={c.customer_id}
+                customer={c}
+                isSelected={selectedCustomer?.customer_id === c.customer_id}
+                isFocused={focusedIdx === idx}
+                onClick={() => onSelectCustomer(c)}
+                onMouseEnter={() => setFocusedIdx(-1)}
+              />
+            ))}
+          </div>
         </div>
       </section>
       <ConfirmModal {...confirmState} onClose={closeConfirm} />
