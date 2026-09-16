@@ -138,17 +138,15 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
   5. **Swap the 5 Railway env vars to live values** — live secret key, live price IDs, and the **new** `STRIPE_WEBHOOK_SECRET` from step 4. The moment this lands, the test-mode endpoint's events start failing signature verification; that is expected, and it is why part A must be finished first.
 - [ ] **(Dale)** **Stripe Tax** (after round-trip verified): enable Stripe Tax in Stripe dashboard → Tax → Settings; register nexus for IL + customer states; set `STRIPE_AUTO_TAX=true` on Railway. (Code done — `automatic_tax` gated behind the flag.)
 
-### 3. Deploy gate — protect main
-
-### 4. Security housekeeping
+### 3. Security housekeeping
 
 - [ ] **(Dale)** **Rotate the Railway team token** created 2026-06-12 — it was pasted into a Claude session. Burn + reissue.
 - [ ] **(Dale)** **Rotate the Supabase DB password** — exposed in a session transcript 2026-07-11.
 
-### 5. Legal / business (long lead time — start early)
+### 4. Legal / business (long lead time — start early)
 
 - [ ] **(Dale)** Open an **LLC bank account** for Thinking Hammer LLC (required before Stripe payouts).
-- [ ] **(Dale)** Add **TCPA-compliant SMS opt-in** consent language at booking time — required before any confirmation texts.
+- [ ] **(Dale)** Add **TCPA-compliant SMS opt-in** consent language at booking time — required before any confirmation texts. Draft copy ready for review: `docs/product/TCPA_SMS_CONSENT_COPY.md` (2026-09-16, PR #507) — dashboard checkbox/disclosure + voice-agent spoken-offer script, reusing the existing `consent_records`/`ConsentService` path. Draft only, pending Dale/legal sign-off; not yet wired into any UI or prompt.
 - [ ] **(Dale)** **E&O insurance** before the first paying customer (~$800–1,200/yr; Next/Hiscox).
 - [ ] **(Dale)** **Cyber Liability insurance** before the first paying customer (often bundled with E&O).
 
