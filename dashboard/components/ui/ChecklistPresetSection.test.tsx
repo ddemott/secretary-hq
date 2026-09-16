@@ -142,6 +142,21 @@ describe('ChecklistPresetSection', () => {
     );
   });
 
+  test('SAD: a failed initial load shows an error, not a fabricated derived preset', async () => {
+    // WHO: an owner opening Business Settings on a bad connection.
+    // WHAT: getConfig rejects, so `config` stays null. Falling straight
+    //       through to the "derived" default preset name would read as this
+    //       tenant's real (unconfigured) checklist rather than a load error.
+    // WHERE: ChecklistPresetSection's initial fetch effect.
+    // WHY: same class of gap as AnalyticsView's AiCostPanel — a real fetch
+    //      failure and an honest default must not render identically.
+    mockGetConfig.mockRejectedValue(new Error('network error'));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn.t load the call checklist/);
+    expect(screen.getByLabelText('Preset')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save checklist' })).toBeDisabled();
+  });
+
   test('HAPPY: marking callback number required posts required_node_ids', async () => {
     render(<ChecklistPresetSection tenantId="t1" />);
     await screen.findByText('Salon front desk');

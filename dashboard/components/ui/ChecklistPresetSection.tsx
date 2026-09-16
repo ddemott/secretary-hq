@@ -36,6 +36,7 @@ export default function ChecklistPresetSection({
 }: ChecklistPresetSectionProps) {
   const [config, setConfig] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<string>('derived');
   const [disabledBlocks, setDisabledBlocks] = useState<string[]>([]);
@@ -49,6 +50,7 @@ export default function ChecklistPresetSection({
     if (!tenantId) return;
     let active = true;
     setLoading(true);
+    setLoadError(false);
     Api.tenants
       .getConfig(tenantId)
       .then((cfg) => {
@@ -63,7 +65,14 @@ export default function ChecklistPresetSection({
         setWording(cfg.checklist_overrides?.wording ?? {});
       })
       .catch(() => {
-        if (active) setConfig(null);
+        // config === null after this only ever means the fetch failed — every
+        // real tenant has one — so render an explicit error rather than
+        // silently falling through to the "derived" defaults below, which
+        // would read as this tenant's actual (unconfigured) checklist.
+        if (active) {
+          setConfig(null);
+          setLoadError(true);
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -178,6 +187,12 @@ export default function ChecklistPresetSection({
         </div>
       </div>
 
+      {loadError && (
+        <p className="text-xs mb-3" style={{ color: 'var(--danger)' }} role="alert">
+          Couldn&rsquo;t load the call checklist. Refresh the page to try again.
+        </p>
+      )}
+
       <Select
         label="Preset"
         value={draft}
@@ -200,6 +215,8 @@ export default function ChecklistPresetSection({
           className="text-sm font-bold"
           data-testid="checklist-preset-name"
           style={{ color: 'var(--text-primary)' }}
+          role={loading ? 'status' : undefined}
+          aria-live={loading ? 'polite' : undefined}
         >
           {loading ? 'Loading…' : checklistPresetLabel(runtime.preset_id)}
         </div>

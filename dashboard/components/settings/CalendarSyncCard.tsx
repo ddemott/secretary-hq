@@ -19,6 +19,7 @@ export function CalendarSyncCard({ tenantId, isSolo }: CalendarSyncCardProps) {
     external_calendar_id: string;
   } | null>(null);
   const [calLoading, setCalLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -46,8 +47,13 @@ export function CalendarSyncCard({ tenantId, isSolo }: CalendarSyncCardProps) {
     try {
       const data = await Api.calendar.getSettings(tenantId);
       setCalendarSettings(data);
+      setLoadError(false);
     } catch {
-      console.error('Failed to fetch calendar settings');
+      // A failed status check previously fell through to the same "not
+      // connected" buttons a genuinely disconnected tenant sees — a
+      // connected owner whose fetch merely failed would be told, wrongly,
+      // that nothing is hooked up.
+      setLoadError(true);
     }
   }
 
@@ -107,6 +113,12 @@ export function CalendarSyncCard({ tenantId, isSolo }: CalendarSyncCardProps) {
           </Badge>
         )}
       </div>
+
+      {loadError && (
+        <p className="text-xs mb-3" style={{ color: 'var(--danger)' }} role="alert">
+          Couldn&rsquo;t check your calendar connection. Refresh the page to try again.
+        </p>
+      )}
 
       {!calendarSettings ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

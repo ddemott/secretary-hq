@@ -24,6 +24,7 @@ export default function BusinessSettingsView() {
   const refreshVocabulary = useVocabularyRefresh();
 
   const [teamSize, setTeamSize] = useState<number | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [personaName, setPersonaName] = useState('');
   const [savedPersonaName, setSavedPersonaName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -62,6 +63,13 @@ export default function BusinessSettingsView() {
       setSavedLogoUrl(config.logo_url ?? '');
     } catch {
       setTeamSize(null);
+    } finally {
+      // Distinct from `teamSize === null`, which is ALSO the value on a
+      // fetch failure — without this flag the loading gate below never
+      // cleared on error and the whole settings page (every card, not just
+      // team-size-dependent ones) was stuck on "Loading settings..." forever
+      // instead of falling back to team mode as intended.
+      setConfigLoaded(true);
     }
   }
 
@@ -127,12 +135,20 @@ export default function BusinessSettingsView() {
     }
   }
 
-  // Show loading until we know team_size
-  if (teamSize === null && !staticLoading) {
+  // Show loading until the tenant config fetch has settled (success or
+  // failure). Same gating shape as before (skip if static data is still
+  // loading), just keyed on "has the fetch settled" instead of "did it
+  // return a team size" — the latter was indistinguishable from a fetch
+  // that failed and never will return one.
+  if (!configLoaded && !staticLoading) {
     return (
       <div
         className="flex-1 flex items-center justify-center"
         style={{ backgroundColor: 'var(--bg-surface)' }}
+        role="status"
+        aria-live="polite"
+        aria-label="Loading settings"
+        aria-busy="true"
       >
         <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
           Loading settings...
