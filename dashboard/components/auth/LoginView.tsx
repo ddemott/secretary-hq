@@ -39,6 +39,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         token?: string;
         role?: string;
         error?: string;
+        message?: string;
       };
 
       if (response.ok && data.success && data.tenant_id && data.user_name) {
@@ -53,6 +54,15 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         // localStorage. 2026-05-28 UX audit #5.
         if (data.role) localStorage.setItem('userRole', data.role);
         onLoginSuccess({ tenant_id: data.tenant_id, user_name: data.user_name, role: data.role });
+      } else if (response.status === 429) {
+        // Fastify's rate-limit plugin (5 attempts / 5 minutes on /login) throws
+        // its own error shape, not ours: `error` is just the generic HTTP
+        // reason phrase ("Too Many Requests"), while `message` carries the
+        // actually useful "retry in N minutes" the plugin computed. Showing
+        // the bare reason phrase told a locked-out owner nothing about how
+        // long to wait — the same "control with no explanation" gap as an
+        // unexplained disabled button.
+        setError(data.message || 'Too many attempts. Please wait a few minutes and try again.');
       } else {
         setError(data.error || 'Sign in failed. Please try again.');
       }
@@ -178,6 +188,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="w-full py-4 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center"
               style={{ backgroundColor: 'var(--accent)' }}
             >

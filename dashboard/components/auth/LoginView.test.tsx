@@ -81,6 +81,37 @@ describe('LoginView copy', () => {
     expect(alert).toHaveTextContent(/couldn't connect/i);
     expect(alert).not.toHaveTextContent(/backend server/i);
   });
+
+  test("SAD: a rate-limited login shows the plugin's actual wait time, not the bare HTTP reason phrase", async () => {
+    // WHO: An owner who mistyped their password a few times in a row
+    // WHAT: /login is rate-limited (5 attempts / 5 min); Fastify's
+    //        @fastify/rate-limit plugin answers 429 with its OWN error shape —
+    //        `error: "Too Many Requests"` (a generic HTTP reason phrase) and
+    //        `message: "Rate limit exceeded, retry in 1 minute"` (the actually
+    //        useful part). The old code read only `data.error`, so a locked-out
+    //        owner saw "Too Many Requests" with no idea how long to wait —
+    //        a control (the form) in a temporarily-blocked state with no
+    //        explanation of what to do next.
+    // WHY: don't show a dead-end message when the response carries a better one
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: () =>
+        Promise.resolve({
+          statusCode: 429,
+          error: 'Too Many Requests',
+          message: 'Rate limit exceeded, retry in 1 minute',
+        }),
+    });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@b.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/retry in 1 minute/i);
+    expect(alert).not.toHaveTextContent(/^too many requests$/i);
+  });
 });
 
 describe('LoginView affordances', () => {
@@ -157,5 +188,30 @@ describe('LoginView accessibility', () => {
     // Before error: no alert in DOM
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     // (Error appearance is covered by the "connection error" test above)
+  });
+
+  test('HAPPY: submit button carries aria-busy while a login request is in flight', async () => {
+    // WHO: Screen-reader user submitting the form
+    // WHAT: aria-busy flips true while loading, so assistive tech can announce
+    //        the busy state even though the button's own label already changed
+    // WHY: a plain visual-only "Signing in..." label change is not guaranteed
+    //        to be announced by every screen reader/browser combination —
+    //        aria-busy is the explicit, standards-backed signal
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise(() => {
+          /* never resolves */
+        })
+    );
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: /sign in/i });
+    expect(btn).toHaveAttribute('aria-busy', 'false');
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@b.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pw' } });
+    fireEvent.click(btn);
+
+    expect(await screen.findByText(/signing in/i)).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-busy', 'true');
   });
 });
