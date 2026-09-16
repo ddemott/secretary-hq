@@ -20,7 +20,9 @@ import type { Employee } from '../../lib/types';
 export default function EmployeeManagementView() {
   const tenantId = useActiveTenantId();
   const vocab = useVocabulary();
-  const { employees, services, loading, error, refresh } = useStaticData(tenantId);
+  const { employees, services, loading, error, refresh } = useStaticData(tenantId, {
+    customers: false,
+  });
   const [mappings, setMappings] = useState<{ service_id: string; employee_id?: string }[]>([]);
 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);

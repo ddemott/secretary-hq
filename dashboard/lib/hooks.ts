@@ -34,13 +34,30 @@ export function useFormState<T extends Record<string, unknown>>(initialState: T)
   return { form, setField, setForm, reset, isDirty };
 }
 
+export interface UseStaticDataOptions {
+  /**
+   * Whether to fetch customers alongside resources/employees/services/skills.
+   * Defaults to true. Customer rows carry PII (name/phone/email/address/notes),
+   * so screens that never render customer data should opt out rather than pull
+   * every customer as a side effect of loading staff/shift/resource state —
+   * this was firing on a super-admin's "all businesses" sentinel tenant with
+   * zero server-side scoping (audit finding 2026-09-16). `EmployeeManagementView`
+   * / `ShiftManagementView` / `ResourceManagerView` pass `{ customers: false }`.
+   */
+  customers?: boolean;
+}
+
 /**
  * Hook to fetch and manage static data for the active tenant.
  * Automatically uses the active tenant ID from SessionContext.
  */
-export function useStaticData(tenantIdOverride?: string | null) {
+export function useStaticData(
+  tenantIdOverride?: string | null,
+  options?: UseStaticDataOptions
+) {
   const contextTenantId = useActiveTenantId();
   const tenantId = tenantIdOverride !== undefined ? tenantIdOverride : contextTenantId;
+  const includeCustomers = options?.customers !== false;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -59,7 +76,7 @@ export function useStaticData(tenantIdOverride?: string | null) {
     setError(null);
 
     const [cRes, rRes, eRes, sRes, skRes] = await Promise.allSettled([
-      Api.customers.list(tenantId),
+      includeCustomers ? Api.customers.list(tenantId) : Promise.resolve([]),
       Api.resources.list(tenantId),
       Api.employees.list(tenantId),
       Api.services.list(tenantId),
@@ -80,7 +97,7 @@ export function useStaticData(tenantIdOverride?: string | null) {
     }
 
     setLoading(false);
-  }, [tenantId]);
+  }, [tenantId, includeCustomers]);
 
   useEffect(() => {
     void fetchData();

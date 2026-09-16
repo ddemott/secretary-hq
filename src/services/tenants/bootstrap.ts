@@ -27,6 +27,7 @@
 
 import type { Pool } from 'pg';
 import { verticalForBusinessType } from '../../../shared/checklistPresetDerivation';
+import { isHipaaVertical } from '../../../shared/hipaaVerticalDenylist';
 
 export interface CreateTenantWithOwnerParams {
   tenantName: string;
@@ -70,6 +71,18 @@ export async function createTenantWithOwner(
   pool: Pool,
   params: CreateTenantWithOwnerParams
 ): Promise<CreateTenantWithOwnerResult> {
+  // HIPAA verticals are permanently excluded (root CLAUDE.md Build
+  // Principles). RegisterSchema checks this too for the self-serve
+  // path, but the admin create flow (POST /tenants/create) has no
+  // equivalent Zod schema, so this is the one check both paths share —
+  // "independent of the dashboard picker" per docs/planning/TODO.md.
+  if (isHipaaVertical(params.businessType)) {
+    return {
+      ok: false,
+      conflictMessage: 'This business type is not supported on this platform.',
+    };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

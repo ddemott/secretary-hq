@@ -421,6 +421,41 @@ describe('Auth Routes — Handler-Level', () => {
       expect(reply.statusCode).toBe(400);
     });
 
+    // WHO: someone posting straight to the API, bypassing the picker
+    //   entirely (the picker UI normally constrains business_type via a
+    //   <select>, but falls back to free text on a GET /templates failure).
+    // WHAT: RegisterSchema rejects a HIPAA-adjacent business_type before any
+    //   DB work, independent of the dashboard picker.
+    // WHERE: /register Zod validation (shared/hipaaVerticalDenylist.ts).
+    // WHY: root CLAUDE.md Build Principles — "HIPAA verticals are
+    //   permanently excluded... anything that surfaces them gets deleted
+    //   on sight." A direct API call previously bypassed that entirely.
+    it.each(['dental', 'Dental Office', 'veterinary-clinic', 'chiropractic', 'optometry', 'Family Medical Group', 'HIPAA Provider'])(
+      'returns 400 for HIPAA-adjacent business_type %j (WHO: direct API caller | WHAT: no <select> constraint | WHERE: /register | WHY: HIPAA verticals are permanently excluded)',
+      async (businessType) => {
+        const { mockClient: client } = createMockClient();
+        const pool = createMockPool(client);
+        const { app, routes } = captureRoutes();
+        registerAuthRoutes(app, pool, generateToken);
+
+        const route = findRoute(routes, '/register');
+        const req = createMockRequest({
+          business_name: 'Shop',
+          business_type: businessType,
+          owner_name: 'Owner',
+          email: 'hipaa-test@test.com',
+          password: 'secure123',
+          consent_attested: true,
+        });
+        const reply = createMockReply();
+
+        await route.handler(req, reply);
+
+        expect(reply.statusCode).toBe(400);
+        expect(reply.body.error).toBe('Validation failed');
+      }
+    );
+
     // WHO: someone posting straight to the API, bypassing the /register
     //   page's checkbox entirely (e.g. curl, a scripted signup).
     // WHAT: RegisterSchema requires consent_attested to be the literal

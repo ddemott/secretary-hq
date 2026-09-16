@@ -86,6 +86,7 @@ interface MockQuery {
 function buildApp(opts: {
   poolResponses: Array<{ rows: unknown[]; rowCount?: number }>;
   injectTenantId?: boolean; // default true
+  role?: 'owner' | 'front_desk'; // default 'owner'
 }): { app: FastifyInstance; queries: MockQuery[] } {
   const queries: MockQuery[] = [];
   const responses = [...opts.poolResponses];
@@ -111,7 +112,7 @@ function buildApp(opts: {
         tenant_id: TENANT_ID,
         user_id: 'u1',
         email: 'owner@test.com',
-        role: 'owner',
+        role: opts.role ?? 'owner',
       };
     });
   }
@@ -232,6 +233,15 @@ describe('POST /billing/checkout', () => {
     const res = await post(app, '/billing/checkout', { plan: 'solo' });
 
     expect(res.statusCode).toBe(401);
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs (2026-09-16 role-check audit)', async () => {
+    const { app, queries } = buildApp({ poolResponses: [], role: 'front_desk' });
+    const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json<{ success: boolean }>().success).toBe(false);
+    expect(queries).toHaveLength(0);
   });
 });
 
@@ -445,6 +455,16 @@ describe('POST /billing/portal', () => {
     const { app } = buildApp({ poolResponses: [], injectTenantId: false });
     const res = await post(app, '/billing/portal', {});
     expect(res.statusCode).toBe(401);
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs (2026-09-16 role-check audit)', async () => {
+    const { app, queries } = buildApp({ poolResponses: [], role: 'front_desk' });
+    const res = await post(app, '/billing/portal', {});
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json<{ success: boolean }>().success).toBe(false);
+    expect(queries).toHaveLength(0);
+    expect(mockPortalCreate).not.toHaveBeenCalled();
   });
 });
 

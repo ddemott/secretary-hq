@@ -122,6 +122,28 @@ describe('UtilizationHeatmap', () => {
     expect(screen.queryByText('Lighter = more open time')).not.toBeInTheDocument();
   });
 
+  test('HAPPY: the loading pulse is announced to assistive tech, not silent', () => {
+    // WHO: a screen-reader user opening the Analytics tab before the
+    //        utilization fetch resolves.
+    // WHAT: the loading placeholder is a bare animate-pulse div with no text
+    //        content — without aria-busy/aria-label a screen reader announces
+    //        nothing while the panel is mid-fetch, same defect class as the
+    //        AnalyticsSkeleton fix (2026-09-16 UX pass).
+    // WHERE: UtilizationHeatmap's loading branch.
+    // WHY: state-dependent UI needs an aria contract or it reads as a blank
+    //      panel to a non-visual user.
+    mockApi.analytics.getUtilization.mockResolvedValue({ cells: [] });
+
+    render(<UtilizationHeatmap />);
+
+    // Label-based query tied to intent (not a bare attribute selector, which
+    // would silently match any OTHER aria-busy element a future change adds
+    // to this panel — Copilot review, 2026-09-16).
+    const pulse = screen.getByLabelText('Loading utilization data');
+    expect(pulse).toBeInTheDocument();
+    expect(pulse).toHaveAttribute('aria-busy', 'true');
+  });
+
   test('SAD: a failed fetch degrades to a quiet inline message, never a crash', async () => {
     // WHO: an owner whose session expired mid-view or whose network dropped.
     // WHAT: a rejected getUtilization sets the error branch — the panel stays

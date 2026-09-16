@@ -181,6 +181,43 @@ describe('POST /provisioning/activate — configured', () => {
       current_status: 'provisioning',
     });
   });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
+    // WHO: a front-desk login trying to purchase a real Telnyx number
+    //      directly (devtools, saved request replay).
+    // WHAT: requireOwnerRole fires before the ActivateSchema parse / DB read.
+    // WHY: 2026-09-16 role-check audit — this route previously had no
+    //      role check at all (docs/planning/TODO.md).
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000002',
+      tenant_id: TENANT_ID,
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/activate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(handle.queries).toHaveLength(0);
+  });
+
+  it('SECURITY: an unauthenticated request is rejected 401', async () => {
+    handle.auth.current = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/activate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(handle.queries).toHaveLength(0);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -227,6 +264,27 @@ describe('POST /provisioning/deactivate', () => {
     expect(body.warnings[0]).toContain('pn-abc');
 
     await errorHandle.app.close();
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
+    // WHY: 2026-09-16 role-check audit — deactivating takes the tenant's
+    //      live inbound line down; this must not be a front-desk operation.
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000002',
+      tenant_id: TENANT_ID,
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/deactivate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(handle.queries).toHaveLength(0);
   });
 });
 
@@ -304,6 +362,22 @@ describe('GET /provisioning/status', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ forwarded_from_phone: '+16082175303' });
+  });
+
+  it('SOFT-DELETE: lookup query filters out is_deleted tenants', async () => {
+    // WHO: a status poll against an already soft-deleted tenant
+    // WHAT: the SELECT must scope out is_deleted rows, matching the
+    //       soft-delete choke point every other tenant-scoped route enforces
+    // WHY: audit finding 2026-09-16 — this query bypassed createWithTenantClient
+    handle.queryResponses.push({ rows: [] });
+
+    await app.inject({
+      method: 'GET',
+      url: `/provisioning/status?tenant_id=${TENANT_ID}`,
+    });
+
+    const selectQuery = handle.queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    expect(selectQuery?.text).toContain('is_deleted = false');
   });
 });
 

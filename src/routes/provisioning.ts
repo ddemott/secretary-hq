@@ -6,7 +6,13 @@
 import type { Pool } from 'pg';
 import type { AppFastifyInstance } from '../types/fastify';
 import { z } from 'zod';
-import { withHandler, logEvent, logError, type AppRequest } from '../middleware/fastify-middleware';
+import {
+  withHandler,
+  logEvent,
+  logError,
+  requireOwnerRole,
+  type AppRequest,
+} from '../middleware/fastify-middleware';
 import { type TelnyxNumbersClient } from '../services/telnyxNumbers';
 import { activatePhone, deactivatePhone } from '../services/provisioningService';
 import { sendPortRequestEmail } from '../services/communications/systemEmail';
@@ -33,6 +39,9 @@ export function registerProvisioningRoutes(
   app.post(
     '/provisioning/activate',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): purchases a real Telnyx
+      // number at real recurring cost — not a front-desk operation.
+      if (!requireOwnerRole(req, reply)) return;
       if (!telnyx) {
         return reply.status(503).send({
           success: false,
@@ -111,6 +120,9 @@ export function registerProvisioningRoutes(
   app.post(
     '/provisioning/deactivate',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): takes the tenant's live
+      // inbound line down — not a front-desk operation.
+      if (!requireOwnerRole(req, reply)) return;
       if (!telnyx) {
         return reply.status(503).send({
           success: false,
@@ -172,7 +184,7 @@ export function registerProvisioningRoutes(
         // forwarding card needs to know the currently-saved value to render
         // "already configured" vs. the empty prompt, without a second fetch.
         const res = await client.query(
-          'SELECT phone_status, inbound_phone, telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1',
+          'SELECT phone_status, inbound_phone, telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
           [tenant_id]
         );
         if (res.rows.length === 0) {

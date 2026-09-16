@@ -24,7 +24,7 @@ export default function ResourceManagerView() {
     services,
     loading: staticLoading,
     refresh,
-  } = useStaticData(tenantId);
+  } = useStaticData(tenantId, { customers: false });
   const [resources, setResources] = useState<Resource[]>([]);
   const [mappings, setMappings] = useState<{ service_id: string; resource_id?: string }[]>([]);
   const [loading, setLoading] = useState(true);

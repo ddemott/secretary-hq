@@ -5,6 +5,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { assertRowAffected, requireValidUUID } from './routeHelpers';
@@ -86,6 +87,9 @@ export function registerKnowledgeRoutes(
   app.delete(
     '/knowledge/:id',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
@@ -106,6 +110,9 @@ export function registerKnowledgeRoutes(
   app.post(
     '/knowledge/ingest',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const data = await req.file();
       if (!data) return reply.status(400).send({ success: false, error: 'No file uploaded' });
 
@@ -150,6 +157,9 @@ export function registerKnowledgeRoutes(
   app.post(
     '/knowledge/add',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
@@ -196,6 +206,9 @@ export function registerKnowledgeRoutes(
   app.put(
     '/knowledge/:id',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
@@ -271,6 +284,9 @@ export function registerKnowledgeRoutes(
   app.patch(
     '/knowledge/unanswered/:id/resolve',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
       const { id } = req.params as { id: string };
@@ -292,6 +308,9 @@ export function registerKnowledgeRoutes(
   app.post(
     '/knowledge/import-website',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
@@ -340,6 +359,9 @@ export function registerKnowledgeRoutes(
   app.post(
     '/knowledge/import-document',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const data = await req.file();
       if (!data) return reply.status(400).send({ success: false, error: 'No file uploaded' });
 
@@ -482,6 +504,9 @@ export function registerKnowledgeRoutes(
   app.patch(
     '/knowledge/suggestions/:id',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): the live voice agent reads
+      // policy answers from this KB on every call.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
       const { id } = req.params as { id: string };

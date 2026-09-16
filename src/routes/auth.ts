@@ -19,6 +19,7 @@ import {
 import { sendPasswordResetEmail } from '../services/communications/systemEmail';
 import { errorsTotal } from '../services/metrics';
 import { createTenantWithOwner } from '../services/tenants/bootstrap';
+import { isHipaaVertical } from '../../shared/hipaaVerticalDenylist';
 
 const RESET_TTL_MINUTES = 30;
 
@@ -27,19 +28,29 @@ const LoginSchema = z.object({
   password: z.string().min(1),
 });
 
-const RegisterSchema = z.object({
-  business_name: z.string().min(1).max(200),
-  business_type: z.string().min(1).max(50),
-  owner_name: z.string().min(1).max(200),
-  email: z.string().email(),
-  password: z.string().min(6).max(200),
-  // Backend-enforced mirror of the /register page's legal-consent checkbox.
-  // Must be the literal boolean `true` — missing, false, or any other value
-  // fails Zod validation and the request never reaches createTenantWithOwner.
-  // A client-side-only checkbox left this bypassable via a direct API call,
-  // which defeats the ToS/DPA liability-shift the checkbox exists for.
-  consent_attested: z.literal(true, 'You must agree to the Terms of Service to register'),
-});
+const RegisterSchema = z
+  .object({
+    business_name: z.string().min(1).max(200),
+    business_type: z.string().min(1).max(50),
+    owner_name: z.string().min(1).max(200),
+    email: z.string().email(),
+    password: z.string().min(6).max(200),
+    // Backend-enforced mirror of the /register page's legal-consent checkbox.
+    // Must be the literal boolean `true` — missing, false, or any other value
+    // fails Zod validation and the request never reaches createTenantWithOwner.
+    // A client-side-only checkbox left this bypassable via a direct API call,
+    // which defeats the ToS/DPA liability-shift the checkbox exists for.
+    consent_attested: z.literal(true, 'You must agree to the Terms of Service to register'),
+  })
+  // Server-side mirror of the "HIPAA verticals are permanently excluded" rule
+  // (root CLAUDE.md). The picker UI normally constrains business_type via a
+  // <select>, but falls back to free text on a GET /templates failure, and a
+  // direct API call bypasses the picker entirely. shared/hipaaVerticalDenylist.ts
+  // is the one enforcement point independent of the UI.
+  .refine((data) => !isHipaaVertical(data.business_type), {
+    message: 'This business type is not supported on this platform.',
+    path: ['business_type'],
+  });
 
 const ForgotSchema = z.object({ email: z.string().email() });
 
@@ -161,6 +172,11 @@ export function registerAuthRoutes(
   // POST /register - Public self-service tenant + user creation
   app.post(
     '/register',
+    // Unauthenticated and does real work per call (2 INSERTs, bcrypt hash,
+    // consent UPDATE, template-copy RPC) — floodable, and the 409 "account
+    // already exists" response is otherwise an unthrottled email-enumeration
+    // oracle. Same limit as /login, the other unauthenticated credential route.
+    { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } },
     withHandler(async (req: AppRequest, reply) => {
       const parsed = RegisterSchema.safeParse(req.body);
       if (!parsed.success) {

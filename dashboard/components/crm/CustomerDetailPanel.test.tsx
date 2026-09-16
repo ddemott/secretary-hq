@@ -183,6 +183,42 @@ describe('CustomerDetailPanel — appointment history reactivate affordance', ()
     expect(onReactivate).toHaveBeenCalledTimes(1); // unchanged — still the one from above
   });
 
+  it('HAPPY: an upcoming appointment renders its start time via the shared formatTimeFromISO() helper', () => {
+    // WHO: an operator viewing a customer with a scheduled upcoming appointment.
+    // WHAT: the appointment's time renders in 12-hour AM/PM form, produced by
+    //       the shared lib/utils.ts formatTimeFromISO() helper rather than a
+    //       duplicated inline toLocaleTimeString() call.
+    // WHEN: upcomingAppointments has one row.
+    // WHERE: CustomerAppointmentsSection's upcoming-appointments block.
+    // WHY: pins the switch to the shared formatter — same visible output,
+    //      one less place this dashboard's time formatting could drift.
+    const upcoming = {
+      appointment_id: 'appt-upcoming',
+      start_time: '2026-04-20T18:30:00Z',
+      end_time: '2026-04-20T19:00:00Z',
+      status: 'scheduled',
+      description: 'Color touch-up',
+      resource_name: 'Chair 2',
+    };
+    renderPanel({ upcomingAppointments: [upcoming] });
+
+    const expectedTime = new Date(upcoming.start_time).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    // Custom matcher: the date + "at" + time are separate sibling text nodes
+    // inside one <p>, so match on that <p>'s own direct text (RTL's default
+    // per-node text, not full recursive textContent) rather than a single
+    // exact text node — recursive textContent would also match every
+    // ancestor element and throw on "multiple elements found".
+    expect(
+      screen.getByText(
+        (content, element) => element?.tagName === 'P' && content.includes(expectedTime)
+      )
+    ).toBeInTheDocument();
+  });
+
   it('A11Y: the mobile back button has an accessible name and closes the panel', () => {
     // WHO: a screen-reader / keyboard user on mobile. WHAT: the icon-only back
     //       button was announced as just "button"; it now carries an aria-label

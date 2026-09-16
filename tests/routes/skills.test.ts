@@ -165,6 +165,28 @@ describe('POST /skills/create', () => {
     );
     expect(dataQueries).toHaveLength(0);
   });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000002',
+      tenant_id: TENANT_ID,
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/skills/create',
+      payload: { tenant_id: TENANT_ID, name: 'tire-install' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    const dataQueries = handle.queries.filter(
+      (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
+    );
+    expect(dataQueries).toHaveLength(0);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────
@@ -223,6 +245,24 @@ describe('DELETE /skills/:name', () => {
     const res = await app.inject({ method: 'DELETE', url: '/skills/tire-install' });
 
     expect(res.statusCode).toBe(401);
+    const dataQueries = handle.queries.filter(
+      (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
+    );
+    expect(dataQueries).toHaveLength(0);
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000002',
+      tenant_id: TENANT_ID,
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({ method: 'DELETE', url: '/skills/tire-install' });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
     const dataQueries = handle.queries.filter(
       (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
     );
