@@ -125,6 +125,8 @@ export default function UtilizationHeatmap({ range }: UtilizationHeatmapProps) {
         <div
           className="h-24 rounded-lg animate-pulse"
           style={{ backgroundColor: 'var(--bg-raised)' }}
+          aria-label="Loading utilization data"
+          aria-busy="true"
         />
       ) : error ? (
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
