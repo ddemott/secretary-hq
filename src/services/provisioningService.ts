@@ -104,7 +104,10 @@ export async function activatePhone(
       tenant_id: string;
       name: string;
       phone_status: string;
-    }>(`SELECT tenant_id, name, phone_status FROM tenants WHERE tenant_id = $1`, [tenantId]);
+    }>(
+      `SELECT tenant_id, name, phone_status FROM tenants WHERE tenant_id = $1 AND is_deleted = false`,
+      [tenantId]
+    );
 
     if (tenantRes.rows.length === 0) {
       return { status: 'not_found', tenant_id: tenantId };
@@ -265,9 +268,10 @@ export async function deactivatePhone(
     const tenantRes = await client.query<{
       telnyx_phone_number_id: string | null;
       forwarded_from_phone: string | null;
-    }>('SELECT telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1', [
-      tenantId,
-    ]);
+    }>(
+      'SELECT telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+      [tenantId]
+    );
 
     if (tenantRes.rows.length === 0) {
       return { status: 'not_found' };

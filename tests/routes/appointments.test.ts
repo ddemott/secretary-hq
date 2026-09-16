@@ -596,14 +596,20 @@ describe('GET /appointments', () => {
     expect(dataQueries[0].params[0]).toBe(TENANT_ID);
   });
 
-  it('HAPPY: super-admin gets cross-tenant appointments (no tenant filter)', async () => {
+  it('HAPPY: super-admin with explicit all_tenants=true opt-in gets cross-tenant appointments', async () => {
     // WHO: platform super-admin viewing all appointments across tenants
-    // WHAT: route widens the query — drops the a.tenant_id = $N filter
-    // WHEN: caller's tenant_id matches SUPER_ADMIN_TENANT_ID
-    // WHERE: `if (!isSuperAdmin)` branch in appointments.ts (line ~83)
-    // WHY: the super-admin dashboard needs cross-tenant visibility for
-    //       support; this is the one route where dropping tenant scoping
-    //       is intentional, gated on the well-known super-admin tenant ID
+    //      (the "all businesses" scheduler flow)
+    // WHAT: route widens the query — drops the a.tenant_id = $N filter —
+    //       but ONLY when the caller explicitly opts in with ?all_tenants=true
+    // WHEN: caller's tenant_id matches SUPER_ADMIN_TENANT_ID AND the opt-in
+    //       query param is present
+    // WHERE: `if (isSuperAdmin)` gate in appointments.ts
+    // WHY: the super-admin dashboard needs cross-tenant visibility for its
+    //      one legitimate use (matching a customer to their tenant when
+    //      creating an appointment with no tenant selected), but that must
+    //      be a deliberate request, not the default for ANY request that
+    //      happens to be running with no managed tenant selected — audit
+    //      finding 2026-09-16
     handle.auth.current = {
       user_id: '00000000-0000-0000-0000-000000000001',
       tenant_id: SUPER_ADMIN_TENANT_ID,
@@ -612,7 +618,10 @@ describe('GET /appointments', () => {
     };
     handle.queryResponses.push({ rows: [{ appointment_id: APPOINTMENT_ID }] });
 
-    const res = await app.inject({ method: 'GET', url: '/appointments' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/appointments?all_tenants=true',
+    });
 
     expect(res.statusCode).toBe(200);
     const dataQueries = handle.queries.filter(
@@ -622,6 +631,32 @@ describe('GET /appointments', () => {
     expect(dataQueries[0].text).not.toContain('a.tenant_id = $');
     // Super-admin path goes through withPoolClient (pool.connect), not withTenantClient
     // The mock pool delegates pool.query to mockClient.query so we still capture it.
+  });
+
+  it('SAD: super-admin WITHOUT the all_tenants opt-in gets an empty list, not a cross-tenant dump', async () => {
+    // WHO: any request running as the super-admin sentinel tenant that did
+    //      NOT explicitly ask for cross-tenant data — e.g. a stale/legacy
+    //      caller, or a side-effect fetch that never intended to widen scope
+    // WHAT: without ?all_tenants=true, the route must not query at all and
+    //       must not leak any tenant's appointments (PII included via the
+    //       joined customer object)
+    // WHY: audit finding 2026-09-16 — this used to be the DEFAULT behavior
+    //      for any super-admin request with no managed tenant selected
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000001',
+      tenant_id: SUPER_ADMIN_TENANT_ID,
+      email: 'admin@platform',
+      role: 'owner',
+    };
+
+    const res = await app.inject({ method: 'GET', url: '/appointments' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+    const dataQueries = handle.queries.filter(
+      (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
+    );
+    expect(dataQueries).toHaveLength(0);
   });
 
   it('HAPPY: applies start_date and end_date filters when provided', async () => {
@@ -1572,10 +1607,15 @@ describe('POST /appointments/:id/update', () => {
 describe('POST /appointments/:id/send-self-service-links', () => {
   const OLD_DASHBOARD_URL = process.env.DASHBOARD_URL;
   const OLD_BACKEND_PUBLIC_URL = process.env.BACKEND_PUBLIC_URL;
+  const OLD_ENABLE_SMS = process.env.ENABLE_SMS;
 
   beforeEach(() => {
     process.env.DASHBOARD_URL = 'https://example.secretaryhq.com';
     delete process.env.BACKEND_PUBLIC_URL;
+    // SMS is globally OFF by default (pending 10DLC) — these tests exercise
+    // the send path, so opt in explicitly. The dedicated ENABLE_SMS=false
+    // test below overrides this per-test.
+    process.env.ENABLE_SMS = 'true';
   });
 
   afterEach(() => {
@@ -1589,6 +1629,39 @@ describe('POST /appointments/:id/send-self-service-links', () => {
     } else {
       process.env.BACKEND_PUBLIC_URL = OLD_BACKEND_PUBLIC_URL;
     }
+    if (OLD_ENABLE_SMS === undefined) {
+      delete process.env.ENABLE_SMS;
+    } else {
+      process.env.ENABLE_SMS = OLD_ENABLE_SMS;
+    }
+  });
+
+  it('SAD: returns 503 and never calls sendSms when ENABLE_SMS is off (default)', async () => {
+    // WHO: owner tapping "Send Links" while the platform's SMS capability is
+    //      off (pending 10DLC registration — the default and current prod
+    //      state for the whole platform)
+    // WHAT: the route refuses before any DB/SMS work, with a clear message,
+    //       instead of reporting success for a text that can never arrive
+    // WHY: audit finding 2026-09-16 — Telnyx accepts the send and reports
+    //      success anyway (carrier-side error 40010), so without this gate
+    //      the staff member sees a green success toast for a dead text
+    delete process.env.ENABLE_SMS;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/appointments/${APPOINTMENT_ID}/send-self-service-links`,
+    });
+
+    expect(res.statusCode).toBe(503);
+    const body = JSON.parse(res.body) as { success: boolean; error: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/sms/i);
+    expect(sendSms).not.toHaveBeenCalled();
+    // No DB queries either — the gate fires before any lookup.
+    const dataQueries = handle.queries.filter(
+      (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
+    );
+    expect(dataQueries).toHaveLength(0);
   });
 
   it('HAPPY: sends SMS with cancel + reschedule links and returns 200', async () => {

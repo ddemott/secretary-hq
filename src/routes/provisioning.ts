@@ -172,7 +172,7 @@ export function registerProvisioningRoutes(
         // forwarding card needs to know the currently-saved value to render
         // "already configured" vs. the empty prompt, without a second fetch.
         const res = await client.query(
-          'SELECT phone_status, inbound_phone, telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1',
+          'SELECT phone_status, inbound_phone, telnyx_phone_number_id, forwarded_from_phone FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
           [tenant_id]
         );
         if (res.rows.length === 0) {

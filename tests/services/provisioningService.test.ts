@@ -56,10 +56,14 @@ interface MockQueryRow {
   forwarded_from_phone?: string | null;
 }
 
-function buildMockPool(responses: Array<{ rows: MockQueryRow[]; rowCount?: number }>): Pool {
+function buildMockPool(
+  responses: Array<{ rows: MockQueryRow[]; rowCount?: number }>,
+  queryLog?: { text: string; params: unknown[] }[]
+): Pool {
   let callIndex = 0;
   const mockClient = {
-    query: vi.fn(async () => {
+    query: vi.fn(async (text: string, params?: unknown[]) => {
+      queryLog?.push({ text, params: params ?? [] });
       const res = responses[callIndex++] ?? { rows: [], rowCount: 0 };
       return res;
     }),
@@ -273,6 +277,27 @@ describe('activatePhone', () => {
     }
     expect(telnyx.client.searchAvailable).not.toHaveBeenCalled();
   });
+
+  it('SOFT-DELETE: tenant lookup query filters out is_deleted tenants', async () => {
+    // WHO: super-admin clicking "Activate Phone" against an already
+    //      soft-deleted tenant (e.g. a stale admin tab)
+    // WHAT: the tenant-lookup SELECT must scope out is_deleted rows, so a
+    //       soft-deleted tenant reads as not_found rather than resuming
+    //       real Telnyx purchase/assign against a deleted business
+    // WHERE: activatePhone's tenant-lookup query
+    // WHY: audit finding 2026-09-16 — this route bypassed the soft-delete
+    //      choke point createWithTenantClient enforces everywhere else,
+    //      so a deleted tenant's line could be purchased/activated for real
+    const telnyx = buildMockTelnyxClient();
+    const queryLog: { text: string; params: unknown[] }[] = [];
+    const pool = buildMockPool([{ rows: [] }], queryLog);
+
+    const result = await activatePhone(pool, telnyx, TENANT_ID);
+
+    expect(result.status).toBe('not_found');
+    expect(queryLog[0].text).toContain('is_deleted = false');
+    expect(telnyx.client.searchAvailable).not.toHaveBeenCalled();
+  });
 });
 
 // ── deactivatePhone ───────────────────────────────────────────────────────────
@@ -355,5 +380,20 @@ describe('deactivatePhone', () => {
     }
     // Deactivation still proceeds — this is a warning, not a block.
     expect(telnyx.client.release).toHaveBeenCalledWith('pn-abc');
+  });
+
+  it('SOFT-DELETE: tenant lookup query filters out is_deleted tenants', async () => {
+    // Same rationale as activatePhone's soft-delete test — a deactivate
+    // call against an already soft-deleted tenant should read as
+    // not_found rather than releasing a real Telnyx number on its behalf.
+    const telnyx = buildMockTelnyxClient();
+    const queryLog: { text: string; params: unknown[] }[] = [];
+    const pool = buildMockPool([{ rows: [] }], queryLog);
+
+    const result = await deactivatePhone(pool, telnyx, TENANT_ID);
+
+    expect(result.status).toBe('not_found');
+    expect(queryLog[0].text).toContain('is_deleted = false');
+    expect(telnyx.client.release).not.toHaveBeenCalled();
   });
 });

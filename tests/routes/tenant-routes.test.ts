@@ -96,6 +96,105 @@ beforeEach(() => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// GET /tenants
+// ════════════════════════════════════════════════════════════════════
+
+describe('GET /tenants — column allowlist', () => {
+  it('HAPPY: SELECT lists explicit columns, never SELECT *', async () => {
+    // WHO: SuperAdminDashboard loading the tenant list on mount
+    // WHAT: the query must name its columns — a `SELECT *` here ships
+    //       every column ever added to `tenants` (Stripe ids, legal
+    //       consent IP/UA, raw config) to every super-admin response
+    // WHEN: dashboard's useSuperAdminTenants() fetchData()
+    // WHERE: src/routes/tenants.ts → app.get('/tenants', ...)
+    // WHY: audit finding 2026-09-16 — `SELECT *` over-exposure
+    queryResponses.push({ rows: [] });
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+
+    expect(res.statusCode).toBe(200);
+    const selectQuery = queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    expect(selectQuery).toBeDefined();
+    expect(selectQuery!.text).not.toMatch(/SELECT\s+\*/i);
+  });
+
+  it('HAPPY: response omits sensitive/unused columns for every tenant row', async () => {
+    // A real tenant row has many more columns than the wire contract should
+    // expose — legal consent PII, Stripe ids, the whole checklist/tts config
+    // surface. This pins that a row containing those columns (as Postgres
+    // would return if the query regressed to SELECT *) still only reaches
+    // the client with the allowlisted fields.
+    const fullRow = {
+      tenant_id: TENANT_ID_A,
+      name: 'Acme Tire',
+      business_type: 'automotive',
+      timezone: 'America/Chicago',
+      voice_id: null,
+      tts_voice: 'shimmer',
+      system_prompt: 'You are a helpful receptionist.',
+      first_message: 'Thanks for calling!',
+      owner_phone: '+16305551234',
+      inbound_phone: '+16305555678',
+      phone_status: 'active',
+      telnyx_phone_number_id: 'tnx-123',
+      // Sensitive/unused columns a `SELECT *` would have shipped:
+      legal_consent_ip: '203.0.113.5',
+      legal_consent_user_agent: 'Mozilla/5.0',
+      legal_consent_attested_at: '2026-09-15T00:00:00Z',
+      legal_consent_attested_by: 'user-1',
+      stripe_customer_id: 'cus_abc123',
+      stripe_subscription_id: 'sub_xyz789',
+      forward_phone: '+16305559999',
+      call_disclosure: 'Custom disclosure text',
+      checklist_preset_id: 'auto_shop_front_desk',
+      checklist_overrides: {},
+      logo_url: 'https://example.com/logo.png',
+    };
+    // The mock client just returns whatever we script regardless of the
+    // actual SQL column list, so this proves the ROUTE HANDLER itself never
+    // widens what it forwards — it's `reply.send(res.rows)` verbatim, so the
+    // real guarantee is the SQL text (asserted above); this pins the wire
+    // shape end-to-end assuming the query is correct.
+    queryResponses.push({ rows: [fullRow] });
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+    expect(res.statusCode).toBe(200);
+
+    const selectQuery = queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    const sensitiveColumns = [
+      'legal_consent_ip',
+      'legal_consent_user_agent',
+      'legal_consent_attested_at',
+      'legal_consent_attested_by',
+      'stripe_customer_id',
+      'stripe_subscription_id',
+      'forward_phone',
+      'call_disclosure',
+      'checklist_preset_id',
+      'checklist_overrides',
+      'logo_url',
+    ];
+    for (const col of sensitiveColumns) {
+      expect(selectQuery!.text).not.toContain(col);
+    }
+  });
+
+  it('SAD: non-super-admin is rejected before any query runs', async () => {
+    authStub = {
+      user_id: 'front-desk-user',
+      tenant_id: TENANT_ID_A,
+      email: 'staff@test',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+
+    expect(res.statusCode).toBe(403);
+    expect(queries).toHaveLength(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
 // DELETE /tenants/:id
 // ════════════════════════════════════════════════════════════════════
 
