@@ -245,13 +245,8 @@ export function registerCustomerRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
-      // Owner-only (mirrors the export gate in exportData.ts; the platform
-      // super-admin tenant bypasses for cross-tenant support).
-      if (req.auth && req.auth.tenant_id !== SUPER_ADMIN_TENANT_ID && req.auth.role !== 'owner') {
-        return reply
-          .status(403)
-          .send({ success: false, error: 'Only owners can import customers' });
-      }
+      // Owner-only (mirrors the export gate in exportData.ts).
+      if (!requireOwnerRole(req, reply)) return;
 
       const parsed = CustomerImportSchema.safeParse(req.body);
       if (!parsed.success) {
