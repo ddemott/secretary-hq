@@ -4,7 +4,7 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
-## 2026-09-16 — Adversarial re-verify of #517/#522 found two more back-door gaps: `/setup/commit` and `/square/*` (PR TBD)
+## 2026-09-16 — Adversarial re-verify of #517/#522 found two more back-door gaps: `/setup/commit` and `/square/*` (PR #523)
 
 roady's adversarial re-verify of the two role-check PRs shipped earlier the same night (#517, #522) found the front-door routes were correctly gated but two back doors to the same tables were not:
 
