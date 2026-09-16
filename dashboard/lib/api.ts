@@ -218,6 +218,22 @@ function tenantParam(tenantId: string | null | undefined): Record<string, string
   return tenantId ? { tenant_id: tenantId } : undefined;
 }
 
+/**
+ * The cross-tenant "all businesses" views (super-admin scheduling: picking a
+ * customer to infer which tenant an appointment belongs to) need every
+ * tenant's rows in one response. `/customers` and `/appointments` used to do
+ * this implicitly for ANY request carrying the super-admin sentinel tenant —
+ * including side-effect fetches that never asked for it (audit finding
+ * 2026-09-16). The server now requires an explicit `all_tenants=true` opt-in
+ * before it will skip tenant scoping; this appends it only when the caller
+ * is genuinely requesting the super-admin sentinel tenant, so today's
+ * behavior for the real "all businesses" consumers is unchanged and every
+ * other caller gets tenant-scoped (or empty) results by default.
+ */
+function superAdminScopeParam(tenantId: string | null | undefined): Record<string, string> {
+  return tenantId === SUPER_ADMIN_TENANT_ID ? { all_tenants: 'true' } : {};
+}
+
 export async function apiFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
   await ensureTokenFresh();
   let url = `${API_BASE_URL}${endpoint}`;
@@ -343,7 +359,13 @@ async function apiMutate<T>(
 export const Api = {
   // --- CUSTOMERS ---
   customers: {
-    list: (tenantId: string | null) => apiFetch<Customer[]>(`/customers`, tenantParam(tenantId)),
+    list: (tenantId: string | null) => {
+      const params = { ...tenantParam(tenantId), ...superAdminScopeParam(tenantId) };
+      return apiFetch<Customer[]>(
+        `/customers`,
+        Object.keys(params).length > 0 ? params : undefined
+      );
+    },
 
     create: (tenantId: string | null, data: Partial<Customer>) =>
       apiMutate<{ customer: Customer }>(`/customers/create`, 'POST', {
@@ -376,7 +398,7 @@ export const Api = {
   // --- APPOINTMENTS ---
   appointments: {
     list: (tenantId: string | null, opts?: { startDate?: string; endDate?: string }) => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { ...superAdminScopeParam(tenantId) };
       if (tenantId) params.tenant_id = tenantId;
       if (opts?.startDate) params.start_date = opts.startDate;
       if (opts?.endDate) params.end_date = opts.endDate;

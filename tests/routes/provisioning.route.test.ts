@@ -305,6 +305,22 @@ describe('GET /provisioning/status', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ forwarded_from_phone: '+16082175303' });
   });
+
+  it('SOFT-DELETE: lookup query filters out is_deleted tenants', async () => {
+    // WHO: a status poll against an already soft-deleted tenant
+    // WHAT: the SELECT must scope out is_deleted rows, matching the
+    //       soft-delete choke point every other tenant-scoped route enforces
+    // WHY: audit finding 2026-09-16 — this query bypassed createWithTenantClient
+    handle.queryResponses.push({ rows: [] });
+
+    await app.inject({
+      method: 'GET',
+      url: `/provisioning/status?tenant_id=${TENANT_ID}`,
+    });
+
+    const selectQuery = handle.queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    expect(selectQuery?.text).toContain('is_deleted = false');
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────

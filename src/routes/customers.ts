@@ -12,6 +12,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireSuperAdmin,
   withPoolClient,
   type AppRequest,
 } from '../middleware/fastify-middleware';
@@ -147,6 +148,24 @@ export function registerCustomerRoutes(
       const offset = parseInt(query['offset'] ?? '') || 0;
 
       if (tenantId === SUPER_ADMIN_TENANT_ID) {
+        // Cross-tenant customer listing — used ONLY by the super-admin
+        // "all businesses" scheduling flow (picking a customer to infer
+        // which tenant a new appointment belongs to when no tenant is
+        // managed yet). requireTenantId already guarantees the caller's own
+        // JWT tenant_id IS the super-admin sentinel (tenantMiddleware
+        // rejects any other caller trying to pass this id), but a second,
+        // explicit opt-in query param is required on top of that: this
+        // route used to return every tenant's customer PII (name/phone/
+        // email/address/notes) to ANY request that happened to be running
+        // with no managed tenant selected, including side-effect fetches
+        // that never asked for it — audit finding 2026-09-16. Without the
+        // opt-in, respond with an empty list rather than erroring, so an
+        // accidental/legacy caller degrades quietly instead of either
+        // leaking data or breaking with a scary error banner.
+        if (!requireSuperAdmin(req, reply)) return;
+        if (query['all_tenants'] !== 'true') {
+          return reply.send([]);
+        }
         const res = await withPoolClient(pool, (client) =>
           client.query(
             'SELECT * FROM customers WHERE is_deleted = false ORDER BY name LIMIT $1 OFFSET $2',

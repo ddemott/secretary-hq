@@ -12,6 +12,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireSuperAdmin,
   withPoolClient,
   type AppRequest,
 } from '../middleware/fastify-middleware';
@@ -257,6 +258,24 @@ export function registerAppointmentRoutes(
       const endDate = query['end_date'] || null;
 
       const isSuperAdmin = tenantId === SUPER_ADMIN_TENANT_ID;
+
+      // Cross-tenant appointment listing — used ONLY by the super-admin
+      // "all businesses" scheduler view. requireTenantId already guarantees
+      // the caller's own JWT tenant_id IS the super-admin sentinel
+      // (tenantMiddleware rejects any other caller trying to pass this id),
+      // but a second, explicit opt-in query param is required on top of
+      // that: this route used to return every tenant's appointments (with
+      // joined customer PII) to ANY request running with no managed tenant
+      // selected, including side-effect fetches that never asked for it —
+      // audit finding 2026-09-16. Without the opt-in, respond with an empty
+      // list rather than erroring, so an accidental/legacy caller degrades
+      // quietly instead of either leaking data or breaking with an error.
+      if (isSuperAdmin) {
+        if (!requireSuperAdmin(req, reply)) return;
+        if (query['all_tenants'] !== 'true') {
+          return reply.send([]);
+        }
+      }
 
       // Build WHERE clauses and params dynamically for date filtering.
       // params is a pg parameterized-query value list — Postgres accepts
@@ -825,6 +844,22 @@ export function registerAppointmentRoutes(
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
       const { id } = req.params as { id: string };
+
+      // SMS is globally OFF pending 10DLC registration (root CLAUDE.md
+      // Architecture; agent/src/configSchema.ts ENABLE_SMS). Telnyx accepts
+      // the send and reports success anyway (error 40010 at the carrier),
+      // so without this gate a staff member clicking "Send Links" gets a
+      // green success toast for a text that will never arrive — the same
+      // false-promise class this flag exists to prevent everywhere else.
+      // Same convention as the agent worker: default OFF, only the literal
+      // string 'true' turns it on.
+      if (process.env.ENABLE_SMS !== 'true') {
+        return reply.status(503).send({
+          success: false,
+          error:
+            'SMS is not enabled for this platform yet (pending 10DLC registration) — self-service links cannot be texted. Handle the cancellation or reschedule on the call or by another channel instead.',
+        });
+      }
 
       const baseUrl = (process.env.DASHBOARD_URL ?? process.env.BACKEND_PUBLIC_URL ?? '')
         .trim()
