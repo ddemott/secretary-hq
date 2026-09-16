@@ -38,7 +38,15 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  process.env.TZ = ORIGINAL_TZ;
+  // process.env stringifies every assignment, so `process.env.TZ = undefined`
+  // does NOT clear it — it sets the literal string "undefined", which then
+  // leaks a bogus timezone into every test file sharing this worker. Delete
+  // the key outright when there was no original value to restore.
+  if (ORIGINAL_TZ === undefined) {
+    delete process.env.TZ;
+  } else {
+    process.env.TZ = ORIGINAL_TZ;
+  }
 });
 
 describe('useSchedulerData — local-midnight date-range boundary', () => {
