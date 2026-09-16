@@ -138,12 +138,22 @@ beforeAll(async () => {
   }
   pool = new Pool({ connectionString: API_DB_URL, max: 5 });
   app = Fastify({ logger: false });
-  type TenantRequest = FastifyRequest & { tenantId?: string; auth?: { user_id: string } };
+  type TenantRequest = FastifyRequest & {
+    tenantId?: string;
+    auth?: { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+  };
   app.addHook('preHandler', async (request: TenantRequest) => {
     const h = request.headers['x-tenant-id'];
     if (typeof h === 'string' && h) {
       request.tenantId = h;
-      request.auth = { user_id: '00000000-0000-0000-0000-000000000001' };
+      // Owner by default — /shifts/expand-weekly is owner-gated
+      // (requireOwnerRole, 2026-09-16 role-check audit).
+      request.auth = {
+        tenant_id: h,
+        user_id: '00000000-0000-0000-0000-000000000001',
+        email: 'owner@test.local',
+        role: 'owner',
+      };
     }
   });
   registerSetupRoutes(app, pool, createWithTenantClient(pool));

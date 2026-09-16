@@ -13,6 +13,7 @@ import {
   logEvent,
   logError,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { computeUsageStatements } from '../services/billingUsage';
@@ -42,6 +43,9 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
   app.post(
     '/billing/checkout',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): opens a real Stripe
+      // checkout session for the tenant's billing.
+      if (!requireOwnerRole(req, reply)) return;
       const stripe = getStripe();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });
@@ -272,6 +276,9 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
   app.post(
     '/billing/portal',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): opens the tenant's Stripe
+      // billing portal (payment methods, invoices, cancellation).
+      if (!requireOwnerRole(req, reply)) return;
       const stripe = getStripe();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });

@@ -49,12 +49,23 @@ function buildApp() {
   ): Promise<T> => fn(mockClient as unknown as PoolClient);
 
   const fastify = Fastify({ logger: false });
-  type TenantRequest = FastifyRequest & { tenantId?: string; auth?: { user_id: string } };
+  type TestAuth = { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+  type TenantRequest = FastifyRequest & { tenantId?: string; auth?: TestAuth | null };
   fastify.addHook('preHandler', async (request: TenantRequest) => {
     const header = request.headers['x-tenant-id'];
+    const roleHeader = request.headers['x-test-role'];
     if (typeof header === 'string' && header) {
       request.tenantId = header;
-      request.auth = { user_id: '00000000-0000-0000-0000-000000000001' };
+      // Every mutating route in this file is owner-gated (requireOwnerRole,
+      // 2026-09-16 role-check audit) — default to an owner so the existing
+      // HAPPY/SAD tests keep exercising the handler body; the SECURITY
+      // block overrides via the x-test-role header to prove the gate itself.
+      request.auth = {
+        tenant_id: header,
+        user_id: '00000000-0000-0000-0000-000000000001',
+        email: 'owner@test.local',
+        role: typeof roleHeader === 'string' && roleHeader === 'front_desk' ? 'front_desk' : 'owner',
+      };
     }
   });
   registerShiftRoutes(fastify, {} as unknown as Pool, withTenantClient);
@@ -218,5 +229,36 @@ describe('blackout dates that pass the SHAPE check but are not real days', () =>
     // 2028 is a leap year. A validator that rejected Feb 29 outright would be
     // "safe" and wrong, and the owner would have no way to close that day.
     expect(BlackoutDateForTest.safeParse('2028-02-29').success).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// ════════════════════════════════════════════════════════════════════
+
+describe('blackout routes — owner-role gate', () => {
+  it('SECURITY: POST /shifts/blackouts is rejected 403 for a front-desk user before any query runs', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shifts/blackouts',
+      headers: { ...hdr, 'x-test-role': 'front_desk' },
+      payload: { blackout_date: '2026-12-25' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('SECURITY: DELETE /shifts/blackouts/:date is rejected 403 for a front-desk user before any query runs', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/shifts/blackouts/2026-12-25',
+      headers: { ...hdr, 'x-test-role': 'front_desk' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
   });
 });

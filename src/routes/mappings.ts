@@ -4,6 +4,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { requireValidUUID } from './routeHelpers';
@@ -42,6 +43,8 @@ export function registerMappingRoutes(
   app.post(
     '/services/:serviceId/employees/:employeeId/assign',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): relinks staff/resource assignments.
+      if (!requireOwnerRole(req, reply)) return;
       const { serviceId, employeeId } = req.params as { serviceId: string; employeeId: string };
       if (!requireValidUUID(serviceId, reply, 'serviceId')) return;
       if (!requireValidUUID(employeeId, reply, 'employeeId')) return;
@@ -63,6 +66,8 @@ export function registerMappingRoutes(
   app.post(
     '/services/:serviceId/employees/:employeeId/unassign',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): relinks staff/resource assignments.
+      if (!requireOwnerRole(req, reply)) return;
       const { serviceId, employeeId } = req.params as { serviceId: string; employeeId: string };
       if (!requireValidUUID(serviceId, reply, 'serviceId')) return;
       if (!requireValidUUID(employeeId, reply, 'employeeId')) return;
@@ -84,6 +89,8 @@ export function registerMappingRoutes(
   app.post(
     '/services/:serviceId/resources/:resourceId/assign',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): relinks staff/resource assignments.
+      if (!requireOwnerRole(req, reply)) return;
       const { serviceId, resourceId } = req.params as { serviceId: string; resourceId: string };
       if (!requireValidUUID(serviceId, reply, 'serviceId')) return;
       if (!requireValidUUID(resourceId, reply, 'resourceId')) return;
@@ -105,6 +112,8 @@ export function registerMappingRoutes(
   app.post(
     '/services/:serviceId/resources/:resourceId/unassign',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): relinks staff/resource assignments.
+      if (!requireOwnerRole(req, reply)) return;
       const { serviceId, resourceId } = req.params as { serviceId: string; resourceId: string };
       if (!requireValidUUID(serviceId, reply, 'serviceId')) return;
       if (!requireValidUUID(resourceId, reply, 'resourceId')) return;

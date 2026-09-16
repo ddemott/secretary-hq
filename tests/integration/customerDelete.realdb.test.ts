@@ -52,11 +52,11 @@ let tenantId: string;
 let resourceId: string;
 const tenantsToClean: string[] = [];
 
-function del(customerId: string) {
+function del(customerId: string, role: 'owner' | 'front_desk' = 'owner') {
   return app.inject({
     method: 'DELETE',
     url: `/customers/${customerId}`,
-    headers: { 'x-tenant-id': tenantId },
+    headers: { 'x-tenant-id': tenantId, 'x-test-role': role },
   });
 }
 
@@ -86,11 +86,12 @@ beforeAll(async () => {
       const tid = request.headers['x-tenant-id'] as string | undefined;
       if (tid) {
         request.tenantId = tid;
+        const role = (request.headers['x-test-role'] as 'owner' | 'front_desk' | undefined) ?? 'owner';
         request.auth = {
           tenant_id: tid,
           user_id: '88888888-8888-4888-8888-888888888888',
           email: 'realdb-custdel@example.com',
-          role: 'owner',
+          role,
         };
       }
     });
@@ -237,5 +238,18 @@ describe('DELETE /customers/:id cancels upcoming appointments', () => {
     const second = await del(customerId);
     expect(second.statusCode).toBe(404);
     expect(await apptStatus(upcoming)).toBe('scheduled');
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any row is touched', async () => {
+    const customerId = await createCustomerFull(setup, tenantId, '+15554440005', 'Front Desk Blocked');
+
+    const res = await del(customerId, 'front_desk');
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    const cust = await setup.query(`SELECT is_deleted FROM customers WHERE customer_id = $1`, [
+      customerId,
+    ]);
+    expect(cust.rows[0].is_deleted).toBe(false);
   });
 });

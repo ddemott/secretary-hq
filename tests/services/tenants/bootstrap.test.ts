@@ -30,11 +30,10 @@ function buildMockPool(responses: Array<{ rows: unknown[]; rowCount?: number }>)
     release: vi.fn(),
   };
 
-  const pool = {
-    connect: vi.fn(async () => client),
-  } as unknown as Pool;
+  const connect = vi.fn(async () => client);
+  const pool = { connect } as unknown as Pool;
 
-  return { pool, client, queries };
+  return { pool, client, queries, connect };
 }
 
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -465,5 +464,61 @@ describe('createTenantWithOwner — error propagation', () => {
     });
 
     expect(client.release).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// HIPAA-vertical denylist — independent of the dashboard picker
+// (2026-09-16 role-check audit; RegisterSchema checks this too for the
+// self-serve path, but POST /tenants/create has no equivalent Zod schema,
+// so this is the one check both entry points share).
+// ════════════════════════════════════════════════════════════════════
+
+describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
+  it.each(['dental', 'Dental Office', 'veterinary-clinic', 'chiropractic', 'optometry', 'Family Medical Group', 'HIPAA Provider'])(
+    '10. rejects business_type %j before opening a connection — no BEGIN, no INSERT',
+    async (businessType) => {
+      const { pool, queries, connect } = buildMockPool([]);
+
+      const result = await createTenantWithOwner(pool, {
+        tenantName: 'Should Not Exist',
+        businessType,
+        ownerEmail: 'blocked@test.com',
+        ownerPassword: 'secure123',
+        ownerFullName: 'Blocked Owner',
+        duplicateCheck: 'email',
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        conflictMessage: 'This business type is not supported on this platform.',
+      });
+      // No connection was ever checked out — the denylist check runs before
+      // `pool.connect()`, so nothing here can leak a pool slot either.
+      expect(connect).not.toHaveBeenCalled();
+      expect(queries).toHaveLength(0);
+    }
+  );
+
+  it('11. an unrelated business_type is not blocked', async () => {
+    const { pool, queries } = buildMockPool([
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ tenant_id: TENANT_ID }] },
+      { rows: [{ user_id: USER_ID }] },
+      { rows: [] },
+    ]);
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'Fine Business',
+      businessType: 'salon',
+      ownerEmail: 'fine@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Fine Owner',
+      duplicateCheck: 'email',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.length).toBeGreaterThan(0);
   });
 });
