@@ -4,6 +4,76 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-16 — Scheduler List/Day view UTC evening-boundary bug (found, flagged, fixed)
+
+`useSchedulerData.ts` built its appointment-list fetch range as `` `${dateStr}T00:00:00Z` ``
+/ `` `${toDateString(nextDay)}T00:00:00Z` `` — `dateStr` is the **local** calendar date, but
+appending `Z` treats it as if it were already UTC. For a UTC-behind tenant (e.g. US Central,
+UTC-5 CDT) this shifted the fetch window 5-6 hours early: from roughly 19:00 local onward
+each day, any appointment whose UTC timestamp had already rolled onto the next UTC calendar
+day fell outside `[dateStr 00:00Z, nextDateStr 00:00Z)` and silently vanished from the
+Scheduler List/Day view for "today," even though it was still today locally and correct in
+the DB.
+
+**Found 2026-09-15 night** while diagnosing a persistent (not flaky)
+`e2e/appointment-cancel-ui.spec.ts` CI failure — every recorded failure landed 22:54–23:20
+CDT, squarely inside the broken window, which is also why no prior green CI run in the
+project's history had ever surfaced it (GH Actions runners default to UTC, where the buggy
+code and a fix are byte-identical — local offset 0 makes "append Z to the local date"
+accidentally correct). Flagged in TODO.md via PR #503 same night, deliberately un-fixed at
+that point because the batch landing in parallel was unrelated UX/doc-hygiene work.
+
+**Fixed 2026-09-16, PR #504** (+ follow-up `61aacee1` from a Copilot review catching a real
+bug in the new test's own cleanup, restoring `process.env.TZ` when it was originally unset —
+`process.env.TZ = undefined` stringifies to `"undefined"` rather than clearing the var).
+`localMidnightIso()` constructs the boundary from the actual UTC instant of local midnight
+(`new Date(y, m, d).toISOString()`, which already accounts for host UTC offset and DST)
+instead of manual string concatenation. New regression tests force `process.env.TZ` to a
+UTC-behind zone so the bug is actually visible in CI. Likely affected every consumer of
+`useSchedulerData` (Scheduler List + Day views) for any tenant not in a UTC-ahead timezone
+since the feature shipped — no live-data audit of historically-hidden evening bookings was
+run as part of this fix; that remains a Dale judgment call if he wants one.
+
+## 2026-09-15/16 — Legal/consent audit: register-consent enforcement + legal-hold CI backstop design
+
+Two related but separate pieces of legal/compliance work landed the same night as the prod
+migration incident below — kept as their own entry because neither is a migration-ops story.
+
+**PR #496 — `/register` consent attestation moved server-side.** The legal-consent checkbox
+on `/register` (authorized-for-the-business + informing-callers-is-your-duty, linked to the
+Bonterms ToS/DPA) was enforced **client-side only** — a direct `POST /register` call with no
+consent field created a fully functional tenant with no record consent was ever given,
+defeating the liability-shift the checkbox exists for. `RegisterSchema` now requires
+`consent_attested: z.literal(true)`; missing/`false` gets a 400 before `createTenantWithOwner`
+runs. `legal_consent_attested_at`/`_by`/`_ip`/`_user_agent` are persisted on the tenant row in
+the **same transaction** as the tenant+user INSERT — a failure rolls back the whole
+registration, unlike the deliberately best-effort question-tree template copy right after it.
+Migration `20260915000000_tenant_registration_consent.sql`. **By design, `POST /tenants/create`
+(admin/super-admin tenant provisioning) does not pass consent and stays NULL** — an admin
+creating a tenant on someone else's behalf isn't the business owner attesting anything; this
+was a deliberate scope decision in #496 itself, not an oversight, though whether the
+admin-provisioned case needs its *own* attestation is still an open product/compliance call
+(`docs/planning/TODO.md`, flagged separately during roady's review of PR #501).
+
+**PR #495 — legal-hold reimplementation CI backstop, design only.** Roady's audit found that
+PR #68/#69's kill switches (`ENABLE_CUSTOMER_PURGE`, `ENABLE_RETENTION_WORKER`) protect only
+those two named, still-unmerged PRs — nothing stops a future session from reimplementing the
+same irreversible customer/appointment/voice-session erasure under a different route or
+function name with no flag at all. The boundary today is prose across three docs, not an
+enforced control. `docs/planning/LEGAL_HOLD_BACKSTOP_DESIGN.md` proposes (no code written) a
+CI static-analysis scanner — vocabulary + bulk-shape match against a shared, hash-pinned
+PII-table allowlist, plus a migration-layer check and a table-list drift tripwire — modeled on
+this repo's existing `presetCatalog.test.ts` / `verify-claude-md.ts` / `scan-secrets.ts`
+pattern; a DB-level trigger is documented as the next escalation tier, not built now. The
+design went through two adversarial roady review passes: the first caught an unverified
+"required CI check" claim, an incomplete PII table list (missing `call_transcripts` /
+`call_summaries` / `customer_preferences`), an overstated "every DELETE FROM is single-row
+parameterized" claim, and a day-one false positive the migration scanner would have hit
+against `20260801000000_customer_messages_one_per_call.sql`'s legitimate dedupe delete; the
+second pass confirmed all four fixed. **This PR approves nothing** — PR #68/#69 stay blocked
+on Dale + legal sign-off exactly as before; it only proposes how a *reimplementation* of their
+capability outside those two PRs would get caught.
+
 ## 2026-09-15 — Prod migrations-behind: found, caught up, automation tried and reverted
 
 **Found:** prod's `schema_migrations` head was `20260909210000`; main had advanced to
