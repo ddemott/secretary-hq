@@ -121,13 +121,21 @@ export default function SettingsView() {
 
       <div className="p-4 md:p-8 max-w-3xl space-y-8">
         {success && (
-          <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 text-green-700 dark:text-green-400 rounded-xl flex items-center font-bold">
+          <div
+            role="status"
+            aria-live="polite"
+            className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 text-green-700 dark:text-green-400 rounded-xl flex items-center font-bold"
+          >
             Business created successfully! The owner can now log in.
           </div>
         )}
 
         {onboardingError && (
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-400 rounded-xl flex items-center font-bold">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 text-red-700 dark:text-red-400 rounded-xl flex items-center font-bold"
+          >
             {onboardingError}
           </div>
         )}
@@ -207,10 +215,24 @@ export default function SettingsView() {
                 label="Password"
                 type="password"
                 required
+                minLength={6}
+                aria-describedby="owner-pass-hint"
                 value={form.owner_pass}
                 onChange={(e) => setForm({ ...form, owner_pass: e.target.value })}
                 placeholder="••••••••"
               />
+              {/* The backend rejects anything under 6 characters
+                  (CreateTenantSchema, src/routes/tenants.ts) but nothing on
+                  this page said so — a super-admin who typed a short password
+                  got back a bare "Validation failed" with no field-level
+                  detail to explain which of the six fields it meant. */}
+              <p
+                id="owner-pass-hint"
+                className="text-xs"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                At least 6 characters. The owner logs in with this password immediately.
+              </p>
             </Card>
           </section>
 
