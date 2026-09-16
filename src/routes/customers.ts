@@ -12,6 +12,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   withPoolClient,
   type AppRequest,
 } from '../middleware/fastify-middleware';
@@ -547,6 +548,9 @@ export function registerCustomerRoutes(
   app.delete(
     '/customers/:id',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): a destructive,
+      // appointment-cancelling action is not a front-desk operation.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;

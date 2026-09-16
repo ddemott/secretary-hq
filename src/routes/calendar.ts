@@ -12,6 +12,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import * as gcal from '../services/googleCalendar';
@@ -219,6 +220,9 @@ export function registerCalendarRoutes(
   app.post(
     '/calendar/sync',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): rewires the tenant's
+      // calendar integration.
+      if (!requireOwnerRole(req, reply)) return;
       const body = req.body as { provider?: string } | undefined;
       return reply.status(202).send({ status: 'accepted', source: body?.provider || 'unknown' });
     }, 'Failed to sync calendar')
@@ -246,6 +250,9 @@ export function registerCalendarRoutes(
   app.post(
     '/calendar/settings',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): rewires the tenant's
+      // calendar integration.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CalendarSettingsSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -276,6 +283,9 @@ export function registerCalendarRoutes(
   app.post(
     '/calendar/settings/disconnect',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): rewires the tenant's
+      // calendar integration.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 

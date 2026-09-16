@@ -1176,3 +1176,77 @@ describe('GET /tenants/:id/config', () => {
     });
   });
 });
+
+// ════════════════════════════════════════════════════════════════════
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// ════════════════════════════════════════════════════════════════════
+//
+// GET /tenants/:id/config, POST /tenants/:id/update-config, and POST
+// /tenants/:id/finalize-setup previously gated only on tenant-self-or-
+// super-admin (requireAuth + tenant match), with no req.auth.role check —
+// this is the HIGH-severity finding from docs/planning/TODO.md (front-desk
+// hijack of live call-transfer + legal disclosure). A front-desk login
+// for the SAME tenant must now be rejected 403.
+
+describe('tenants config/finalize-setup — owner-role gate', () => {
+  function frontDeskAuth() {
+    authStub = {
+      user_id: 'fd-user',
+      tenant_id: TENANT_ID_A,
+      email: 'frontdesk@test',
+      role: 'front_desk',
+    };
+  }
+
+  it('SECURITY: GET /tenants/:id/config is rejected 403 for a front-desk user of the same tenant', async () => {
+    frontDeskAuth();
+
+    const res = await app.inject({ method: 'GET', url: `/tenants/${TENANT_ID_A}/config` });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('SECURITY: POST /tenants/:id/update-config is rejected 403 for a front-desk user of the same tenant', async () => {
+    frontDeskAuth();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tenants/${TENANT_ID_A}/update-config`,
+      payload: { forward_phone: '+16305551234' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('SECURITY: POST /tenants/:id/finalize-setup is rejected 403 for a front-desk user of the same tenant', async () => {
+    frontDeskAuth();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tenants/${TENANT_ID_A}/finalize-setup`,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('HAPPY: POST /tenants/:id/finalize-setup succeeds for the tenant owner', async () => {
+    queryResponses.push({ rows: [], rowCount: 0 }); // BEGIN
+    queryResponses.push({ rows: [{ service_id: 's1' }], rowCount: 1 }); // UPDATE services
+    queryResponses.push({ rows: [], rowCount: 0 }); // UPDATE resources
+    queryResponses.push({ rows: [], rowCount: 0 }); // COMMIT
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/tenants/${TENANT_ID_A}/finalize-setup`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+  });
+});

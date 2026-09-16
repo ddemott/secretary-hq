@@ -21,6 +21,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import type {
@@ -203,6 +204,9 @@ export function registerVersionHistoryRoutes(
   app.post(
     '/records/:table/:recordId/restore-fields',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): field-level restore from
+      // version history is a destructive rewrite, not a front-desk action.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
@@ -319,6 +323,8 @@ export function registerVersionHistoryRoutes(
   app.post(
     '/records/:table/:recordId/soft-delete',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): a destructive action.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
@@ -369,6 +375,8 @@ export function registerVersionHistoryRoutes(
   app.post(
     '/records/:table/:recordId/restore',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): reverses a deletion.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
@@ -511,6 +519,9 @@ export function registerVersionHistoryRoutes(
   app.post(
     '/records/:table/copy-fields',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): overwrites fields on a
+      // live record from another record's data.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 

@@ -4,6 +4,31 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-16 — Systemic no-server-side-role-check audit: fixed in one batch (PRs #512/#508/consolidated sweep)
+
+Closes out the full "no server-side role check is systemic" finding (roady's 2026-09-16 audit sweep, `docs/planning/TODO.md`): every route below trusted `OutlookLayout.tsx`'s client-side `isFrontDeskOnly` tab-hiding as its only access control, so a front-desk JWT (devtools, saved request replay) could call any of them directly and it succeeded. Fix is the same shape everywhere — a new shared `requireOwnerRole(req, reply)` guard (`src/middleware/fastify-middleware.ts`, alongside `requireAuth`/`requireSuperAdmin`: 401 if unauthenticated, 403 if authenticated but not `role === 'owner'`, bypassed for the platform super-admin tenant) — added as the first line of every listed handler, matching the pre-existing pattern at `/customers/import`.
+
+Routes fixed, one PR:
+
+- `src/routes/tenants.ts` — `GET /tenants/:id/config`, `POST /tenants/:id/update-config` (the HIGH-severity call-transfer-hijack / legal-disclosure-overwrite finding), `POST /tenants/:id/finalize-setup`.
+- `src/routes/services.ts` — create/update/delete.
+- `src/routes/skills.ts` — create/delete.
+- `src/routes/mappings.ts` — all 4 service-employee/service-resource assign/unassign routes.
+- `src/routes/employees.ts`, `src/routes/shifts.ts`, `src/routes/resources.ts` — every mutating route (the PR #508-tracked staffing-CRUD gap).
+- `src/routes/customers.ts` — `DELETE /customers/:id`.
+- `src/routes/provisioning.ts` — `POST /provisioning/activate`, `POST /provisioning/deactivate` (previously had ZERO checks of any kind beyond the global `tenantMiddleware`).
+- `src/routes/billing.ts` — `POST /billing/checkout`, `POST /billing/portal` (`/billing/webhook` correctly left alone — signature-verified, not user-facing).
+- `src/routes/knowledge.ts` — the 8 mutating routes (`DELETE /knowledge/:id`, `POST /knowledge/ingest`, `POST /knowledge/add`, `PUT /knowledge/:id`, `PATCH /knowledge/unanswered/:id/resolve`, `POST /knowledge/import-website`, `POST /knowledge/import-document`, `PATCH /knowledge/suggestions/:id`); `POST /knowledge/explain` was already correct and untouched.
+- `src/routes/calendar.ts` — `POST /calendar/settings`, `POST /calendar/settings/disconnect`, `POST /calendar/sync`.
+- `src/routes/versionHistory.ts` — `restore-fields`/`soft-delete`/`restore`/`copy-fields`.
+
+Two more findings from the same audit, unrelated to the role-check pattern, closed in the same PR:
+
+- **`POST /register` had no rate limit** (`src/routes/auth.ts`) — unauthenticated, does real work per call (2 INSERTs, bcrypt hash, consent UPDATE, template-copy RPC), and the `409` "account already exists" response was an unthrottled email-enumeration oracle. Now `{ max: 5, timeWindow: '5 minutes' }`, matching `/login`.
+- **`business_type` had no HIPAA-vertical denylist**, independent of the dashboard `<select>` picker (which falls back to free text on a `GET /templates` failure). New `shared/hipaaVerticalDenylist.ts` (`isHipaaVertical()`, case-insensitive substring match on `hipaa|dental|veterinary|chiropractic|optometry|medical`) is checked in BOTH entry points that create a tenant — `RegisterSchema`'s `.refine()` (self-serve `/register`, 400) and `createTenantWithOwner` itself (`src/services/tenants/bootstrap.ts`, before the transaction even opens — so `POST /tenants/create`, the admin path with no Zod schema of its own, is covered too).
+
+Test coverage: every changed route got a happy-path-as-owner + front-desk-403 (+ unauthenticated-401 where not already covered) pair — existing route test harnesses that never stamped `req.auth` at all (`versionHistory.test.ts`, `shifts-routes.test.ts`) needed a default-owner auth stub added first, since they predate any of these routes checking role. New files: `tests/routes/services.test.ts`, `tests/routes/resources.test.ts`, `tests/routes/knowledge-role-gate.test.ts`, `tests/routes/calendar-role-gate.test.ts`, `shared/hipaaVerticalDenylist.test.ts`.
+
 ## 2026-09-16 — Scheduler List/Day view UTC evening-boundary bug (found, flagged, fixed)
 
 `useSchedulerData.ts` built its appointment-list fetch range as `` `${dateStr}T00:00:00Z` ``

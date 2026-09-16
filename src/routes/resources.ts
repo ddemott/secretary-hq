@@ -11,6 +11,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { assertRowAffected } from './routeHelpers';
@@ -56,6 +57,8 @@ export function registerResourceRoutes(
   app.post(
     '/resources/create',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CreateResourceSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -81,6 +84,8 @@ export function registerResourceRoutes(
   app.post(
     '/resources/:id/update',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const parsed = UpdateResourceSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -137,6 +142,8 @@ export function registerResourceRoutes(
   app.delete(
     '/resources/:id/delete',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;

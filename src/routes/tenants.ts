@@ -13,6 +13,7 @@ import {
   logEvent,
   requireAuth,
   requireSuperAdmin,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { SUPER_ADMIN_TENANT_ID } from '../constants';
@@ -312,6 +313,11 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant config access' });
       }
+      // Owner-only (mirrors /customers/import): call-transfer destination,
+      // legally-attested disclosure text, and checklist behavior all live in
+      // this config — reading it is lower risk than writing it, but the
+      // gate is applied to both for consistency.
+      if (!requireOwnerRole(req, reply)) return;
       const res = await withPoolClient(pool, (client) =>
         client.query(
           // call_disclosure (+ attestation stamp) MUST be here: AIConfigView loads
@@ -347,6 +353,10 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant config update' });
       }
+      // Owner-only (mirrors /customers/import): this write reaches the live
+      // call-transfer destination and the owner's attested legal disclosure
+      // text — a front-desk login must not be able to hijack either.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = UpdateConfigSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -682,6 +692,9 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant finalize' });
       }
+      // Owner-only (mirrors /customers/import): finishing setup is a
+      // one-way wizard action, not a front-desk operation.
+      if (!requireOwnerRole(req, reply)) return;
       const result = await withTenantClient(id, async (client) => {
         await client.query('BEGIN');
         try {

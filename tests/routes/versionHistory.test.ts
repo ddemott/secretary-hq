@@ -17,8 +17,16 @@ let mockClient: ReturnType<typeof createMockClient>['mockClient'];
 let queryResponses: ReturnType<typeof createMockClient>['queryResponses'];
 let mockPool: Pool;
 
-// Test-only request shape: the preHandler injects tenantId for the route to read.
-type TenantRequest = FastifyRequest & { tenantId?: string };
+type TestAuth = { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+/**
+ * `undefined` = default owner stub (the mutating restore/soft-delete/
+ * copy-fields routes are owner-gated via requireOwnerRole); set explicitly
+ * per-test to exercise the gate itself (front_desk → 403, null → 401).
+ */
+let authOverride: TestAuth | null | undefined;
+
+// Test-only request shape: the preHandler injects tenantId + auth for the route to read.
+type TenantRequest = FastifyRequest & { tenantId?: string; auth?: TestAuth | null };
 
 function buildApp() {
   const created = createMockClient();
@@ -37,6 +45,16 @@ function buildApp() {
     if (tenantId) {
       request.tenantId = tenantId;
     }
+    // Preserve test #18's "no tenant_id at all → 401" contract: only
+    // synthesize a default owner when the request actually carries a
+    // tenant_id (mirrors a real authenticated dashboard request), unless a
+    // test explicitly overrides auth (including to null/unauthenticated).
+    request.auth =
+      authOverride !== undefined
+        ? authOverride
+        : tenantId
+          ? { tenant_id: tenantId, user_id: 'owner-user', email: 'owner@test.local', role: 'owner' }
+          : undefined;
   });
 
   registerVersionHistoryRoutes(
@@ -62,6 +80,7 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   queryResponses.length = 0;
+  authOverride = undefined;
 });
 
 // =============================================
@@ -1205,5 +1224,63 @@ describe('Version History Routes — Boundary Conditions', () => {
     expect(countQuery).toContain('table_name');
     expect(countQuery).toContain('change_type');
     expect(countQuery).toContain('change_source');
+  });
+});
+
+// =============================================
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// =============================================
+
+describe('Version History Routes — owner-role gate', () => {
+  const restoreFieldsPayload = { source_version: 1, fields: ['phone'] };
+
+  it.each([
+    ['restore-fields', 'POST', `/records/customers/${RECORD_ID}/restore-fields`, restoreFieldsPayload],
+    ['soft-delete', 'POST', `/records/customers/${RECORD_ID}/soft-delete`, {}],
+    ['restore', 'POST', `/records/customers/${RECORD_ID}/restore`, {}],
+    ['copy-fields', 'POST', `/records/customers/copy-fields`, {
+      source_record_id: RECORD_ID,
+      target_record_id: '33333333-4444-5555-8666-777777777777',
+      fields: ['phone'],
+    }],
+  ])('SECURITY: %s is rejected 403 for a front-desk user before any query runs', async (_name, method, path, payload) => {
+    authOverride = {
+      tenant_id: TENANT_ID,
+      user_id: 'fd-user',
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({
+      method: method as 'POST',
+      url: `${path}?tenant_id=${TENANT_ID}`,
+      payload,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(mockClient.query).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['restore-fields', 'POST', `/records/customers/${RECORD_ID}/restore-fields`, restoreFieldsPayload],
+    ['soft-delete', 'POST', `/records/customers/${RECORD_ID}/soft-delete`, {}],
+    ['restore', 'POST', `/records/customers/${RECORD_ID}/restore`, {}],
+    ['copy-fields', 'POST', `/records/customers/copy-fields`, {
+      source_record_id: RECORD_ID,
+      target_record_id: '33333333-4444-5555-8666-777777777777',
+      fields: ['phone'],
+    }],
+  ])('SECURITY: %s is rejected 401 when unauthenticated', async (_name, method, path, payload) => {
+    authOverride = null;
+
+    const res = await app.inject({
+      method: method as 'POST',
+      url: `${path}?tenant_id=${TENANT_ID}`,
+      payload,
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(mockClient.query).not.toHaveBeenCalled();
   });
 });

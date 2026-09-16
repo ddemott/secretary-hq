@@ -219,6 +219,30 @@ export function requireSuperAdmin(req: AppRequest, reply: FastifyReply): boolean
   return true;
 }
 
+/**
+ * Guards owner-only mutations: returns true if the caller's role is
+ * 'owner' or the caller is the platform super-admin, sends 401 (no auth)
+ * or 403 (authenticated but not an owner) and returns false otherwise.
+ *
+ * Dashboard tab visibility (`OutlookLayout.tsx`'s `isFrontDeskOnly`) hides
+ * these actions from front_desk logins, but that is client-side only — a
+ * front-desk JWT could call the route directly. This is the server-side
+ * enforcement. Added 2026-09-16 after an audit found a broad class of
+ * mutating routes relied on the UI hiding alone (docs/planning/TODO.md).
+ */
+export function requireOwnerRole(req: AppRequest, reply: FastifyReply): boolean {
+  if (!req.auth) {
+    void reply.status(401).send({ success: false, error: 'Authentication required' });
+    return false;
+  }
+  if (req.auth.tenant_id === '00000000-0000-0000-0000-000000000000') return true;
+  if (req.auth.role !== 'owner') {
+    void reply.status(403).send({ success: false, error: 'Forbidden: owner role required' });
+    return false;
+  }
+  return true;
+}
+
 // ── Tenant ID Middleware (Chain of Responsibility) ────────────────────
 
 /** Routes that don't require a tenant_id */
