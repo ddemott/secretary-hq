@@ -182,7 +182,9 @@ describe('AnalyticsView — call analytics panels (gap #2)', () => {
     expect(screen.getByText('Bookings by Service')).toBeInTheDocument();
     // repeat-caller share = 3/12 = 25%
     expect(screen.getByText(/25% of all calls come from repeat callers/i)).toBeInTheDocument();
-    expect(screen.getByText('6305550000')).toBeInTheDocument();
+    // Formatted for readability (+1 (630) 555-0000), not the raw digit string
+    // the backend stores — same lib/phone.ts helper every other caller list uses.
+    expect(screen.getByText('+1 (630) 555-0000')).toBeInTheDocument();
     expect(screen.getByText(/3 calls · 2 booked/i)).toBeInTheDocument();
     expect(screen.getByText('Oil Change')).toBeInTheDocument();
 
@@ -381,5 +383,76 @@ describe('AnalyticsView — copy defects (UX review)', () => {
     await vi.waitFor(() =>
       expect(screen.getByText('Calls in your selected date range')).toBeInTheDocument()
     );
+  });
+});
+
+describe('AnalyticsView — UX review 2026-09-16 (owner-judgment pass)', () => {
+  test('HAPPY: the initial loading skeleton is announced to assistive tech', () => {
+    // WHO: a screen-reader user opening the Analytics tab for the first time.
+    // WHAT: before loadData's promises resolve, AnalyticsView renders
+    //        AnalyticsSkeleton — a pulse skeleton with no readable text at
+    //        all. Every OTHER loading skeleton in this codebase
+    //        (AppointmentListSidebar's) carries aria-label + aria-busy so a
+    //        screen reader announces "loading" instead of silence; this one
+    //        had neither, which reads as a blank/broken tab to a non-visual
+    //        user for however long the fetch takes.
+    // WHERE: AnalyticsSkeleton.tsx outer container.
+    // WHY: state-dependent UI with no aria contract is the same defect class
+    //      as the AIConfigView save-button pass — a real state with nothing
+    //      telling the user it's a state.
+    mockApi.analytics.getCalls.mockResolvedValue({
+      totals: { total: 1, booked: 0, abandoned: 0 },
+      by_outcome: [],
+      by_day: [],
+    });
+
+    render(<AnalyticsView />);
+
+    // Label-based query tied to intent (not a bare attribute selector, which
+    // would silently match any OTHER aria-busy element a future change adds
+    // to this view — Copilot review, 2026-09-16).
+    const skeleton = screen.getByLabelText('Loading analytics');
+    expect(skeleton).toBeInTheDocument();
+    expect(skeleton).toHaveAttribute('aria-busy', 'true');
+  });
+
+  test('HAPPY: Repeat Callers shows a readable phone number, not raw digits', async () => {
+    // WHO: an owner scanning the Repeat Callers list for a number to call back.
+    // WHAT: the panel printed cohorts.repeat_callers[].phone verbatim — a raw
+    //        digit string like "6305550000" — while every other caller-facing
+    //        list in this dashboard (CallDetailPanel, the customer form, the
+    //        super-admin tenant list) runs the same value through the shared
+    //        lib/phone.ts formatPhone() helper first.
+    // WHEN: getCohorts returns a repeat caller with an unformatted phone.
+    // WHERE: EngagementRetentionMetrics "Repeat Callers" card.
+    // WHY: an unformatted number next to formatted ones elsewhere in the same
+    //      product reads as a different, less-trustworthy screen.
+    mockApi.analytics.getCalls.mockResolvedValue({
+      totals: { total: 3, booked: 1, abandoned: 1 },
+      by_outcome: [],
+      by_day: [],
+    });
+    mockApi.analytics.getCohorts.mockResolvedValue({
+      repeat_callers: [
+        {
+          phone: '6305550000',
+          call_count: 3,
+          booked_count: 2,
+          first_call: '2026-06-01T10:00:00Z',
+          last_call: '2026-06-20T10:00:00Z',
+        },
+      ],
+      by_service: [],
+      top_customers: [],
+      abandonment_by_service: [],
+      first_time_fix: { rate: null, first_call_booked: 0, distinct_callers: 0 },
+      summary: { distinct_callers: 5, repeat_callers: 1, repeat_call_volume: 3, total_calls: 3 },
+    });
+
+    render(<AnalyticsView />);
+
+    expect(await screen.findByText('Repeat Callers')).toBeInTheDocument();
+    expect(screen.getByText('+1 (630) 555-0000')).toBeInTheDocument();
+    expect(screen.queryByText('6305550000')).not.toBeInTheDocument();
   });
 });

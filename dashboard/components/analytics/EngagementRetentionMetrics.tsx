@@ -6,6 +6,7 @@ import type { AnalyticsCalls, AnalyticsCohorts } from '../../lib/types';
 import type { AppointmentSummary } from './types';
 import { MetricCard } from './MetricCard';
 import { DAY_NAMES, labelForOutcome } from './callOutcomeLabels';
+import { formatPhone } from '../../lib/phone';
 
 interface EngagementRetentionMetricsProps {
   hasCalls: boolean;
@@ -181,7 +182,7 @@ export function EngagementRetentionMetrics({
             <div className="space-y-1 pt-1">
               {cohorts.repeat_callers.slice(0, 5).map((c) => (
                 <div key={c.phone} className="flex justify-between text-xs">
-                  <span style={{ color: 'var(--text-secondary)' }}>{c.phone}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{formatPhone(c.phone)}</span>
                   <span style={{ color: 'var(--text-primary)' }} className="font-medium">
                     {c.call_count} calls · {c.booked_count} booked
                   </span>

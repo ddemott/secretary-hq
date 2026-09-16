@@ -118,6 +118,27 @@ describe('AiCostPanel', () => {
   test('SAD: a failed fetch says so instead of rendering an empty $0 dashboard', async () => {
     mockApi.analytics.getAiCost.mockRejectedValue(new Error('500'));
     render(<AiCostPanel />);
-    expect(await screen.findByText(/Failed to load AI cost data/i)).toBeInTheDocument();
+    const alert = await screen.findByText(/Failed to load AI cost data/i);
+    expect(alert).toBeInTheDocument();
+    // WHY: a fetch failure and "the ledger is genuinely empty" are different
+    //      facts for the operator deciding tier pricing (2026-09-16 UX pass)
+    //      — only the former should interrupt a screen reader with role="alert".
+    expect(alert).toHaveAttribute('role', 'alert');
+  });
+
+  test('HAPPY: the loading state is announced to assistive tech, distinct from a fetch error', () => {
+    // WHO: Dale (the only session that ever reaches this panel) with a screen
+    //        reader or a slow connection.
+    // WHAT: "Loading AI cost…" is now role="status" aria-live="polite" instead
+    //        of a bare div, matching this codebase's own LoadingState/Toast
+    //        convention for text-based loading indicators.
+    // WHERE: AiCostPanel's loading branch.
+    // WHY: same "state-dependent UI needs an aria contract" class as every
+    //      other fix in the 2026-09-16 Analytics UX pass.
+    mockApi.analytics.getAiCost.mockReturnValue(new Promise(() => {})); // never resolves
+    render(<AiCostPanel />);
+    const status = screen.getByText('Loading AI cost…');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
   });
 });
