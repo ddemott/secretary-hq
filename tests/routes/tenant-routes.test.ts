@@ -96,6 +96,82 @@ beforeEach(() => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+// GET /tenants
+// ════════════════════════════════════════════════════════════════════
+
+describe('GET /tenants — column allowlist', () => {
+  it('HAPPY: SELECT lists explicit columns, never SELECT *', async () => {
+    // WHO: SuperAdminDashboard loading the tenant list on mount
+    // WHAT: the query must name its columns — a `SELECT *` here ships
+    //       every column ever added to `tenants` (Stripe ids, legal
+    //       consent IP/UA, raw config) to every super-admin response
+    // WHEN: dashboard's useSuperAdminTenants() fetchData()
+    // WHERE: src/routes/tenants.ts → app.get('/tenants', ...)
+    // WHY: audit finding 2026-09-16 — `SELECT *` over-exposure
+    queryResponses.push({ rows: [] });
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+
+    expect(res.statusCode).toBe(200);
+    const selectQuery = queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    expect(selectQuery).toBeDefined();
+    // Catches both the bare `SELECT *` and a qualified wildcard like
+    // `SELECT t.*` — a regression to either one re-widens the response to
+    // every column ever added to `tenants` (Copilot review, PR #517).
+    expect(selectQuery!.text).not.toMatch(/SELECT\s+(\w+\.)?\*/i);
+  });
+
+  it('HAPPY: the SQL allowlist excludes every known sensitive/unused column', async () => {
+    // This test proves the QUERY TEXT never names these columns — it does
+    // NOT prove the response body would omit them if the query regressed,
+    // because the mock client below returns whatever `queryResponses` is
+    // scripted with regardless of the real column list (there is no actual
+    // Postgres enforcing "you can only get back what you SELECTed" in this
+    // harness). The real guarantee is the SQL-text assertion in the test
+    // above; this one is a second, explicit check that the allowlist named
+    // in that query specifically leaves out every column this audit
+    // flagged, so a future edit that re-adds one of them by name fails here
+    // even if it doesn't happen to use a literal `*`.
+    queryResponses.push({ rows: [] });
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+    expect(res.statusCode).toBe(200);
+
+    const selectQuery = queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    const sensitiveColumns = [
+      'legal_consent_ip',
+      'legal_consent_user_agent',
+      'legal_consent_attested_at',
+      'legal_consent_attested_by',
+      'stripe_customer_id',
+      'stripe_subscription_id',
+      'forward_phone',
+      'call_disclosure',
+      'checklist_preset_id',
+      'checklist_overrides',
+      'logo_url',
+    ];
+    for (const col of sensitiveColumns) {
+      expect(selectQuery!.text).not.toContain(col);
+    }
+  });
+
+  it('SAD: non-super-admin is rejected before any query runs', async () => {
+    authStub = {
+      user_id: 'front-desk-user',
+      tenant_id: TENANT_ID_A,
+      email: 'staff@test',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({ method: 'GET', url: '/tenants' });
+
+    expect(res.statusCode).toBe(403);
+    expect(queries).toHaveLength(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
 // DELETE /tenants/:id
 // ════════════════════════════════════════════════════════════════════
 

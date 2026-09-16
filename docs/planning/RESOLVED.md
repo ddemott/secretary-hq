@@ -29,6 +29,67 @@ Two more findings from the same audit, unrelated to the role-check pattern, clos
 
 Test coverage: every changed route got a happy-path-as-owner + front-desk-403 (+ unauthenticated-401 where not already covered) pair — existing route test harnesses that never stamped `req.auth` at all (`versionHistory.test.ts`, `shifts-routes.test.ts`) needed a default-owner auth stub added first, since they predate any of these routes checking role. New files: `tests/routes/services.test.ts`, `tests/routes/resources.test.ts`, `tests/routes/knowledge-role-gate.test.ts`, `tests/routes/calendar-role-gate.test.ts`, `shared/hipaaVerticalDenylist.test.ts`.
 
+## 2026-09-16 — 5 super-admin PII/cost exposures from roady's audit, fixed (PR #517)
+
+`GET /tenants`, phone provisioning, `GET /customers`, `GET /appointments`, and the
+self-service-links SMS route all shared one root cause: code treated "this branch
+only runs for an already-authorized super-admin" as the whole control, instead of
+also scoping what that admin sees or triggers by default.
+
+- **`GET /tenants` `SELECT *`** shipped Stripe customer/subscription ids,
+  `legal_consent_ip`/`legal_consent_user_agent` (added by PR #496), and unrendered
+  tenant config to the SuperAdmin tab on every load. Replaced with an explicit
+  column allowlist built from what `TenantCard`/`TenantEditPanel`/
+  `TenantCoreAttributesSection`/`TenantPhoneProvisioning` actually render.
+  `voice_id` stayed in the list despite having no renderer — the "Save Changes"
+  flow round-trips this exact row into `/tenants/:id/update-attributes`, which
+  writes `voice_id` unconditionally (not `COALESCE`); dropping it would have
+  silently nulled it on the next save.
+- **Phone provisioning ignored `is_deleted`.** `activatePhone`/`deactivatePhone`
+  (`provisioningService.ts`) and `GET /provisioning/status` queried `tenants`
+  directly with no soft-delete filter — this service was never routed through
+  `createWithTenantClient`'s choke point. "Activate Phone" against an already
+  soft-deleted tenant purchased and assigned a real Telnyx number for a deleted
+  business. All three queries now filter `is_deleted = false`.
+- **`GET /customers` / `GET /appointments` zero-tenant-scoping branch.** The
+  super-admin sentinel-tenant branch on both routes dropped tenant scoping for
+  ANY request running with no managed tenant selected — including
+  `dashboard/lib/hooks.ts`'s `useStaticData()` firing `Api.customers.list` as a
+  side effect on `EmployeeManagementView`/`ShiftManagementView`/
+  `ResourceManagerView`, none of which render customer data. Fixed in two
+  layers: both routes now require `requireSuperAdmin` **and** an explicit
+  `?all_tenants=true` opt-in (absent → `[]`, not an error, so an accidental
+  caller loses nothing and leaks nothing); the dashboard API client
+  (`superAdminScopeParam` in `dashboard/lib/api.ts`) auto-supplies that opt-in
+  only when the caller is genuinely using the super-admin sentinel tenant, which
+  preserves the real "all businesses" scheduling flow (matching a selected
+  customer to infer which tenant a new appointment belongs to,
+  `useAppointmentCRUD.ts`) byte-for-byte. `useStaticData` also gained a
+  `{ customers: false }` option so the three staff/shift/resource screens skip
+  the customers fetch entirely instead of relying on the server-side gate alone.
+- **Self-service link SMS false-success.**
+  `POST /appointments/:id/send-self-service-links` called `sendSms()` with no
+  `ENABLE_SMS` gate — Telnyx accepts the submission and reports success even
+  though no 10DLC registration means the carrier drops it (error 40010), so a
+  staff member saw a green success toast for a text that could never arrive.
+  Gated on `ENABLE_SMS === 'true'` (default off, matching
+  `agent/src/configSchema.ts`'s convention), returning a clear 503 instead of a
+  false `success: true`.
+
+New tests per fix: column-allowlist assertions on `GET /tenants`
+(`tests/routes/tenant-routes.test.ts`); `is_deleted` filtering on all three
+provisioning queries (`tests/services/provisioningService.test.ts`,
+`tests/routes/provisioning.route.test.ts`); the opt-in gate + empty-list default
+plus a same-tenant regression guard on `GET /customers`
+(`tests/routes/customers-superadmin-scope.test.ts`, new file) and `GET
+/appointments` (`tests/routes/appointments.test.ts`); the `useStaticData`
+customers-skip (`dashboard/lib/useStaticData.test.tsx`, new file) and the API
+client's scope-param behavior (`dashboard/lib/api.superAdminScope.test.ts`, new
+file); both `ENABLE_SMS` states on the self-service-links route
+(`tests/routes/appointments.test.ts`). Full dashboard suite (107 files / 1150
+tests) and every directly touched backend test file green; typecheck + lint
+clean on both sides.
+
 ## 2026-09-16 — Scheduler List/Day view UTC evening-boundary bug (found, flagged, fixed)
 
 `useSchedulerData.ts` built its appointment-list fetch range as `` `${dateStr}T00:00:00Z` ``

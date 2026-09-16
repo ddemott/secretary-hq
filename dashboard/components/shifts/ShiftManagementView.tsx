@@ -30,7 +30,7 @@ import { ShiftEditorModal } from './ShiftEditorModal';
 
 export default function ShiftManagementView() {
   const tenantId = useActiveTenantId();
-  const { employees, loading: empsLoading } = useStaticData(tenantId);
+  const { employees, loading: empsLoading } = useStaticData(tenantId, { customers: false });
   const vocab = useVocabulary();
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);

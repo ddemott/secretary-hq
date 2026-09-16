@@ -212,13 +212,34 @@ export function registerTenantRoutes(
   pool: Pool,
   withTenantClient: <T>(tenantId: string, fn: (client: PoolClient) => Promise<T>) => Promise<T>
 ) {
+  // GET /tenants — the SuperAdminDashboard tenant list + tenant-switcher
+  // dropdown's data source. The column list below IS the wire contract —
+  // it replaced `SELECT *`, which shipped every column ever added to
+  // `tenants` (Stripe customer/subscription ids, legal_consent_ip,
+  // legal_consent_user_agent, forward_phone, call_disclosure, checklist
+  // config, ...) to every super-admin on load, with nobody deciding to
+  // (audit finding, 2026-09-16). Built from what the view tree actually
+  // consumes: `TenantCard` / `TenantSwitcherDropdown` (tenant_id, name,
+  // business_type), `TenantEditPanel` (+ `timezone`, `owner_phone`),
+  // `TenantCoreAttributesSection` (tts_voice, first_message, system_prompt),
+  // `TenantPhoneProvisioning` (phone_status, inbound_phone,
+  // telnyx_phone_number_id). `voice_id` is included even though no
+  // component renders it any more (superseded by tts_voice) — the "Save
+  // Changes" flow round-trips this exact row straight into
+  // `/tenants/:id/update-attributes`, which writes `voice_id` unconditionally
+  // (not COALESCE); dropping it here would silently null it on every save.
   app.get(
     '/tenants',
     withHandler(async (req: AppRequest, reply) => {
       if (!requireSuperAdmin(req, reply)) return;
       const res = await withPoolClient(pool, (client) =>
         client.query(
-          'SELECT * FROM tenants WHERE is_deleted = false ORDER BY sort_order ASC, created_at DESC'
+          `SELECT tenant_id, name, business_type, timezone, voice_id, tts_voice,
+                  system_prompt, first_message, owner_phone, inbound_phone,
+                  phone_status, telnyx_phone_number_id
+             FROM tenants
+            WHERE is_deleted = false
+            ORDER BY sort_order ASC, created_at DESC`
         )
       );
       return reply.send(res.rows);

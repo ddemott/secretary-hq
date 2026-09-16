@@ -134,11 +134,22 @@ export default function ProfileView() {
         <Card className="p-6" style={{ backgroundColor: 'var(--bg-raised)' }}>
           <fieldset>
             <legend
-              className="text-xs font-bold uppercase tracking-widest mb-4"
+              className="text-xs font-bold uppercase tracking-widest mb-1"
               style={{ color: 'var(--text-secondary)' }}
             >
               Appearance
             </legend>
+            {/* The page header calls this an "account" preference, but setTheme()
+                only ever writes to localStorage (dashboard/lib/ThemeContext.tsx) —
+                there is no backend column and nothing syncs it. An owner who picks
+                a theme here, then opens the dashboard on their phone or a second
+                browser, lands back on Navy with no explanation. Say so plainly
+                rather than let the page's own "account preferences" framing imply
+                persistence this control doesn't have. */}
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+              Saved to this browser only — it won&apos;t follow you to a different device or
+              browser.
+            </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {THEMES.map((t) => (
                 <button
@@ -211,6 +222,13 @@ export default function ProfileView() {
                   Change password
                 </Link>
               </div>
+              {/* The other two rows in this fieldset each explain themselves
+                  (session expiry fact; the log-out-everywhere caption below) —
+                  this link was the one control with zero indication of what
+                  clicking it does before navigating away from the dashboard. */}
+              <p className="text-xs pl-[22px]" style={{ color: 'var(--text-muted)' }}>
+                Emails a reset link to your account address; it expires in 30 minutes.
+              </p>
               <div className="pt-3 mt-3 border-t" style={{ borderColor: 'var(--border-soft)' }}>
                 <Button
                   variant="danger"

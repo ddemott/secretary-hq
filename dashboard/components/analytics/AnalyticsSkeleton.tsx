@@ -10,7 +10,12 @@ import React from 'react';
 
 export function AnalyticsSkeleton() {
   return (
-    <div className="flex-1 overflow-auto p-6" style={{ backgroundColor: 'var(--bg-base)' }}>
+    <div
+      className="flex-1 overflow-auto p-6"
+      style={{ backgroundColor: 'var(--bg-base)' }}
+      aria-label="Loading analytics"
+      aria-busy="true"
+    >
       <div className="max-w-5xl mx-auto">
         <div
           className="h-8 w-32 rounded-lg mb-1 animate-pulse"

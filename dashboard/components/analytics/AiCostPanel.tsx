@@ -54,8 +54,24 @@ export default function AiCostPanel() {
     void load();
   }, [tenantId, load]);
 
-  if (loading) return <div className="text-sm text-muted">Loading AI cost…</div>;
-  if (error || !data) return <div className="text-sm text-muted">{error || 'No AI cost data'}</div>;
+  if (loading) {
+    return (
+      <div className="text-sm text-muted" role="status" aria-live="polite">
+        Loading AI cost…
+      </div>
+    );
+  }
+  // A real fetch failure and "the ledger has nothing yet" are different facts
+  // for the operator reading this — only the former is an error worth
+  // announcing to assistive tech.
+  if (error) {
+    return (
+      <div className="text-sm text-muted" role="alert">
+        {error}
+      </div>
+    );
+  }
+  if (!data) return <div className="text-sm text-muted">No AI cost data</div>;
 
   return (
     <Card className="p-4">

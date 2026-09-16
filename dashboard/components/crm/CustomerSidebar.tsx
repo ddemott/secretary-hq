@@ -16,6 +16,8 @@ interface CustomerSidebarProps {
   customers: Customer[];
   selectedCustomer: Customer | null;
   loading: boolean;
+  /** True when the last customer fetch failed — distinct from a real "zero customers" tenant. */
+  loadError?: boolean;
   isOwner: boolean;
   tenantId: string | null;
   showDetailOnMobile: boolean;
@@ -29,6 +31,7 @@ export function CustomerSidebar({
   customers,
   selectedCustomer,
   loading,
+  loadError = false,
   isOwner,
   tenantId,
   showDetailOnMobile,
@@ -233,9 +236,6 @@ export function CustomerSidebar({
 
         <div
           ref={listRef}
-          id="crm-customer-list"
-          role="listbox"
-          aria-label="Customers"
           className="flex-1 overflow-y-auto pb-20 md:pb-0"
           onKeyDown={(e) => {
             if (filteredCustomers.length === 0) return;
@@ -256,9 +256,38 @@ export function CustomerSidebar({
             }
           }}
         >
+          {loading && customers.length === 0 && (
+            <div
+              className="flex flex-col gap-2 p-4"
+              aria-label="Loading customers"
+              aria-busy="true"
+            >
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-14 rounded-lg animate-pulse"
+                  style={{ backgroundColor: 'var(--bg-surface)' }}
+                />
+              ))}
+            </div>
+          )}
           {filteredCustomers.length === 0 && !loading && (
             <div className="p-6 text-center">
-              {searchQuery ? (
+              {loadError ? (
+                <div role="alert" className="p-2">
+                  <EmptyState
+                    icon={UserPlus}
+                    title="Couldn't load customers"
+                    description="Something went wrong reaching the server. Try refreshing."
+                    variant="compact"
+                    action={
+                      <Button variant="secondary" size="md" onClick={onRefresh}>
+                        Try again
+                      </Button>
+                    }
+                  />
+                </div>
+              ) : searchQuery ? (
                 <EmptyState
                   icon={UserPlus}
                   title={`No customers match "${searchQuery}"`}
@@ -280,16 +309,18 @@ export function CustomerSidebar({
               )}
             </div>
           )}
-          {filteredCustomers.map((c, idx) => (
-            <CustomerListItem
-              key={c.customer_id}
-              customer={c}
-              isSelected={selectedCustomer?.customer_id === c.customer_id}
-              isFocused={focusedIdx === idx}
-              onClick={() => onSelectCustomer(c)}
-              onMouseEnter={() => setFocusedIdx(-1)}
-            />
-          ))}
+          <div id="crm-customer-list" role="listbox" aria-label="Customers">
+            {filteredCustomers.map((c, idx) => (
+              <CustomerListItem
+                key={c.customer_id}
+                customer={c}
+                isSelected={selectedCustomer?.customer_id === c.customer_id}
+                isFocused={focusedIdx === idx}
+                onClick={() => onSelectCustomer(c)}
+                onMouseEnter={() => setFocusedIdx(-1)}
+              />
+            ))}
+          </div>
         </div>
       </section>
       <ConfirmModal {...confirmState} onClose={closeConfirm} />
