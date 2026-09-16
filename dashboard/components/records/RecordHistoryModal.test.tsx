@@ -105,7 +105,7 @@ beforeEach(() => {
 });
 
 function renderModal(onClose = vi.fn()) {
-  render(
+  const utils = render(
     <RecordHistoryModal
       isOpen
       onClose={onClose}
@@ -115,7 +115,7 @@ function renderModal(onClose = vi.fn()) {
       tenantId="t-1"
     />
   );
-  return { onClose };
+  return { onClose, ...utils };
 }
 
 describe('RecordHistoryModal a11y', () => {
@@ -307,5 +307,50 @@ describe('RecordHistoryModal — UX review 2026-09-15 (owner-judgment pass)', ()
     const applyButton = screen.getByRole('button', { name: /Apply Changes/i });
     expect(applyButton).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /v1/i })).toBeChecked();
+  });
+
+  test('SAD: reopening the modal clears a stale restore announcement from the previous open', async () => {
+    // WHO: a screen-reader user who restores a record, closes the modal, and
+    //      reopens it (same or different record) later.
+    // WHAT: this component returns `null` when `isOpen` is false rather than
+    //       unmounting, so `statusMessage` survived a close/reopen cycle
+    //       untouched — a reopened modal could silently carry "Record
+    //       restored." from a PREVIOUS session into a new one where nothing
+    //       has happened yet.
+    // WHERE: the `[isOpen, recordId, table, tenantId]` load effect.
+    // WHY: a live region is trusted to describe the CURRENT open, not an
+    //      artifact of the last one.
+    mockGetHistory.mockResolvedValue(deletedHistory);
+    mockRestoreDeleted.mockResolvedValue({ success: true });
+    const { rerender } = renderModal();
+    await screen.findByText('This record is deleted');
+    mockGetHistory.mockResolvedValueOnce({ ...deletedHistory, is_deleted: false });
+    fireEvent.click(screen.getByRole('button', { name: /Restore Record/i }));
+    expect(await screen.findByText('Record restored.')).toBeInTheDocument();
+
+    // Close (component renders null but keeps state) then reopen.
+    rerender(
+      <RecordHistoryModal
+        isOpen={false}
+        onClose={vi.fn()}
+        table="customers"
+        recordId="rec-1"
+        recordName="Ada Lovelace"
+        tenantId="t-1"
+      />
+    );
+    mockGetHistory.mockResolvedValueOnce(deletedHistory);
+    rerender(
+      <RecordHistoryModal
+        isOpen
+        onClose={vi.fn()}
+        table="customers"
+        recordId="rec-1"
+        recordName="Ada Lovelace"
+        tenantId="t-1"
+      />
+    );
+
+    await waitFor(() => expect(screen.queryByText('Record restored.')).not.toBeInTheDocument());
   });
 });

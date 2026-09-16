@@ -46,6 +46,10 @@ export function DeletedRecordsPanel({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    // A stale restore/copy announcement from the previous table/tenant must
+    // not linger into this one — the live region would otherwise re-announce
+    // a result that belongs to a record the caller can no longer see.
+    setStatusMessage(null);
     void loadDeletedRecords();
     if (table === 'customers') {
       void loadCustomers();

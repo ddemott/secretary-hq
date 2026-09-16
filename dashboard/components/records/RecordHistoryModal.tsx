@@ -48,6 +48,10 @@ export function RecordHistoryModal({
 
   useEffect(() => {
     if (isOpen && recordId) {
+      // The component returns null (not unmounted) when closed, so a stale
+      // statusMessage from the previous open would otherwise re-announce a
+      // result that belongs to a different open of this modal.
+      setStatusMessage(null);
       void loadHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

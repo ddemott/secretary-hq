@@ -203,4 +203,31 @@ describe('DeletedRecordsPanel — UX review 2026-09-15 (owner-judgment pass)', (
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(await screen.findByText('Copied 1 field to Grace Hopper.')).toBeInTheDocument();
   });
+
+  test('SAD: switching table/tenant clears a stale restore announcement from the previous view', async () => {
+    // WHO: a screen-reader user who restores a record, then switches the
+    //      table or tenant selector without closing the panel.
+    // WHAT: `statusMessage` lived in this component's own state and was only
+    //       ever cleared at the START of a new restore/copy action — never
+    //       when `table`/`tenantId` changed. Switching views left the live
+    //       region holding "Ada Lovelace restored." from the PREVIOUS view,
+    //       so it never re-announces (React only speaks a live region on
+    //       CHANGE) and, worse, if the new view's own action later sets the
+    //       exact same string it would silently not re-announce either.
+    // WHERE: the `[table, tenantId]` load effect.
+    // WHY: a live region is trusted to say what's true NOW; carrying stale
+    //      state across an unrelated navigation makes it lie by omission.
+    const { rerender } = renderPanel();
+    await screen.findByText('Ada Lovelace');
+    mockGetDeleted.mockResolvedValueOnce({ total: 0, records: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(await screen.findByText('Ada Lovelace restored.')).toBeInTheDocument();
+
+    mockGetDeleted.mockResolvedValueOnce({ total: 0, records: [] });
+    rerender(<DeletedRecordsPanel table="appointments" tenantId="t-1" />);
+
+    await waitFor(() =>
+      expect(screen.queryByText('Ada Lovelace restored.')).not.toBeInTheDocument()
+    );
+  });
 });
