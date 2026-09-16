@@ -24,6 +24,7 @@ export default function VoiceCallsView() {
   const [selectedCall, setSelectedCall] = useState<VoiceSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
@@ -59,8 +60,12 @@ export default function VoiceCallsView() {
 
   async function fetchCallHistory(offset = 0, opts: { silent?: boolean } = {}) {
     if (!opts.silent) {
-      if (offset === 0) setLoading(true);
-      else setHistoryLoading(true);
+      if (offset === 0) {
+        setLoading(true);
+        setHistoryError(null);
+      } else {
+        setHistoryLoading(true);
+      }
     }
 
     try {
@@ -92,7 +97,15 @@ export default function VoiceCallsView() {
       setHasMore(data.has_more || false);
     } catch (err) {
       console.error('Failed to fetch call history:', err);
-      if (!opts.silent) setCallHistory([]);
+      // A load failure and an honestly-empty history are different facts for
+      // the owner reading the list — don't let a failed request read as
+      // "no calls yet". Only surfaced for the first page of a user-visible
+      // (non-silent) fetch; the background poll stays quiet so a transient
+      // blip doesn't flash an error banner over an already-loaded list.
+      if (!opts.silent) {
+        setCallHistory([]);
+        if (offset === 0) setHistoryError('Could not load call history. Please try again.');
+      }
     } finally {
       if (!opts.silent) {
         setLoading(false);
@@ -217,6 +230,7 @@ export default function VoiceCallsView() {
             selectedCall={selectedCall}
             loading={loading}
             historyLoading={historyLoading}
+            historyError={historyError}
             total={total}
             hasMore={hasMore}
             outcomeFilter={outcomeFilter}

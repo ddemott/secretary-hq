@@ -152,6 +152,47 @@ describe('MessagesInbox — loading / empty states', () => {
       expect(mockToast).toHaveBeenCalledWith('Could not load messages. Please try again.', 'error')
     );
   });
+
+  test('SAD: a fetch failure is announced as an error, not "nothing here yet"', async () => {
+    // WHO: a front-desk user whose inbox request genuinely failed. WHAT: once
+    //   the transient toast fades, the list itself must still say the load
+    //   failed rather than settling on the same copy a truly empty inbox
+    //   shows. WHERE: the items.length === 0 branch. WHY: same defect class
+    //   as AiCostPanel (PR #511) — error and honest-empty are different facts.
+    mockApi.voice.listMessages.mockRejectedValue(new Error('API error'));
+    render(<MessagesInbox tenantId="tenant-test" />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/could not load messages/i);
+    expect(screen.queryByText(/nothing here yet/i)).not.toBeInTheDocument();
+  });
+
+  test('HAPPY: loading state is announced via role=status/aria-live', () => {
+    // WHO: a screen-reader user opening the tab | WHAT: the "Loading…" text
+    //   carries role="status" + aria-live so it's actually announced | WHERE:
+    //   the loading branch | WHY: previously plain text, silent to AT.
+    mockApi.voice.listMessages.mockReturnValue(new Promise(() => {}));
+    render(<MessagesInbox tenantId="tenant-test" />);
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
+  });
+
+  test('a11y: the refresh button has an accessible name', async () => {
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+  });
+});
+
+describe('MessagesInbox — filter tab a11y', () => {
+  test('a11y: filter tabs expose aria-pressed for the active filter', async () => {
+    // WHO: a screen-reader/keyboard user | WHAT: each filter tab is a toggle
+    //   button announcing pressed state | WHERE: the filter row | WHY: matches
+    //   the same toggle-button convention CommsSentView's channel filter
+    //   already uses; these had none.
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: 'all' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'new' })).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 
 describe('MessagesInbox — message list', () => {

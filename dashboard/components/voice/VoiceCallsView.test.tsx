@@ -135,6 +135,24 @@ describe('VoiceCallsView', () => {
       // WHY: users need to identify the page and have refresh access
     });
 
+    test('a11y: the refresh button has an accessible name', async () => {
+      // WHO: a screen-reader user | WHAT: the refresh icon button is reachable
+      //   by its accessible name, not just a hover title | WHERE: CallListPanel
+      //   header | WHY: `title` alone is not reliably exposed to AT.
+      render(<VoiceCallsView />);
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+    });
+
+    test('a11y: call history loading state is announced to assistive tech', async () => {
+      // WHO: a screen-reader user loading the Calls tab | WHAT: the initial
+      //   spinner carries aria-label + aria-busy | WHERE: CallListPanel |
+      //   WHY: previously a bare spinner with no label read as a blank tab.
+      mockCallHistory.mockReturnValue(new Promise(() => {})); // never resolves
+      render(<VoiceCallsView />);
+      const loadingEl = await screen.findByLabelText('Loading call history');
+      expect(loadingEl).toHaveAttribute('aria-busy', 'true');
+    });
+
     test('displays call history with call details', async () => {
       render(<VoiceCallsView />);
       await waitFor(() => {
@@ -304,6 +322,21 @@ describe('VoiceCallsView', () => {
       // WHO: users | WHAT: error handling for history
       // WHEN: history API fails | WHERE: call list
       // WHY: prevent crash on API errors
+    });
+
+    test('UX: a call-history fetch failure is announced as an error, not "no calls yet"', async () => {
+      // WHO: an owner whose call-history request genuinely failed (network/5xx).
+      // WHAT: the list must show a distinguishable, announced error — not the
+      //       same "No call history yet" copy a truly empty tenant sees, which
+      //       would misreport a fetch failure as "you've never had a call".
+      // WHERE: CallListPanel's historyError branch.
+      // WHY: same defect class fixed on AiCostPanel (PR #511) — an error and
+      //      an honest empty state are different facts and must read as such.
+      mockCallHistory.mockRejectedValue(new Error('Server error'));
+      render(<VoiceCallsView />);
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/could not load call history/i);
+      expect(screen.queryByText('No call history yet')).not.toBeInTheDocument();
     });
 
     test('displays new caller message for unknown customers', async () => {
