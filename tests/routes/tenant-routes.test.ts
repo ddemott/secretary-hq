@@ -115,47 +115,24 @@ describe('GET /tenants — column allowlist', () => {
     expect(res.statusCode).toBe(200);
     const selectQuery = queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
     expect(selectQuery).toBeDefined();
-    expect(selectQuery!.text).not.toMatch(/SELECT\s+\*/i);
+    // Catches both the bare `SELECT *` and a qualified wildcard like
+    // `SELECT t.*` — a regression to either one re-widens the response to
+    // every column ever added to `tenants` (Copilot review, PR #517).
+    expect(selectQuery!.text).not.toMatch(/SELECT\s+(\w+\.)?\*/i);
   });
 
-  it('HAPPY: response omits sensitive/unused columns for every tenant row', async () => {
-    // A real tenant row has many more columns than the wire contract should
-    // expose — legal consent PII, Stripe ids, the whole checklist/tts config
-    // surface. This pins that a row containing those columns (as Postgres
-    // would return if the query regressed to SELECT *) still only reaches
-    // the client with the allowlisted fields.
-    const fullRow = {
-      tenant_id: TENANT_ID_A,
-      name: 'Acme Tire',
-      business_type: 'automotive',
-      timezone: 'America/Chicago',
-      voice_id: null,
-      tts_voice: 'shimmer',
-      system_prompt: 'You are a helpful receptionist.',
-      first_message: 'Thanks for calling!',
-      owner_phone: '+16305551234',
-      inbound_phone: '+16305555678',
-      phone_status: 'active',
-      telnyx_phone_number_id: 'tnx-123',
-      // Sensitive/unused columns a `SELECT *` would have shipped:
-      legal_consent_ip: '203.0.113.5',
-      legal_consent_user_agent: 'Mozilla/5.0',
-      legal_consent_attested_at: '2026-09-15T00:00:00Z',
-      legal_consent_attested_by: 'user-1',
-      stripe_customer_id: 'cus_abc123',
-      stripe_subscription_id: 'sub_xyz789',
-      forward_phone: '+16305559999',
-      call_disclosure: 'Custom disclosure text',
-      checklist_preset_id: 'auto_shop_front_desk',
-      checklist_overrides: {},
-      logo_url: 'https://example.com/logo.png',
-    };
-    // The mock client just returns whatever we script regardless of the
-    // actual SQL column list, so this proves the ROUTE HANDLER itself never
-    // widens what it forwards — it's `reply.send(res.rows)` verbatim, so the
-    // real guarantee is the SQL text (asserted above); this pins the wire
-    // shape end-to-end assuming the query is correct.
-    queryResponses.push({ rows: [fullRow] });
+  it('HAPPY: the SQL allowlist excludes every known sensitive/unused column', async () => {
+    // This test proves the QUERY TEXT never names these columns — it does
+    // NOT prove the response body would omit them if the query regressed,
+    // because the mock client below returns whatever `queryResponses` is
+    // scripted with regardless of the real column list (there is no actual
+    // Postgres enforcing "you can only get back what you SELECTed" in this
+    // harness). The real guarantee is the SQL-text assertion in the test
+    // above; this one is a second, explicit check that the allowlist named
+    // in that query specifically leaves out every column this audit
+    // flagged, so a future edit that re-adds one of them by name fails here
+    // even if it doesn't happen to use a literal `*`.
+    queryResponses.push({ rows: [] });
 
     const res = await app.inject({ method: 'GET', url: '/tenants' });
     expect(res.statusCode).toBe(200);
