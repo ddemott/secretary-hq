@@ -5,6 +5,7 @@ import { Calendar, Clock, History, XCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/EmptyState';
+import { formatTimeFromISO } from '../../lib/utils';
 
 interface CustomerAppointment {
   appointment_id: string;
@@ -62,11 +63,7 @@ export function CustomerAppointmentsSection({
                   >
                     <Clock className="w-3 h-3 mr-1" />
                     {new Date(a.start_time).toLocaleDateString()} at{' '}
-                    {new Date(a.start_time).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true,
-                    })}
+                    {formatTimeFromISO(a.start_time)}
                   </p>
                   <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {a.resource_name}
@@ -110,7 +107,7 @@ export function CustomerAppointmentsSection({
           <div className="space-y-3">
             {pastAppointments.map((a) => {
               const isCanceled = a.status === 'canceled';
-              const dateLabel = `${new Date(a.start_time).toLocaleDateString()} at ${new Date(a.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+              const dateLabel = `${new Date(a.start_time).toLocaleDateString()} at ${formatTimeFromISO(a.start_time)}`;
               const Body = (
                 <>
                   <div className="space-y-1">
