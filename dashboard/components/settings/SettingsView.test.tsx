@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import React from 'react';
 
@@ -78,5 +78,112 @@ describe('SettingsView — super-admin only after IA merge', () => {
     expect(screen.getByLabelText('Last Name')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
+  });
+});
+
+describe('SettingsView — UX review 2026-09-15 (owner-judgment pass)', () => {
+  test('HAPPY: the Password field explains the 6-character minimum before submit', async () => {
+    // WHO: a super-admin filling in the Owner Account section for the first
+    //        time.
+    // WHAT: CreateTenantSchema (src/routes/tenants.ts) rejects owner_pass
+    //        under 6 characters, but nothing on the page said so — a short
+    //        password bounced back as a bare "Validation failed" with no
+    //        indication which of the six submitted fields was the problem.
+    // WHERE: SettingsView Owner Account section, Password field.
+    // WHY: a hidden requirement that only surfaces as a generic error after
+    //      submit wastes a round trip and reads like the form is broken.
+    mockIsAdmin = true;
+    render(<SettingsView />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Business Onboarding/i })).toBeInTheDocument()
+    );
+    const passwordInput = screen.getByLabelText('Password');
+    expect(screen.getByText(/at least 6 characters/i)).toBeInTheDocument();
+    expect(passwordInput).toHaveAttribute('aria-describedby', 'owner-pass-hint');
+    expect(passwordInput).toHaveAttribute('minLength', '6');
+  });
+
+  test('SAD: the create-business error is announced as an alert, not just visible text', async () => {
+    // WHO: a screen-reader super-admin submitting the onboarding form.
+    // WHAT: the error banner previously had no role/live-region wiring, so a
+    //        screen reader gave no indication a submission failed unless the
+    //        user happened to be focused on that part of the page. Matches
+    //        the same class of fix as ForwardCallsSection's forward-loop
+    //        error (PR #492).
+    // WHERE: SettingsView onboarding error banner.
+    // WHY: an async failure that isn't announced is invisible to anyone not
+    //      looking directly at the screen at the moment it appears.
+    mockIsAdmin = true;
+    (global.fetch as unknown as ReturnType<typeof vi.fn>) = vi.fn().mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/templates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ business_type: 'salon', display_name: 'Salon' }],
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 409,
+        json: async () => ({ success: false, error: 'A business named "Acme" already exists.' }),
+      });
+    });
+    render(<SettingsView />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Business Onboarding/i })).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByLabelText('Business Template'), {
+      target: { value: 'salon' },
+    });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Jo' } });
+    fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jo@acme.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p@ssw0rd' } });
+    fireEvent.click(screen.getByRole('button', { name: /Finalize/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/already exists/i);
+    expect(alert).toHaveAttribute('aria-live', 'assertive');
+  });
+
+  test('HAPPY: the success banner is a polite live region, not silent visible-only text', async () => {
+    // WHO: a super-admin who just finished onboarding a new business.
+    // WHAT: the success banner previously had no role/live-region wiring —
+    //        same defect class as the error banner above, opposite outcome.
+    // WHERE: SettingsView onboarding success banner.
+    // WHY: a screen-reader user who submits and looks away needs the
+    //      confirmation announced, not just rendered.
+    mockIsAdmin = true;
+    (global.fetch as unknown as ReturnType<typeof vi.fn>) = vi.fn().mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/templates')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ business_type: 'salon', display_name: 'Salon' }],
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, tenant_id: 'new-tenant-id' }),
+      });
+    });
+    render(<SettingsView />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Business Onboarding/i })).toBeInTheDocument()
+    );
+
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Acme' } });
+    fireEvent.change(screen.getByLabelText('Business Template'), {
+      target: { value: 'salon' },
+    });
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Jo' } });
+    fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jo@acme.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p@ssw0rd' } });
+    fireEvent.click(screen.getByRole('button', { name: /Finalize/i }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(/created successfully/i);
+    expect(status).toHaveAttribute('aria-live', 'polite');
   });
 });
