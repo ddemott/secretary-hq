@@ -245,7 +245,10 @@ export function registerCustomerRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
-      // Owner-only (mirrors the export gate in exportData.ts).
+      // Owner-only: bulk PII writes are not a front-desk operation. NB
+      // exportData.ts's own owner gate (`requireOwnerForExport`) is a
+      // separate, not-yet-consolidated inline check with different wording
+      // — it is NOT this shared guard, despite the similar intent.
       if (!requireOwnerRole(req, reply)) return;
 
       const parsed = CustomerImportSchema.safeParse(req.body);
