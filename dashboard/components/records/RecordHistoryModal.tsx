@@ -36,6 +36,10 @@ export function RecordHistoryModal({
   const [mode, setMode] = useState<'history' | 'restore'>('history');
   const [selectedFields, setSelectedFields] = useState<Record<string, number>>({});
   const [restoring, setRestoring] = useState(false);
+  // Screen-reader-only status announcement for restore outcomes — the mode
+  // switching back to 'history' and the timeline refreshing is a silent DOM
+  // change to anyone not looking at the screen.
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Escape-to-close + Tab focus trap + body-scroll lock, matching the other
@@ -127,11 +131,13 @@ export function RecordHistoryModal({
 
     setRestoring(true);
     setError(null);
+    setStatusMessage(null);
     try {
       await Api.versionHistory.restoreFields(tenantId, table, recordId, { restores });
       await loadHistory();
       setMode('history');
       setRestorePreview(null);
+      setStatusMessage('Selected fields restored.');
       onRestored?.();
     } catch (err) {
       setError((err as Error).message || 'Failed to restore fields');
@@ -141,18 +147,39 @@ export function RecordHistoryModal({
   }
 
   async function handleRestoreDeleted() {
+    // Route this through the same `loading` state every other fetch in this
+    // modal uses. Previously this had no busy indicator at all — unlike
+    // every other restore action in this feature (DeletedRecordRow's spinner,
+    // the Apply Changes button's "Restoring..." label) — so a caller could
+    // click "Restore Record" more than once with zero visible feedback.
+    setLoading(true);
+    setError(null);
+    setStatusMessage(null);
     try {
       await Api.versionHistory.restoreDeleted(tenantId, table, recordId);
       await loadHistory();
+      setStatusMessage('Record restored.');
       onRestored?.();
     } catch (err) {
-      setError((err as Error).message);
+      setError((err as Error).message || 'Failed to restore record');
+    } finally {
+      setLoading(false);
     }
   }
 
   if (!isOpen) return null;
 
   const excludedFields = excludedSystemFields(table);
+  // "Apply Changes" used to be clickable the moment restore mode opened even
+  // though every field defaults to its CURRENT version (loadRestorePreview
+  // seeds `selectedFields` from `versions[0]`, which is the current one) —
+  // so the very first click, before touching anything, always hit the
+  // client-side "No fields selected for restoration" error. Gate the button
+  // on there actually being a version change to apply.
+  const hasFieldChanges =
+    mode === 'restore' && history
+      ? Object.values(selectedFields).some((v) => v !== history.current_version)
+      : false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -187,16 +214,33 @@ export function RecordHistoryModal({
           </button>
         </div>
 
+        {/* Screen-reader-only announcement for restore outcomes. Sighted
+            users see the mode switch back to the timeline; that DOM change
+            is silent to a screen reader without an explicit live region. */}
+        <div role="status" aria-live="polite" className="sr-only">
+          {statusMessage}
+        </div>
+
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
-            <div className="flex items-center justify-center py-12">
+            <div
+              className="flex items-center justify-center py-12"
+              role="status"
+              aria-live="polite"
+            >
               <div
                 className="animate-spin rounded-full h-8 w-8 border-b-2"
                 style={{ borderColor: 'var(--accent)' }}
               />
+              <span className="sr-only">Loading…</span>
             </div>
           ) : error ? (
-            <div className="text-center py-8" style={{ color: 'var(--danger)' }}>
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="text-center py-8"
+              style={{ color: 'var(--danger)' }}
+            >
               {error}
             </div>
           ) : mode === 'history' && history ? (
@@ -229,9 +273,22 @@ export function RecordHistoryModal({
               >
                 Back to History
               </button>
+              {!hasFieldChanges && (
+                <p
+                  id="restore-fields-no-changes-hint"
+                  className="text-xs self-center"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Select an older version above to enable Apply Changes.
+                </p>
+              )}
               <button
                 onClick={handleRestore}
-                disabled={restoring}
+                disabled={restoring || !hasFieldChanges}
+                aria-describedby={!hasFieldChanges ? 'restore-fields-no-changes-hint' : undefined}
+                title={
+                  !hasFieldChanges ? 'Select an older version above to enable this.' : undefined
+                }
                 className="px-4 py-2 text-white rounded-lg disabled:opacity-50 flex items-center gap-2"
                 style={{ backgroundColor: 'var(--accent)' }}
                 onMouseEnter={(e) => {
