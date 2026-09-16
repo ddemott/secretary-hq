@@ -134,11 +134,14 @@ describe('UtilizationHeatmap', () => {
     //      panel to a non-visual user.
     mockApi.analytics.getUtilization.mockResolvedValue({ cells: [] });
 
-    const { container } = render(<UtilizationHeatmap />);
+    render(<UtilizationHeatmap />);
 
-    const pulse = container.querySelector('[aria-busy="true"]');
+    // Label-based query tied to intent (not a bare attribute selector, which
+    // would silently match any OTHER aria-busy element a future change adds
+    // to this panel — Copilot review, 2026-09-16).
+    const pulse = screen.getByLabelText('Loading utilization data');
     expect(pulse).toBeInTheDocument();
-    expect(pulse).toHaveAttribute('aria-label', 'Loading utilization data');
+    expect(pulse).toHaveAttribute('aria-busy', 'true');
   });
 
   test('SAD: a failed fetch degrades to a quiet inline message, never a crash', async () => {

@@ -406,11 +406,14 @@ describe('AnalyticsView — UX review 2026-09-16 (owner-judgment pass)', () => {
       by_day: [],
     });
 
-    const { container } = render(<AnalyticsView />);
+    render(<AnalyticsView />);
 
-    const skeleton = container.querySelector('[aria-busy="true"]');
+    // Label-based query tied to intent (not a bare attribute selector, which
+    // would silently match any OTHER aria-busy element a future change adds
+    // to this view — Copilot review, 2026-09-16).
+    const skeleton = screen.getByLabelText('Loading analytics');
     expect(skeleton).toBeInTheDocument();
-    expect(skeleton).toHaveAttribute('aria-label', 'Loading analytics');
+    expect(skeleton).toHaveAttribute('aria-busy', 'true');
   });
 
   test('HAPPY: Repeat Callers shows a readable phone number, not raw digits', async () => {
