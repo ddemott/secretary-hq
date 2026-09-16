@@ -49,8 +49,13 @@ module.exports = {
     // reproduced under an 8GB NODE_OPTIONS override after this fix — some
     // other factor, not isolated further, accounts for the rest. 16GB
     // cleared it). Same class of exclusion as the dashboard/agent/supabase/
-    // docs sibling trees above.
+    // docs sibling trees above. `.worktrees/` is the same failure mode via
+    // a different convention: ad hoc `git worktree add .worktrees/<name>`
+    // used directly by a session rather than the Agent tool's own
+    // `.claude/` isolation mechanism — vitest.config.mts already excludes
+    // both (`.claude/**` + `.worktrees/**`); this list needed to match.
     '.claude/',
+    '.worktrees/',
     '*.config.js',
     '*.config.cjs',
     '*.config.ts',
