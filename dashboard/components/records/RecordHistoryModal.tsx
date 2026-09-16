@@ -234,7 +234,8 @@ export function RecordHistoryModal({
               />
               <span className="sr-only">Loading…</span>
             </div>
-          ) : error ? (
+          ) : error && !history && !restorePreview ? (
+            // No successful load ever landed — nothing else to show.
             <div
               role="alert"
               aria-live="assertive"
@@ -243,22 +244,43 @@ export function RecordHistoryModal({
             >
               {error}
             </div>
-          ) : mode === 'history' && history ? (
-            <VersionTimeline
-              history={history}
-              expandedVersions={expandedVersions}
-              excludedFields={excludedFields}
-              onToggleVersion={toggleVersion}
-              onLoadRestorePreview={loadRestorePreview}
-              onRestoreDeleted={handleRestoreDeleted}
-            />
-          ) : mode === 'restore' && restorePreview ? (
-            <FieldRestorePanel
-              restorePreview={restorePreview}
-              selectedFields={selectedFields}
-              onSelectFieldVersion={selectFieldVersion}
-            />
-          ) : null}
+          ) : (
+            <>
+              {error && (
+                // A restore action (Restore Record or Apply Changes) failed
+                // AFTER a successful load. Show the failure above the still-
+                // visible timeline/field panel instead of replacing it — the
+                // same "did my data just disappear" bug fixed in the sibling
+                // DeletedRecordsPanel, and for Apply Changes specifically,
+                // replacing the panel would also discard the caller's
+                // in-progress field selections with no way back to them.
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="mb-3 rounded-lg px-4 py-3 text-sm"
+                  style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}
+                >
+                  {error}
+                </div>
+              )}
+              {mode === 'history' && history ? (
+                <VersionTimeline
+                  history={history}
+                  expandedVersions={expandedVersions}
+                  excludedFields={excludedFields}
+                  onToggleVersion={toggleVersion}
+                  onLoadRestorePreview={loadRestorePreview}
+                  onRestoreDeleted={handleRestoreDeleted}
+                />
+              ) : mode === 'restore' && restorePreview ? (
+                <FieldRestorePanel
+                  restorePreview={restorePreview}
+                  selectedFields={selectedFields}
+                  onSelectFieldVersion={selectFieldVersion}
+                />
+              ) : null}
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between">

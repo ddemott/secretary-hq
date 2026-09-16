@@ -250,4 +250,62 @@ describe('RecordHistoryModal — UX review 2026-09-15 (owner-judgment pass)', ()
     await waitFor(() => expect(mockRestoreFields).toHaveBeenCalled());
     expect(await screen.findByText('Selected fields restored.')).toBeInTheDocument();
   });
+
+  test('SAD (regression): a failed Restore Record shows an inline alert without wiping the timeline', async () => {
+    // WHO: an owner who clicks "Restore Record" and the request fails.
+    // WHAT: before this fix, ANY error — including one from an action after
+    //       a successful load — replaced the ENTIRE modal body (the version
+    //       timeline) with a bare error string, identical to the bug already
+    //       fixed in the sibling DeletedRecordsPanel. Because the timeline
+    //       (and its "Restore Record" button) came from a load that already
+    //       succeeded, wiping it made a failed action look like the modal
+    //       had lost its data.
+    // WHERE: the render ternary's error branch.
+    // WHY: an action error after a successful load should be additive
+    //      (an alert above the still-visible content), not destructive.
+    mockGetHistory.mockResolvedValue(deletedHistory);
+    mockRestoreDeleted.mockRejectedValueOnce(new Error('network blip'));
+    renderModal();
+    await screen.findByText('This record is deleted');
+
+    fireEvent.click(screen.getByRole('button', { name: /Restore Record/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('network blip');
+    // The timeline that already loaded successfully must still be visible —
+    // the caller can see their data didn't vanish and can retry.
+    expect(screen.getByText('This record is deleted')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Restore Record/i })).toBeInTheDocument();
+  });
+
+  test('SAD (regression): a failed Apply Changes shows an inline alert without wiping the field panel or the selection', async () => {
+    // WHO: an owner who picks an older version for a field, clicks Apply
+    //       Changes, and the request fails.
+    // WHAT: before this fix, the failure replaced the entire FieldRestorePanel
+    //       (and the caller's just-made selection) with a bare error string.
+    //       Reopening restore mode re-fetches the preview and reseeds every
+    //       field to its CURRENT version, so the selection was unrecoverable
+    //       — a worse instance of the same "did this eat my work" bug fixed
+    //       elsewhere in this same PR.
+    // WHERE: the render ternary's error branch, restore mode.
+    // WHY: a failed write should never look indistinguishable from a wiped
+    //      workspace, and the panel + selection state were never reset on
+    //      failure — only the (unfixed) render logic was discarding them.
+    mockGetHistory.mockResolvedValue(history);
+    mockGetRestorePreview.mockResolvedValue(restorePreview);
+    mockRestoreFields.mockRejectedValueOnce(new Error('write failed'));
+    renderModal();
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /Restore Fields from History/i }));
+    await screen.findByRole('button', { name: /Apply Changes/i });
+    fireEvent.click(screen.getByRole('radio', { name: /v1/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Changes/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('write failed');
+    // The field-restore panel — and the caller's v1 selection — must still
+    // be visible/selected, not replaced by the bare error.
+    const applyButton = screen.getByRole('button', { name: /Apply Changes/i });
+    expect(applyButton).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /v1/i })).toBeChecked();
+  });
 });
