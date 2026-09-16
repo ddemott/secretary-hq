@@ -118,6 +118,10 @@ describe('RegisterPage — self-serve signup', () => {
       owner_name: 'Dale Demott',
       email: 'dale@dynatire.com',
       password: 'hunter2',
+      // The backend requires this to be the literal boolean `true`
+      // (RegisterSchema) — a client-side-only checkbox was bypassable via
+      // a direct API call, so the wire body must actually carry it.
+      consent_attested: true,
     });
     expect(localStorage.getItem('authToken')).toBe('jwt-abc');
     expect(localStorage.getItem('tenantId')).toBe('tenant-9');

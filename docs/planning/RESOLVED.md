@@ -4,6 +4,45 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-15 — Prod migrations-behind: found, caught up, automation tried and reverted
+
+**Found:** prod's `schema_migrations` head was `20260909210000`; main had advanced to
+`20260915000000` — 10 migrations behind, spanning 3+ days of individually-merged PRs where
+the manual `npm run db:migrate` step against prod was never run after merge. Several change
+live booking behavior (STRICT skill-map links, night-shift coverage, past-time/closed-day
+guards) — prod was serving without them the whole gap.
+
+**Caught up:** ran `bash scripts/setup-db.sh` directly against prod with the elevated
+(non-`app_user`) connection. `APPLIED=10 SKIPPED=194 FAILED=0`, verified by querying
+`schema_migrations` before and after. Prod's schema is current as of this entry.
+
+**Automation tried and reverted same day:** added `railway.json` `deploy.preDeployCommand:
+"npm run db:migrate"` (PR #494) so migrations would run automatically before every deploy,
+gating code from serving until they succeed. Real deploy proved the mechanism works exactly
+as designed — it failed LOUDLY (`ERROR: permission denied for schema public`) rather than
+silently skipping — but the failure was real: Railway's own injected `DATABASE_URL` is the
+`app_user` role, deliberately restricted with no DDL rights (see root CLAUDE.md's RLS
+section — this is a hard-won, intentional boundary, not an oversight). Migrations need
+`CREATE`/`ALTER` privileges that role was never granted, and the elevated connection only
+exists in Dale's local encrypted memory, not on Railway. Every deploy after #494/#495/#496
+merged failed or was skipped at this step; prod kept serving the pre-#494 build until this
+was caught and the pending migrations applied by hand (above).
+
+**Decision:** revert `preDeployCommand` (this entry's own PR) rather than solve the
+credential question under pressure. Real fixes for full automation — a second live prod
+credential in Railway's env-var pool, or loosening `app_user`'s privileges — are both
+genuine, permanent security-surface tradeoffs not worth making just to automate a step a
+cheap reminder solves just as well. Replaced with a CI check (`.github/workflows/pre-merge-
+checks.yml`, job `migration-reminder`) that comments on any PR adding a file under
+`supabase/migrations/`, naming the exact manual step required after merge. No new
+credential, no new attack surface, targets the actual failure mode (a human forgot).
+
+**Why this is in RESOLVED, not just closed silently:** the automation attempt itself was a
+real, reasoned decision that turned out wrong for a specific, non-obvious reason (the
+RLS-hardening work from `20260724000100_app_user_role.sql` deliberately created exactly
+this constraint) — worth keeping so a future session doesn't re-attempt the same
+`preDeployCommand` approach without knowing why it was reverted.
+
 ## 2026-09-14 — Website-scan re-scan scheduler
 
 P2 backlog item closed. Deferred pieces were a durable `last_scanned` marker and a

@@ -81,6 +81,10 @@ export default function RegisterPage() {
           owner_name: ownerName.trim(),
           email: email.trim(),
           password,
+          // Mirrors the checked legal-consent checkbox below. The backend
+          // requires this to be the literal `true` (RegisterSchema) — a
+          // client-side-only checkbox was bypassable via a direct API call.
+          consent_attested: agreedToLegal,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {

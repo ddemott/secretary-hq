@@ -46,6 +46,21 @@ export interface CreateTenantWithOwnerParams {
    *                    expect distinct business names in the picker).
    */
   duplicateCheck: 'email' | 'tenant_name';
+  /**
+   * The self-serve /register flow's legal-consent checkbox attestation —
+   * present ONLY when the caller (the /register route) verified
+   * `consent_attested: true` on the request. Omitted/undefined for the
+   * admin create flow (POST /tenants/create): an admin creating a tenant
+   * on someone else's behalf isn't the business owner attesting anything,
+   * so those tenants intentionally get NULL consent columns.
+   *
+   * `ip`/`userAgent` are best-effort and may be null — they never block
+   * registration, they just narrow the audit trail when present.
+   */
+  legalConsent?: {
+    ip: string | null;
+    userAgent: string | null;
+  };
 }
 
 export type CreateTenantWithOwnerResult =
@@ -107,6 +122,28 @@ export async function createTenantWithOwner(
       ]
     );
     const userId = userRes.rows[0].user_id;
+
+    // RECORD THE LEGAL-CONSENT ATTESTATION, IF ANY.
+    //
+    // Only present for the self-serve /register flow (RegisterSchema
+    // requires consent_attested: true before this helper is ever called
+    // with it set) — an admin creating a tenant via POST /tenants/create
+    // never passes this, so those rows stay NULL. Deliberately NOT
+    // best-effort: unlike the question-tree copy below, a registration
+    // whose consent record fails to write must roll back the whole
+    // transaction — a tenant that exists with no proof consent was ever
+    // given is exactly the gap this migration closes.
+    if (params.legalConsent) {
+      await client.query(
+        `UPDATE tenants
+            SET legal_consent_attested_at = NOW(),
+                legal_consent_attested_by = $1,
+                legal_consent_ip = $2,
+                legal_consent_user_agent = $3
+          WHERE tenant_id = $4`,
+        [userId, params.legalConsent.ip, params.legalConsent.userAgent, tenantId]
+      );
+    }
 
     // GIVE THE NEW BUSINESS ITS OWN COPY OF THE VERTICAL'S QUESTIONS.
     //

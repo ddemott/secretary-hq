@@ -110,6 +110,7 @@ async function registerFreshTenant(req: APIRequestContext): Promise<RegisteredTe
       owner_name: `Owner ${suffix}`,
       email,
       password: 'password123',
+      consent_attested: true,
     },
   });
   expect(res.status(), 'register must succeed for a brand-new tenant').toBe(201);

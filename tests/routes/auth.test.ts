@@ -421,6 +421,61 @@ describe('Auth Routes — Handler-Level', () => {
       expect(reply.statusCode).toBe(400);
     });
 
+    // WHO: someone posting straight to the API, bypassing the /register
+    //   page's checkbox entirely (e.g. curl, a scripted signup).
+    // WHAT: RegisterSchema requires consent_attested to be the literal
+    //   `true` — omitting it must 400 before any DB work, exactly like
+    //   any other missing required field.
+    // WHERE: /register Zod validation.
+    // WHY: the checkbox was enforced CLIENT-SIDE ONLY; a direct API call
+    //   could create a fully functional tenant with zero record consent
+    //   was ever given, defeating the ToS/DPA liability-shift the
+    //   checkbox exists for.
+    it('returns 400 when consent_attested is missing (WHO: direct API caller | WHAT: no consent field | WHERE: /register | WHY: closes the client-side-only consent bypass)', async () => {
+      const { mockClient: client } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'Shop',
+        business_type: 'salon',
+        owner_name: 'Owner',
+        email: 'nobox@test.com',
+        password: 'secure123',
+      });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(400);
+      expect(reply.body.error).toBe('Validation failed');
+    });
+
+    it('returns 400 when consent_attested is false (WHO: tampered request | WHAT: field present but false | WHERE: /register | WHY: must not silently default to true)', async () => {
+      const { mockClient: client } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'Shop',
+        business_type: 'salon',
+        owner_name: 'Owner',
+        email: 'unchecked@test.com',
+        password: 'secure123',
+        consent_attested: false,
+      });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(400);
+      expect(reply.body.error).toBe('Validation failed');
+    });
+
     it('returns 409 on duplicate email (WHO: returning user | WHAT: email exists in users table | WHERE: /register | WHY: prevents duplicate accounts)', async () => {
       const { mockClient: client, queryResponses } = createMockClient();
       const pool = createMockPool(client);
@@ -441,6 +496,7 @@ describe('Auth Routes — Handler-Level', () => {
         owner_name: 'Owner',
         email: 'dupe@test.com',
         password: 'secure123',
+        consent_attested: true,
       });
       const reply = createMockReply();
 
@@ -464,6 +520,8 @@ describe('Auth Routes — Handler-Level', () => {
       queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] });
       // INSERT user
       queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] });
+      // UPDATE tenants SET legal_consent_* (consent stamp)
+      queryResponses.push({ rows: [] });
       // COMMIT
       queryResponses.push({ rows: [] });
 
@@ -474,6 +532,7 @@ describe('Auth Routes — Handler-Level', () => {
         owner_name: 'Dale',
         email: 'dale@test.com',
         password: 'secure123',
+        consent_attested: true,
       });
       const reply = createMockReply();
 
@@ -483,6 +542,148 @@ describe('Auth Routes — Handler-Level', () => {
       expect(reply.body.success).toBe(true);
       expect(reply.body.tenant_id).toBe(TENANT_ID_MOCK);
       expect(reply.body.token).toBe(TEST_TOKEN);
+    });
+
+    // WHO: same happy-path signup as above.
+    // WHAT: createTenantWithOwner must actually be handed a legalConsent
+    //   object built from the request's IP/User-Agent — the schema gate
+    //   alone doesn't close the gap if the route never persists anything.
+    // WHERE: /register handler → createTenantWithOwner call.
+    // WHY: this is the assertion that would have caught a version of the
+    //   fix that validated consent_attested but forgot to wire it through.
+    it('passes a legalConsent object (ip + user agent) through to the tenant UPDATE (WHO: new business | WHAT: consent audit trail | WHERE: /register → bootstrap | WHY: validation alone does not persist proof of consent)', async () => {
+      const { mockClient: client, queryResponses, queries } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // SELECT existing — none
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // UPDATE tenants legal_consent_*
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'DynaTire',
+        business_type: 'mobile-tire',
+        owner_name: 'Dale',
+        email: 'dale2@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      req.headers = { 'x-forwarded-for': '203.0.113.5, 10.0.0.1', 'user-agent': 'TestAgent/1.0' };
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(201);
+      const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+      expect(consentUpdate).toBeDefined();
+      expect(consentUpdate?.params).toEqual([
+        USER_ID_MOCK,
+        '203.0.113.5',
+        'TestAgent/1.0',
+        TENANT_ID_MOCK,
+      ]);
+    });
+
+    // WHO: a request that arrives through an intermediary that represents
+    //   repeated headers as an array (Node's IncomingHttpHeaders types
+    //   x-forwarded-for/user-agent as `string | string[] | undefined`,
+    //   not just `string | undefined`).
+    // WHAT: a naive `.split(',')` on an array would throw. This must not
+    //   crash the request — it must degrade to a best-effort read instead.
+    // WHY: an automated review of this PR flagged the original cast
+    //   (`as string | undefined`) as unsound against the real header type.
+    it('does not crash when x-forwarded-for / user-agent arrive as arrays (WHO: intermediary that arrays repeated headers | WHAT: registration must still succeed | WHERE: /register header extraction | WHY: audit-trail plumbing must never be able to break the main flow)', async () => {
+      const { mockClient: client, queryResponses, queries } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // SELECT existing — none
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // UPDATE tenants legal_consent_*
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'ArrayHeaderCo',
+        business_type: 'salon',
+        owner_name: 'Array Owner',
+        email: 'arrayheader@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      req.headers = {
+        'x-forwarded-for': ['198.51.100.9', '10.0.0.1'],
+        'user-agent': ['ArrayAgent/2.0'],
+      } as unknown as typeof req.headers;
+      const reply = createMockReply();
+
+      await expect(route.handler(req, reply)).resolves.not.toThrow();
+
+      expect(reply.statusCode).toBe(201);
+      const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+      expect(consentUpdate?.params).toEqual([
+        USER_ID_MOCK,
+        '198.51.100.9',
+        'ArrayAgent/2.0',
+        TENANT_ID_MOCK,
+      ]);
+    });
+
+    // WHO: a request whose x-forwarded-for was set to garbage by a
+    //   misconfigured proxy or a client probing the endpoint directly.
+    // WHAT: legal_consent_ip is an INET column — a non-IP value would
+    //   fail the INSERT and take the whole registration down with it.
+    // WHY: an automated review of this PR flagged that the original code
+    //   could write non-IP values into an INET column. The extraction
+    //   must validate and fall back to null rather than ever writing
+    //   garbage into that column.
+    it('stores null ip when x-forwarded-for is not a real IP address (WHO: malformed/garbage header | WHAT: registration must still succeed, ip column stays null | WHERE: /register header extraction | WHY: an INET column rejects non-IP values, which would 500 the whole registration)', async () => {
+      const { mockClient: client, queryResponses, queries } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // SELECT existing — none
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // UPDATE tenants legal_consent_*
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'GarbageHeaderCo',
+        business_type: 'salon',
+        owner_name: 'Garbage Owner',
+        email: 'garbageheader@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      req.headers = { 'x-forwarded-for': 'unknown', 'user-agent': 'RealBrowser/1.0' };
+      // req.ip on the mock request also isn't a real IP here — nothing
+      // valid to fall back to, which is exactly the case that must
+      // resolve to null rather than throwing or writing garbage.
+      (req as { ip?: string }).ip = 'not-an-ip';
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(201);
+      const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
+      expect(consentUpdate?.params).toEqual([
+        USER_ID_MOCK,
+        null,
+        'RealBrowser/1.0',
+        TENANT_ID_MOCK,
+      ]);
     });
   });
 

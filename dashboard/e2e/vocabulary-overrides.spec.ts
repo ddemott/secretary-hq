@@ -68,6 +68,7 @@ async function registerFreshTenant(
       owner_name: `Owner ${suffix}`,
       email,
       password,
+      consent_attested: true,
     },
   });
   expect(res.status(), `register must succeed for business_type=${businessType}`).toBe(201);
