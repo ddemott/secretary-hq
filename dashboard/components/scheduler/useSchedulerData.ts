@@ -30,6 +30,25 @@ function toDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// Returns the UTC instant of LOCAL midnight for the given date, as an ISO
+// string. `new Date(y, m, d)` interprets its arguments as LOCAL time
+// components, so its resulting timestamp (and therefore .toISOString())
+// already correctly accounts for the host's UTC offset and DST — no manual
+// offset arithmetic needed. This is NOT the same as `` `${toDateString(date)}T00:00:00Z` ``,
+// which instead appends "Z" to a LOCAL calendar-date string and silently
+// treats it as if it were already a UTC date. For any UTC-behind timezone
+// (e.g. US Central, UTC-5/-6), that bug shifts the fetch window 5-6 hours
+// early: from roughly 19:00-20:00 local onward each day, an appointment
+// whose UTC timestamp has already rolled onto the next UTC calendar day
+// falls outside the naive [dateStr 00:00Z, nextDateStr 00:00Z) range and
+// silently vanishes from the Scheduler List/Day view, even though it's
+// still "today" locally and the row is correct in the DB. Found 2026-09-15
+// (docs/planning/TODO.md) via a persistent e2e/appointment-cancel-ui.spec.ts
+// CI failure that only ever reproduced during the US-Central evening window.
+function localMidnightIso(date: Date, dayOffset = 0): string {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + dayOffset).toISOString();
+}
+
 interface SchedulerEmployee {
   employee_id: string;
   name: string;
@@ -62,10 +81,8 @@ export function useSchedulerData(
     setLoading(true);
     setError(null);
 
-    const startDate = `${dateStr}T00:00:00Z`;
-    const nextDay = new Date(selectedDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-    const endDate = `${toDateString(nextDay)}T00:00:00Z`;
+    const startDate = localMidnightIso(selectedDate);
+    const endDate = localMidnightIso(selectedDate, 1);
 
     try {
       // Fetch appointments + effective shifts for selected date
