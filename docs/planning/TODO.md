@@ -161,7 +161,7 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
 ### 4. Legal / business (long lead time — start early)
 
 - [ ] **(Dale)** Open an **LLC bank account** for Thinking Hammer LLC (required before Stripe payouts).
-- [ ] **(Dale)** Add **TCPA-compliant SMS opt-in** consent language at booking time — required before any confirmation texts. Draft copy ready for review: `docs/product/TCPA_SMS_CONSENT_COPY.md` (2026-09-16, PR #507) — dashboard checkbox/disclosure + voice-agent spoken-offer script, reusing the existing `consent_records`/`ConsentService` path. Draft only, pending Dale/legal sign-off; not yet wired into any UI or prompt.
+- [ ] **(Dale)** Add **TCPA-compliant SMS opt-in** consent language at booking time — required before any confirmation texts. Copy: `docs/product/TCPA_SMS_CONSENT_COPY.md` (2026-09-16, PR #507) — dashboard checkbox/disclosure + voice-agent spoken-offer script, reusing the existing `consent_records`/`ConsentService` path. **Dale-approved 2026-09-16, pending counsel review**; not yet wired into any UI or prompt.
 - [ ] **(Dale)** **E&O insurance** before the first paying customer (~$800–1,200/yr; Next/Hiscox).
 - [ ] **(Dale)** **Cyber Liability insurance** before the first paying customer (often bundled with E&O).
 
