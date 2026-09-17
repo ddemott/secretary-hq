@@ -14,11 +14,20 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Admin-provisioned-tenant consent gate (POST /login → 403 error_code
+  // 'consent_required'). Tracked separately from `error` because this is
+  // NOT a login failure to retry — it is a distinct, non-dismissible
+  // interstitial: no dashboard access until the emailed link is confirmed.
+  const [consentRequired, setConsentRequired] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setConsentRequired(false);
 
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
@@ -39,6 +48,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         token?: string;
         role?: string;
         error?: string;
+        error_code?: string;
         message?: string;
       };
 
@@ -54,6 +64,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         // localStorage. 2026-05-28 UX audit #5.
         if (data.role) localStorage.setItem('userRole', data.role);
         onLoginSuccess({ tenant_id: data.tenant_id, user_name: data.user_name, role: data.role });
+      } else if (data.error_code === 'consent_required') {
+        // The password WAS correct — this is not "sign in failed", it's
+        // "you cannot proceed until you confirm the emailed link." Dale's
+        // own instruction: word it that they need to do this before
+        // proceeding on the page, not a dismissible error toast.
+        setResendEmail(email);
+        setConsentRequired(true);
       } else if (response.status === 429) {
         // Fastify's rate-limit plugin (5 attempts / 5 minutes on /login) throws
         // its own error shape, not ours: `error` is just the generic HTTP
@@ -72,6 +89,89 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       setLoading(false);
     }
   };
+
+  const handleResendConsent = async () => {
+    setResendLoading(true);
+    try {
+      await fetch(`${API_BASE_URL}/consent/resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resendEmail, password }),
+      });
+      // /consent/resend always answers { success: true } regardless of
+      // eligibility — same enumeration-safe posture as /forgot-password.
+      setResendSent(true);
+    } catch {
+      setResendSent(true);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  if (consentRequired) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-4 font-sans transition-colors duration-200"
+        style={{ backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+      >
+        <div
+          className="w-full max-w-md rounded-2xl shadow-xl overflow-hidden border"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-soft)' }}
+        >
+          <div
+            className="p-8 flex flex-col items-center"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--primary-text)' }}
+          >
+            <div className="bg-white/20 p-3 rounded-xl mb-4 backdrop-blur-sm">
+              <Bot className="w-10 h-10" />
+            </div>
+            <h1 className="text-2xl font-display tracking-tight">Confirmation required</h1>
+          </div>
+          <div className="p-8">
+            <div
+              role="alert"
+              className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500 text-amber-800 dark:text-amber-300 text-sm rounded-r-md"
+            >
+              <p className="font-semibold mb-1">You can&apos;t access your dashboard yet.</p>
+              <p>
+                We emailed you a confirmation link when your account was created. You must click
+                it and confirm before you can sign in — this is required, not optional, and there
+                is nothing else to do first.
+              </p>
+            </div>
+
+            {resendSent ? (
+              <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
+                A new confirmation link was just emailed to you.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResendConsent}
+                disabled={resendLoading}
+                aria-busy={resendLoading}
+                className="w-full py-3 rounded-xl font-semibold text-sm border transition-all disabled:opacity-50"
+                style={{ borderColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
+              >
+                {resendLoading ? 'Sending...' : 'Resend confirmation email'}
+              </button>
+            )}
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setConsentRequired(false)}
+                className="text-xs hover:underline"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Back to login
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

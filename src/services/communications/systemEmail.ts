@@ -1,6 +1,19 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { emailLogoAttachment, escapeHtml, renderDetailRows, renderEmailShell } from './emailLayout';
 
+/**
+ * Where platform-internal notices (port requests, consent-invite admin
+ * copies, consent-attestation receipts) go when there's no per-tenant
+ * recipient. Same fallback chain as the port-request flow in
+ * src/routes/provisioning.ts — no hardcoded address in application logic;
+ * the literal here is a last-resort default for local/dev environments
+ * that have neither env var set (NODE_ENV !== 'production' routes through
+ * the no-op stub transporter anyway, so this never reaches a real inbox
+ * unless someone actually configures SMTP locally).
+ */
+export const PLATFORM_ADMIN_EMAIL: string =
+  process.env.PLATFORM_ADMIN_EMAIL || process.env.EMAIL_USER || 'daledemott@gmail.com';
+
 let transporter: Transporter | null = null;
 
 /**
@@ -309,4 +322,166 @@ export async function sendPortRequestEmail(to: string, fields: PortRequestFields
   });
 
   await sendSystemMail({ to, subject, text, html: portHtml });
+}
+
+/**
+ * The attestation copy, word-for-word identical to the /register page's
+ * legal-consent checkbox (dashboard/app/register/page.tsx) — the admin
+ * create flow's consent-invite email must say the SAME thing the self-serve
+ * checkbox says, or the two consent flows are legally inconsistent with
+ * each other.
+ */
+export const TENANT_CONSENT_ATTESTATION_TEXT =
+  'I am authorized to set up Secretary HQ for this business. I agree to the Terms of Service, ' +
+  'Privacy Policy, and Data Protection Addendum. I understand an AI assistant answers calls on ' +
+  'my behalf and I am responsible for informing my callers as required by law.';
+
+/**
+ * Sent to the OWNER of an admin-provisioned tenant (POST /tenants/create).
+ *
+ * An admin creating a tenant on someone else's behalf isn't the business
+ * owner attesting anything — nobody has agreed to the ToS/Privacy/DPA on
+ * this tenant yet, and per general clickwrap-agreement law an admin
+ * "attesting on their behalf" would capture nothing legally. This email is
+ * the first-login gate: the owner cannot use their dashboard
+ * (POST /login refuses with error_code 'consent_required') until they
+ * click through and confirm.
+ *
+ * Copy is deliberately unambiguous that this is NOT optional — Dale's own
+ * instruction was "word it that they need to do this before proceeding."
+ */
+export async function sendTenantConsentInviteEmail(
+  to: string,
+  consentLink: string,
+  businessName: string
+): Promise<void> {
+  const safeBusiness = escapeHtml(businessName);
+  const subject = `Action required — confirm your Secretary HQ agreement for ${businessName}`;
+  const text = `Secretary HQ set up a workspace for ${businessName} on your behalf.
+
+Before you can sign in and use your dashboard, you must confirm the following:
+
+${TENANT_CONSENT_ATTESTATION_TEXT}
+
+Click the link below to confirm and unlock your dashboard:
+
+${consentLink}
+
+You cannot access your dashboard until you do this — it is not optional and there is nothing else to review first.`;
+
+  const html = renderEmailShell({
+    heading: 'Action required before you can sign in',
+    preheader: `Confirm your agreement to unlock the ${businessName} dashboard.`,
+    bodyHtml:
+      `<p style="margin:0 0 16px">Secretary HQ set up a workspace for <strong>${safeBusiness}</strong> on your behalf.</p>` +
+      `<p style="margin:0 0 16px"><strong>Before you can sign in and use your dashboard</strong>, you must confirm:</p>` +
+      `<p style="margin:0 0 16px;padding:12px 16px;background:#F4F6FA;border-radius:6px">${escapeHtml(TENANT_CONSENT_ATTESTATION_TEXT)}</p>`,
+    cta: { label: 'Confirm and unlock my dashboard', url: consentLink },
+    footerHtml:
+      `You cannot access your dashboard until you confirm — this is required, not optional. ` +
+      `If the button doesn't work, paste this URL into your browser:<br>` +
+      `<span style="word-break:break-all">${escapeHtml(consentLink)}</span>`,
+  });
+
+  await sendSystemMail({ to, subject, text, html });
+}
+
+/** Fields for the platform-admin "new tenant pending consent" notice. */
+export interface TenantConsentPendingFields {
+  businessName: string;
+  ownerEmail: string;
+  createdAt: Date;
+}
+
+/**
+ * Notify the platform admin that a new admin-provisioned tenant was
+ * created and is waiting on the owner's consent confirmation. Informational
+ * only — no action is required from the admin; the owner's own resend
+ * self-service (POST /consent/resend) covers the "never confirmed" case.
+ */
+export async function sendTenantConsentPendingAdminNotice(
+  to: string,
+  fields: TenantConsentPendingFields
+): Promise<void> {
+  const subject = `New tenant created — pending owner consent: ${fields.businessName}`;
+  const createdAtLabel = fields.createdAt.toISOString();
+  const text =
+    `A new tenant was created and is pending the owner's consent confirmation. No action is needed from you.\n\n` +
+    `Business: ${fields.businessName}\n` +
+    `Owner email: ${fields.ownerEmail}\n` +
+    `Created: ${createdAtLabel}`;
+
+  const html = renderEmailShell({
+    heading: 'New tenant created — pending owner consent',
+    preheader: `${fields.businessName} is waiting on the owner to confirm their agreement.`,
+    bodyHtml:
+      `<p style="margin:0 0 4px">A new tenant was created and is pending the owner's consent confirmation. No action is needed from you.</p>` +
+      renderDetailRows([
+        ['Business', fields.businessName],
+        ['Owner email', fields.ownerEmail],
+        ['Created', createdAtLabel],
+      ]),
+  });
+
+  await sendSystemMail({ to, subject, text, html });
+}
+
+/** Fields for the post-attestation receipt, sent to both the owner and the platform admin. */
+export interface TenantConsentAttestedFields {
+  businessName: string;
+  ownerEmail: string;
+  attestedAt: Date;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+/**
+ * Sent to BOTH the owner and the platform admin immediately after
+ * POST /consent/confirm succeeds — a receipt of what was attested and when,
+ * described in prose rather than raw headers. Two separate calls (one per
+ * recipient) rather than a bcc, so each email's framing (audience === 'owner'
+ * vs 'admin') can differ slightly while the facts stay identical.
+ */
+export async function sendTenantConsentAttestedEmail(
+  to: string,
+  fields: TenantConsentAttestedFields,
+  audience: 'owner' | 'admin'
+): Promise<void> {
+  const attestedAtLabel = fields.attestedAt.toISOString();
+  const ipLabel = fields.ip ?? 'not recorded';
+  const uaLabel = fields.userAgent ?? 'not recorded';
+
+  const subject =
+    audience === 'owner'
+      ? `Your Secretary HQ agreement is confirmed — ${fields.businessName}`
+      : `Consent confirmed — ${fields.businessName}`;
+
+  const intro =
+    audience === 'owner'
+      ? `This confirms you agreed to the Secretary HQ Terms of Service, Privacy Policy, and Data Protection Addendum for ${fields.businessName}. Your dashboard is now unlocked.`
+      : `The owner of ${fields.businessName} confirmed their consent. No action is needed.`;
+
+  const text =
+    `${intro}\n\n` +
+    `Business: ${fields.businessName}\n` +
+    `Owner email: ${fields.ownerEmail}\n` +
+    `Confirmed at: ${attestedAtLabel}\n` +
+    `Confirmed from IP: ${ipLabel}\n` +
+    `Browser: ${uaLabel}`;
+
+  const html = renderEmailShell({
+    heading: audience === 'owner' ? 'Your agreement is confirmed' : 'Consent confirmed',
+    preheader: intro,
+    bodyHtml:
+      `<p style="margin:0 0 4px">${escapeHtml(intro)}</p>` +
+      renderDetailRows([
+        ['Business', fields.businessName],
+        ['Owner email', fields.ownerEmail],
+        ['Confirmed at', attestedAtLabel],
+        ['Confirmed from IP', ipLabel],
+        ['Browser', uaLabel],
+      ]),
+  });
+
+  await sendSystemMail({ to, subject, text, html });
 }
