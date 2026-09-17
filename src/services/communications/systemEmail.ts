@@ -5,14 +5,17 @@ import { emailLogoAttachment, escapeHtml, renderDetailRows, renderEmailShell } f
  * Where platform-internal notices (port requests, consent-invite admin
  * copies, consent-attestation receipts) go when there's no per-tenant
  * recipient. Same fallback chain as the port-request flow in
- * src/routes/provisioning.ts — no hardcoded address in application logic;
- * the literal here is a last-resort default for local/dev environments
- * that have neither env var set (NODE_ENV !== 'production' routes through
- * the no-op stub transporter anyway, so this never reaches a real inbox
- * unless someone actually configures SMTP locally).
+ * src/routes/provisioning.ts (`adminEmail = process.env.PLATFORM_ADMIN_EMAIL
+ * || process.env.EMAIL_USER`) — deliberately NO hardcoded literal fallback.
+ * `tests/noHardcodedNames.test.ts` forbids a real person's name/address in
+ * shipping code ("a name you cannot look up is a name you must not
+ * invent"); a bare env-var chain that can legitimately be `undefined` is
+ * the correct shape here, same as provisioning.ts's own callers, which
+ * check for that and skip the send (with a loud log) rather than guessing
+ * an address.
  */
-export const PLATFORM_ADMIN_EMAIL: string =
-  process.env.PLATFORM_ADMIN_EMAIL || process.env.EMAIL_USER || 'daledemott@gmail.com';
+export const PLATFORM_ADMIN_EMAIL: string | undefined =
+  process.env.PLATFORM_ADMIN_EMAIL || process.env.EMAIL_USER;
 
 let transporter: Transporter | null = null;
 

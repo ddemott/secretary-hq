@@ -742,16 +742,28 @@ export function registerTenantRoutes(
             });
           }
         );
-        void sendTenantConsentPendingAdminNotice(PLATFORM_ADMIN_EMAIL, {
-          businessName: tenantName,
-          ownerEmail: body.owner_email,
-          createdAt: new Date(),
-        }).catch((err: unknown) => {
-          errorsTotal.inc({ event: 'tenant_consent_admin_notice_email_failed' });
-          logError(req, 'tenant_consent_admin_notice_email_failed', err, {
-            tenantId: result.tenantId,
+        // Neither env var configured — skip rather than guess an address
+        // (same guard as the port-request flow just below in this file).
+        // The owner invite above already went out regardless.
+        if (!PLATFORM_ADMIN_EMAIL) {
+          logError(
+            req,
+            'tenant_consent_admin_notice_email_failed',
+            new Error('PLATFORM_ADMIN_EMAIL and EMAIL_USER both unset — nowhere to send'),
+            { tenantId: result.tenantId }
+          );
+        } else {
+          void sendTenantConsentPendingAdminNotice(PLATFORM_ADMIN_EMAIL, {
+            businessName: tenantName,
+            ownerEmail: body.owner_email,
+            createdAt: new Date(),
+          }).catch((err: unknown) => {
+            errorsTotal.inc({ event: 'tenant_consent_admin_notice_email_failed' });
+            logError(req, 'tenant_consent_admin_notice_email_failed', err, {
+              tenantId: result.tenantId,
+            });
           });
-        });
+        }
       }
 
       return reply.send({ success: true, tenant_id: result.tenantId });

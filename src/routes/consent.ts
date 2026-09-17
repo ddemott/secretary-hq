@@ -143,12 +143,22 @@ export function registerConsentRoutes(app: AppFastifyInstance, pool: Pool) {
           logError(req, 'tenant_consent_receipt_owner_email_failed', err);
         }
       );
-      void sendTenantConsentAttestedEmail(PLATFORM_ADMIN_EMAIL, receiptFields, 'admin').catch(
-        (err: unknown) => {
-          errorsTotal.inc({ event: 'tenant_consent_receipt_admin_email_failed' });
-          logError(req, 'tenant_consent_receipt_admin_email_failed', err);
-        }
-      );
+      // Neither env var configured — skip rather than guess an address.
+      // The owner's own receipt above already went out regardless.
+      if (!PLATFORM_ADMIN_EMAIL) {
+        logError(
+          req,
+          'tenant_consent_receipt_admin_email_failed',
+          new Error('PLATFORM_ADMIN_EMAIL and EMAIL_USER both unset — nowhere to send')
+        );
+      } else {
+        void sendTenantConsentAttestedEmail(PLATFORM_ADMIN_EMAIL, receiptFields, 'admin').catch(
+          (err: unknown) => {
+            errorsTotal.inc({ event: 'tenant_consent_receipt_admin_email_failed' });
+            logError(req, 'tenant_consent_receipt_admin_email_failed', err);
+          }
+        );
+      }
 
       return reply.send({ success: true, business_name: result.businessName });
     }, 'Consent confirmation failed')
