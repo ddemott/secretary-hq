@@ -176,39 +176,38 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
 
   try {
     tenant = await registerFreshTenant(request);
-    // Compute the appointment's start time FIRST, then derive the shift/List
-    // date FROM IT — not from a separate `new Date()` call. The two used to
-    // be computed independently (`date` from now, `startMs` from now+margin),
-    // which is correct only as long as neither call crosses a calendar-day
-    // boundary between them. 2026-09-17: widening the margin from 15 to 60
-    // minutes (see below) made that gap wide enough that a CI run landing
-    // near local midnight computed a `date` of "today" and a `startTime` on
-    // "tomorrow" — the shift covered the wrong day, and the List view (which
-    // queries the scheduler's current selectedDate) never showed the row.
-    // Deriving both from the same instant makes them agree by construction,
-    // regardless of margin size.
+    // Use *today* (local — CI runs with TZ=America/Chicago, see
+    // .github/workflows/ci.yml) so the List view (which queries the
+    // scheduler's default selectedDate = `new Date()` AT PAGE LOAD, close to
+    // NOW, not to the appointment's own start_time) shows the row without
+    // extra date-nav clicks. en-CA gives a YYYY-MM-DD string in local time.
     //
-    // Widen the shift to the whole local day, and shift the clock-time
-    // forward from NOW rather than pinning a fixed "14:00Z" — the rebook
-    // step below now goes through book_appointment_atomic's PAST_TIME guard
-    // (2026-09-13), and a fixed UTC clock-time is only "safely inside
-    // today's shift" for part of the day; run this suite late enough in the
-    // UTC day and a hardcoded 14:00Z is already in the past. now()+margin
-    // (rounded to the booking grid) is always in the future.
+    // 2026-09-17, two-part history on this line:
+    // (1) A 15-minute forward margin on start_time was NOT enough — a CI
+    //     run's rebook step (which fires only after several real UI waits:
+    //     confirm dialog, network response, an 8s status poll) could arrive
+    //     late enough to trip book_appointment_atomic's PAST_TIME guard
+    //     (only 1 minute of grace). First fix: widen the margin to 60
+    //     minutes.
+    // (2) That fix broke a DIFFERENT thing: a CI run starting within 60
+    //     minutes of local midnight now had a start_time landing on
+    //     TOMORROW, while `date` here (and the Scheduler page's own
+    //     selectedDate at load time) was still TODAY — mismatch, the row
+    //     was dated a day the List view wasn't showing. Confirmed via two
+    //     independent CI failures both landing ~15 minutes before Central
+    //     midnight. Aligning `date` to start_time's OWN day (a first
+    //     attempt) fixed that symptom but broke this one right back, since
+    //     it's the SCHEDULER PAGE's "today" — essentially now, not
+    //     now+margin — that actually has to match, not the shift's date.
     //
-    // 2026-09-17: a 15-minute margin was NOT enough — PAST_TIME (1 minute
-    // of grace, see the RPC's own migration comment) was observed tripping
-    // in CI on the rebook step, which fires only after several real UI
-    // waits (cancel confirm dialog, network response, an 8s status poll)
-    // that a loaded CI runner can eat into. Widened to 60 minutes.
-    const QUARTER_MS = 900_000;
-    const startMs = Math.ceil((Date.now() + 60 * 60_000) / QUARTER_MS) * QUARTER_MS;
-    // NB: must be the browser-LOCAL day, not UTC. The scheduler defaults
-    // selectedDate to `new Date()` (rendered in local time), while
-    // isoDateDaysFromNow uses toISOString() (UTC) — during the evening US
-    // window those are different calendar days (the historical "known
-    // flake"). en-CA gives a YYYY-MM-DD string in local time.
-    const date = new Date(startMs).toLocaleDateString('en-CA');
+    // Real fix: keep `date` as today (matching what the page will show),
+    // and CLAMP the forward margin so start_time can never cross local
+    // midnight — floored at 20 minutes (comfortably clears the 1-minute
+    // PAST_TIME grace plus realistic CI-runner UI-wait slack; the smaller
+    // amount that turned out insufficient was 15) so a run landing very
+    // close to midnight still gets a real, useful margin instead of one
+    // clamped down to nothing.
+    const date = new Date().toLocaleDateString('en-CA');
     const seed = await seedBookingScenario(request, pool, tenant.token, tenant.tenantId, {
       employees: ['Test Tech'],
       resources: ['Test Bay'],
@@ -216,6 +215,20 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
       shiftHours: { start: '00:00', end: '23:45' },
     });
 
+    const QUARTER_MS = 900_000;
+    const now = new Date();
+    const localMidnightMs = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1
+    ).getTime();
+    const desiredMs = Date.now() + 60 * 60_000;
+    // Stay at least 5 minutes clear of local midnight itself.
+    const clampedMs = Math.min(desiredMs, localMidnightMs - 5 * 60_000);
+    // ...but never let the clamp eat so far into the margin that we're back
+    // to the original insufficient-buffer problem — floor at now()+20min.
+    const rawStartMs = Math.max(clampedMs, Date.now() + 20 * 60_000);
+    const startMs = Math.ceil(rawStartMs / QUARTER_MS) * QUARTER_MS;
     const startTime = new Date(startMs).toISOString();
     const endTime = new Date(startMs + 30 * 60_000).toISOString();
     apptId = await seedAppointment(pool, tenant.tenantId, {
