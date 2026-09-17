@@ -191,9 +191,21 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
     // step below now goes through book_appointment_atomic's PAST_TIME guard
     // (2026-09-13), and a fixed UTC clock-time is only "safely inside
     // today's shift" for part of the day; run this suite late enough in the
-    // UTC day and a hardcoded 14:00Z is already in the past. now()+15min
-    // (rounded to the booking grid) is always in the future and, at a
-    // 15-minute remove, essentially never crosses local midnight.
+    // UTC day and a hardcoded 14:00Z is already in the past. now()+margin
+    // (rounded to the booking grid) is always in the future.
+    //
+    // 2026-09-17: a 15-minute margin was NOT enough — PAST_TIME (1 minute
+    // of grace, see the RPC's own migration comment) was observed tripping
+    // in CI on the rebook step, which fires only after several real UI
+    // waits (cancel confirm dialog, network response, an 8s status poll)
+    // that a loaded CI runner can eat into. Widened to 60 minutes. This
+    // does trade away a little of the "essentially never crosses local
+    // midnight" margin the 15-minute version had — a run starting in the
+    // last ~45 minutes of the local day could still land on tomorrow, same
+    // failure class as the historical "known flake" this spec already
+    // guards against with `date`/en-CA — but a CI run landing in that
+    // specific ~45-minute window is far rarer than the PAST_TIME flake this
+    // was actually hitting.
     const seed = await seedBookingScenario(request, pool, tenant.token, tenant.tenantId, {
       employees: ['Test Tech'],
       resources: ['Test Bay'],
@@ -202,7 +214,7 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
     });
 
     const QUARTER_MS = 900_000;
-    const startMs = Math.ceil((Date.now() + 15 * 60_000) / QUARTER_MS) * QUARTER_MS;
+    const startMs = Math.ceil((Date.now() + 60 * 60_000) / QUARTER_MS) * QUARTER_MS;
     const startTime = new Date(startMs).toISOString();
     const endTime = new Date(startMs + 30 * 60_000).toISOString();
     apptId = await seedAppointment(pool, tenant.tenantId, {
