@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft — pending Dale + legal review, not lawyer-reviewed.** Same caveat as the
+**Dale-approved 2026-09-16, pending counsel review — not lawyer-reviewed.** Same caveat as the
 Bonterms-based legal pages (`dashboard/components/legal/LegalDocLayout.tsx`'s
 `LegalNotice`): this is working copy designed to be internally consistent, not
 a substitute for counsel. Do not ship it to a real booking flow without a
@@ -185,5 +185,5 @@ Matching the "decisions you still owe yourself" pattern in
    marketing consent under TCPA.
 4. **Counsel pass** on the exact wording, same as every other legal artifact
    in this repo (`LegalNotice` in `LegalDocLayout.tsx`; the consent-language
-   doc's own §4). Nothing here should be treated as final until Dale/legal
-   sign off.
+   doc's own §4). Dale approved this copy 2026-09-16; still needs legal
+   sign-off before it's treated as final.
