@@ -1,10 +1,19 @@
 /**
  * WHO: inbound caller, the instant the leg is up.
- * WHAT: we do not wait after pickup for TTS cache.
- * WHEN: 2026-08-14 — 12s post-pickup wait was dead air; Dale: "would you
- *       wait 3 seconds before answering?"
+ * WHAT: we do not wait after pickup for TTS cache to fill, but we do hold
+ *       a short fixed pre-roll once the cache IS filled so the caller's own
+ *       audio path has time to open.
+ * WHEN: 2026-08-14 — 12s post-pickup wait (waiting FOR the cache) was dead
+ *       air; Dale: "would you wait 3 seconds before answering?". 2026-09-16
+ *       — a DIFFERENT problem: with zero pre-roll, the greeting's first word
+ *       or two were getting clipped by the caller's own handset/carrier
+ *       audio path not being fully open yet. Fixed 300ms pre-roll added
+ *       AFTER the greeting is already warmed and ready — never a wait ON
+ *       the greeting, so it does not reintroduce the 2026-08-14 defect.
  * WHERE: greetingPickup.ts, consumed by index.ts say().
- * WHY: a prompt/cap that delays first audio after answer is the pause.
+ * WHY: a prompt/cap that delays first audio WHILE WAITING FOR THE GREETING
+ *      TO BE READY is the pause to avoid; a short pre-roll AFTER it's ready
+ *      is a deliberate, bounded trade for not clipping the opener.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -15,8 +24,8 @@ import {
 } from './greetingPickup.js';
 
 describe('greeting pickup', () => {
-  it('does not wait after the caller is on the line', () => {
-    expect(GREETING_POST_PICKUP_WAIT_MS).toBe(0);
+  it('holds a short fixed pre-roll after the caller is on the line, to avoid clipping the opener', () => {
+    expect(GREETING_POST_PICKUP_WAIT_MS).toBe(300);
   });
 
   it('plays cache if the ring-time warm landed; otherwise speaks live NOW', () => {
