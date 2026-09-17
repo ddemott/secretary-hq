@@ -176,16 +176,18 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
 
   try {
     tenant = await registerFreshTenant(request);
-    // Use *today* so the List view (which queries the scheduler's current
-    // selectedDate) shows the appointment without extra date-nav clicks.
+    // Compute the appointment's start time FIRST, then derive the shift/List
+    // date FROM IT — not from a separate `new Date()` call. The two used to
+    // be computed independently (`date` from now, `startMs` from now+margin),
+    // which is correct only as long as neither call crosses a calendar-day
+    // boundary between them. 2026-09-17: widening the margin from 15 to 60
+    // minutes (see below) made that gap wide enough that a CI run landing
+    // near local midnight computed a `date` of "today" and a `startTime` on
+    // "tomorrow" — the shift covered the wrong day, and the List view (which
+    // queries the scheduler's current selectedDate) never showed the row.
+    // Deriving both from the same instant makes them agree by construction,
+    // regardless of margin size.
     //
-    // NB: must be the browser-LOCAL today, not UTC. The scheduler defaults
-    // selectedDate to `new Date()` (rendered in local time), while
-    // isoDateDaysFromNow uses toISOString() (UTC). During the evening US window
-    // those are different calendar days, so a UTC-seeded appointment lands on a
-    // day the List isn't showing → the row never appears (the historical
-    // "known flake"). en-CA gives a YYYY-MM-DD string in local time.
-    const date = new Date().toLocaleDateString('en-CA');
     // Widen the shift to the whole local day, and shift the clock-time
     // forward from NOW rather than pinning a fixed "14:00Z" — the rebook
     // step below now goes through book_appointment_atomic's PAST_TIME guard
@@ -198,14 +200,15 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
     // of grace, see the RPC's own migration comment) was observed tripping
     // in CI on the rebook step, which fires only after several real UI
     // waits (cancel confirm dialog, network response, an 8s status poll)
-    // that a loaded CI runner can eat into. Widened to 60 minutes. This
-    // does trade away a little of the "essentially never crosses local
-    // midnight" margin the 15-minute version had — a run starting in the
-    // last ~45 minutes of the local day could still land on tomorrow, same
-    // failure class as the historical "known flake" this spec already
-    // guards against with `date`/en-CA — but a CI run landing in that
-    // specific ~45-minute window is far rarer than the PAST_TIME flake this
-    // was actually hitting.
+    // that a loaded CI runner can eat into. Widened to 60 minutes.
+    const QUARTER_MS = 900_000;
+    const startMs = Math.ceil((Date.now() + 60 * 60_000) / QUARTER_MS) * QUARTER_MS;
+    // NB: must be the browser-LOCAL day, not UTC. The scheduler defaults
+    // selectedDate to `new Date()` (rendered in local time), while
+    // isoDateDaysFromNow uses toISOString() (UTC) — during the evening US
+    // window those are different calendar days (the historical "known
+    // flake"). en-CA gives a YYYY-MM-DD string in local time.
+    const date = new Date(startMs).toLocaleDateString('en-CA');
     const seed = await seedBookingScenario(request, pool, tenant.token, tenant.tenantId, {
       employees: ['Test Tech'],
       resources: ['Test Bay'],
@@ -213,8 +216,6 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
       shiftHours: { start: '00:00', end: '23:45' },
     });
 
-    const QUARTER_MS = 900_000;
-    const startMs = Math.ceil((Date.now() + 60 * 60_000) / QUARTER_MS) * QUARTER_MS;
     const startTime = new Date(startMs).toISOString();
     const endTime = new Date(startMs + 30 * 60_000).toISOString();
     apptId = await seedAppointment(pool, tenant.tenantId, {
