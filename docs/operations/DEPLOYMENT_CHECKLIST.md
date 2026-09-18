@@ -29,7 +29,7 @@ exceeded`, no test ever ran), and all three services skipped.
 
 **Consequence for how you work:** flaky tests are not a hygiene problem here,
 they are an availability problem. Four wall-clock flakes have reddened CI to
-date (`docs/planning/TODO.md` → flaky gates). Recovery when it happens: re-run the failed
+date (`docs/planning/RESOLVED.md` → "Flaky gates that blocked prod deploys"). Recovery when it happens: re-run the failed
 job, confirm green, then trigger the deploy **explicitly** —
 `serviceInstanceDeployV2(serviceId, environmentId, commitSha)` against
 `https://backboard.railway.com/graphql/v2` for each of the three service ids, or
@@ -74,7 +74,7 @@ the migration.
 - [ ] **If a test asserts real I/O** (a DB round-trip, a subprocess, a rendered
       async component), it carries an explicit timeout sized to that work. The
       vitest default is 5s and four separate tests have now missed it on a
-      loaded runner. See the flaky-gates section of `docs/planning/TODO.md`.
+      loaded runner. See the "Flaky gates that blocked prod deploys" section of `docs/planning/RESOLVED.md`.
 - [ ] If the local DB behaves oddly, suspect its migration state before
       suspecting the code: `schema_migrations` can list migrations as applied
       whose data statements never ran (a `--baseline` adoption after a
@@ -95,6 +95,8 @@ the migration.
 ## 3. Migration ordering (if the PR has one)
 
 Decide which case you are in — see Gotcha 3 above.
+
+Prod migrations are manual. A PR that adds a file under `supabase/migrations/` gets an automatic, non-blocking "Migration reminder" comment from the `Pre-merge checks` workflow — it is a nudge, not a gate.
 
 **Additive migration** (new table/column nothing reads yet):
 
