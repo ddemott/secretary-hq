@@ -54,10 +54,10 @@ Symptom: appointments booked but no confirmation/reminder SMS or email.
 
 Check in order:
 
-1. **Scheduler running?** `reminderScheduler` ticks every 60s, only in prod or when `ENABLE_REMINDER_SCHEDULER=true`. Confirm the backend booted in production mode. Logs show the scheduler batch tick.
+1. **Scheduler running?** `reminderScheduler` ticks every 60s. In production it is ON unless `ENABLE_REMINDER_SCHEDULER=false` is set; outside production it runs only when `=true` (`src/services/workerEnabled.ts`). Confirm the backend booted in production mode and that the flag isn't `false` on Railway. Logs show the scheduler batch tick.
 2. **SMS silently in mock mode.** Without `TELNYX_PHONE_NUMBER`, the ProviderRegistry still defaults to Telnyx but a missing number means sends fail; without Telnyx creds it can fall to MockAdapter (a boot warning fires). Symptom: `reminder_schedules` rows flip to `sent` but no SMS arrives. Fix: confirm `TELNYX_PHONE_NUMBER=+16308229086` + `TELNYX_API_KEY` on Railway.
-3. **Email silently in mock mode.** Without `EMAIL_USER`/`EMAIL_PASS`, a mock transporter returns a fake messageId and nothing sends (boot warning fires — `envWarnings.ts`). Fix: set the Gmail app-password env on Railway.
-4. **Per-tenant SMS rate limit.** A tenant batching many sends can hit the token bucket (`smsRateLimit.ts`, 429 → retryable). Rate-limited reminders fall into the 5m/30m/2h retry queue — check `reminder_schedules` retry columns, not a true failure.
+3. **Email silently in mock mode.** Without `EMAIL_USER`/`EMAIL_PASS`, a mock transporter returns a fake messageId and nothing sends (boot warning fires — `src/services/envWarnings.ts`). Fix: set the Gmail app-password env on Railway.
+4. **Per-tenant SMS rate limit.** A tenant batching many sends can hit the token bucket (`src/services/communications/smsRateLimit.ts`, 429 → retryable). Rate-limited reminders fall into the 5m/30m/2h retry queue — check `reminder_schedules` retry columns, not a true failure.
 5. **Consent gate.** Comms are consent-gated. A customer with an `opt_out_records` row (or no consent) is skipped by design — check `consent_records` / `opt_out_records`.
 
 ---
@@ -200,5 +200,5 @@ If transfer still fails on a live call:
 
 - Capture the dominant `errors_total{event}` label + a Better Stack log window + the Sentry issue link.
 - If a deploy caused it: revert on `main` (merge), confirm CI green (`npm run ci:status`), let Railway redeploy.
-- Apply prod DB migrations BEFORE merging code that depends on them (`./scripts/setup-db.sh "<prod-url>"`).
-- Record the incident + fix in `planning/RESOLVED.md` once closed.
+- Apply prod DB migrations BEFORE merging code that depends on them (`DATABASE_URL="<prod-url>" bash scripts/setup-db.sh` — env var, not an argument, so the password isn't echoed; see `docs/operations/DEPLOYMENT_CHECKLIST.md` §3).
+- Record the incident + fix in `docs/planning/RESOLVED.md` once closed.
