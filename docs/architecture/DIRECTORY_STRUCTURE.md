@@ -1,6 +1,6 @@
 # Repository Directory Structure
 
-Target layout for the entire monorepo. Every source directory contains **only production code**; tests live in parallel `tests/` trees.
+Layout of the entire monorepo — written as a target layout, verified against the filesystem 2026-09-18. Items 1 (agentTools split), 2 (tests moved under `tests/`) and 7 (dashboard components into subdirs) have LANDED; the `○ future` groupings under `src/services/` have NOT. Every source directory contains **only production code**; tests live in parallel `tests/` trees (backend) or are co-located (agent, dashboard).
 
 **Legend:**  `✓` done · `🔄` in progress · `○` todo (numbered = which improvement item)
 
@@ -20,7 +20,7 @@ secretary-hq/
 ├── scripts/                       ✓ CLI helpers (simulate.sh, migrate-tests.mjs, …)
 ├── shared/                        ✓ cross-runtime TypeScript (no Node/Next deps)
 ├── src/                           backend (Fastify)
-├── tests/                         backend tests  ○(item 2)
+├── tests/                         ✓ backend tests (item 2 done)
 ├── public/                        ✓ static assets the backend serves — caller-simulator.html
 ├── supabase/                      ✓ migrations/ + seed.sql + generated baseline.sql
 ├── portable-workflow-kit/         ✓ extractable copy of the dev workflow (npm run generate-kit)
@@ -39,12 +39,14 @@ shared/
 ├── scheduling.ts      ✓ selectAssignments, shift/slot types
 ├── appointmentValidation.ts  ✓ 15-min increment + duration rules
 ├── questionBank.ts    ✓ POLICY_QUESTIONS, resolveQuestions
+├── starterServices.ts ✓ per-vertical starter services (generated into a migration + seed)
 ├── getEmbedding.ts    ✓ OpenAI embedding wrapper
 ├── normalizeForEmbedding.ts  ✓
 ├── expandQueryForEmbedding.ts ✓ RAG query expansion
 ├── callContext.ts     ✓ call-context shape shared by agent + backend
-├── dateTime.ts        ✓
 ├── markerQuestions.ts ✓
+├── payRange.ts        ✓
+├── hipaaVerticalDenylist.ts ✓ HIPAA verticals are permanently excluded
 ├── versionHistoryFields.ts ✓ field lists behind the version-history RPCs
 ├── checklistPresetDerivation.ts ✓ preset id + business_type → checklist runtime config
 ├── checklistOverrides.ts ✓ the SUBTRACT-only override validator (no ADD verb, by design)
@@ -52,7 +54,7 @@ shared/
 └── voiceCrm.ts        ✓
 ```
 
-The last three are here for one reason: the dashboard's preview of the next call
+The three `checklist*` files are here for one reason: the dashboard's preview of the next call
 and the agent's actual runtime must never disagree about what the call will ask.
 One implementation, two consumers.
 
@@ -63,10 +65,13 @@ One implementation, two consumers.
 ```
 src/
 ├── index.ts                 ✓ entry point — registers all routes + workers
-├── middleware.ts            ✓ withHandler, tenantMiddleware, JWT auth hook
 ├── constants.ts             ✓ app-wide constants
 ├── jsonContentTypeParser.ts ✓ Fastify plugin
+├── localHttpsCerts.ts       ✓ local-dev HTTPS certs
 ├── readinessHandler.ts      ✓ /ready deep-health handler
+│
+├── middleware/
+│   └── fastify-middleware.ts ✓ withHandler, tenantMiddleware, JWT auth hook, AppError, requireSuperAdmin
 │
 ├── database/
 │   └── index.ts             ✓ pool singleton + createWithTenantClient
@@ -82,25 +87,25 @@ src/
 │
 ├── routes/                  ✓ thin HTTP layer — validate → service → respond
 │   │
-│   ├── agentTools/          🔄 item 1 — splitting the 2,524-line file
-│   │   ├── schemas.ts       ✓ all 26 Zod schemas + constants
-│   │   ├── helpers.ts       ✓ ok/fail/toolRoute/pgErrorFields/interval math
-│   │   ├── session.ts       ○ voice-session-start/end/transcript, tenant-config
-│   │   ├── scheduling.ts    ○ check-availability, available-slots, book-*, cancel, reschedule
-│   │   ├── identity.ts      ○ identify-caller, customer-context, find-by-name, history, preferences
-│   │   ├── knowledge.ts     ○ policy-answer, service-catalog
-│   │   ├── messaging.ts     ○ take-message, page-owner, capture-job-inquiry, verify-phone
-│   │   ├── aiCost.ts        ○ record-ai-cost
-│   │   ├── _testRoutes.ts   ○ /agent-tools/_test/sync-events (SYNC_TEST_RECORDER-gated)
-│   │   └── index.ts         ○ registerAgentToolRoutes() + auth preHandler only
+│   ├── agentTools/          ✓ item 1 — DONE 2026-07-11 (was a single 2,5xx-line agentTools.ts)
+│   │   ├── schemas.ts       ✓ Zod schemas + constants
+│   │   ├── helpers.ts       ✓ ok/fail/toolRoute/pgErrorFields/interval math + AgentToolDeps
+│   │   ├── session.ts       ✓ tenant-config + voice-session-start/end/transcript
+│   │   ├── scheduling.ts    ✓ service-catalog, available-slots, book-*, cancel, reschedule
+│   │   ├── identity.ts      ✓ identify/lookup/history, preferences, consent, OTP verification
+│   │   ├── knowledge.ts     ✓ policy-answer (the only module touching embeddings)
+│   │   ├── messaging.ts     ✓ take-message, page-owner, capture-job-inquiry, self-service link
+│   │   ├── aiCost.ts        ✓ record-ai-cost
+│   │   ├── _testRoutes.ts   ✓ /agent-tools/_test/sync-events (SYNC_TEST_RECORDER-gated)
+│   │   └── index.ts         ✓ registration order + the shared x-agent-secret auth hook only
 │   │
-│   ├── agentTools.ts        🔄 replaced by agentTools/index.ts when item 1 complete
 │   ├── analytics.ts         ✓ (logic extraction → item 4)
 │   ├── appointments.ts      ✓
 │   ├── auth.ts              ✓
 │   ├── auditLog.ts          ✓
 │   ├── billing.ts           ✓
 │   ├── calendar.ts          ✓
+│   ├── callerSimulator.ts   ✓ browser voice-call harness (serves public/caller-simulator.html)
 │   ├── communications.ts    ✓
 │   ├── crmRouteScaffold.ts  ✓
 │   ├── customers.ts         ✓
@@ -127,7 +132,7 @@ src/
 │   ├── vocabulary.ts        ✓
 │   └── voice.ts             ✓
 │
-├── services/
+├── services/                (flat files today — the groupings below marked ○ are NOT done)
 │   │
 │   ├── metrics.ts           ✓ Prometheus-style in-process registry
 │   ├── logger.ts            ✓ Pino wrapper
@@ -166,6 +171,7 @@ src/
 │   │   ├── communicationHistory.ts
 │   │   ├── emailService.ts
 │   │   ├── emailTemplates.ts
+│   │   ├── emailLayout.ts / emailLogo.ts / formatLead.ts
 │   │   ├── index.ts
 │   │   ├── MockAdapter.ts
 │   │   ├── ProviderRegistry.ts
@@ -176,11 +182,8 @@ src/
 │   │   ├── TelnyxSmsAdapter.ts
 │   │   └── types.ts
 │   │
-│   ├── reminders/           ✓ existing — well organized
-│   │   ├── index.ts
-│   │   ├── reminderProcessor.ts
-│   │   ├── reminderRepository.ts
-│   │   ├── reminderScheduler.ts
+│   ├── reminders/           ✓ existing — `index.ts` (ReminderService) is the whole live implementation;
+│   │   ├── index.ts           the parallel reminderProcessor/Repository/Scheduler trio was deleted 2026-08-20
 │   │   ├── retryPolicy.ts
 │   │   ├── scheduleForAppointment.ts
 │   │   └── types.ts
@@ -189,10 +192,12 @@ src/
 │   │   ├── bootstrap.ts
 │   │   └── index.ts
 │   │
-│   ├── knowledge/           ○ NEW grouping (items 3 + future)
-│   │   ├── knowledgeIngestion.ts    currently: src/services/knowledgeIngestion.ts
-│   │   ├── knowledgePipeline.ts     ○ TODO extract from routes/knowledge.ts
-│   │   └── knowledgeSuggestions.ts  ○ TODO extract from routes/knowledge.ts
+│   ├── knowledge/           ✓ existing (created for the routes/knowledge.ts extraction, item 3)
+│   │   ├── answerExplainer.ts, importStaging.ts, ingestChunks.ts, retrievalParams.ts
+│   │   ├── siteScrape.ts, suggestionReview.ts, tokenEstimate.ts, websiteImport.ts
+│   │   (knowledgeIngestion.ts still sits flat at src/services/knowledgeIngestion.ts)
+│   │
+│   ├── scripts/             ✓ existing — blocks.ts is the prompt LADDER (fallback path only, see CLAUDE.md)
 │   │
 │   ├── telephony/           ○ NEW grouping (future)
 │   │   ├── phoneUtils.ts    ○ re-export from shared/phone.ts (item 6)
@@ -219,211 +224,31 @@ src/
 │       └── nameUtils.ts     ○ re-export from shared/name.ts (item 6)
 │
 └── workers/
-    ├── reminderScheduler.ts  ✓
-    └── voiceSessionReaper.ts ✓
+    ├── reminderScheduler.ts       ✓ 60s tick
+    ├── voiceSessionReaper.ts      ✓ 60s tick, force-finalizes stale voice_sessions
+    ├── websiteRescanScheduler.ts  ✓ daily tick
+    └── scheduleExtender.ts        ✓ extends employee_schedule forward
 ```
 
 ---
 
-## `tests/` — backend tests (parallel to `src/`) ○ item 2
+## `tests/` — backend tests (parallel to `src/`) ✓ item 2 — DONE
+
+Backend tests live under `tests/`, not beside the source. Enumerating individual files here went
+stale immediately; the shape is:
 
 ```
 tests/
-├── utils.ts               ○ was: src/test-utils.ts
-├── mock.ts                ○ was: src/test-utils-mock.ts
-│
-├── routes/                ○ unit tests for src/routes/*
-│   ├── agentTools/        ○ all agentTools*.test.ts files
-│   │   ├── agentTools.test.ts
-│   │   ├── agentToolsAiCost.test.ts
-│   │   ├── agentToolsBookingIntegration.test.ts
-│   │   ├── agentToolsCancel.test.ts
-│   │   ├── agentToolsCustomerHistory.test.ts
-│   │   ├── agentToolsMessages.test.ts
-│   │   ├── agentToolsPageOwner.test.ts
-│   │   ├── agentToolsPreferences.test.ts
-│   │   ├── agentToolsSelfServiceLink.test.ts
-│   │   ├── agentToolsTakeMessage.test.ts
-│   │   └── tools.test.ts
-│   ├── analytics.test.ts
-│   ├── appointment-date-filter.test.ts
-│   ├── appointment-mutations.test.ts
-│   ├── appointments.test.ts
-│   ├── auth.test.ts
-│   ├── available-slots-consolidated.test.ts
-│   ├── available-slots.test.ts
-│   ├── billing-routes.test.ts
-│   ├── billing.test.ts
-│   ├── billing.route.test.ts    ← was: src/routes/billing.test.ts
-│   ├── book-appointment-mapping.test.ts
-│   ├── booking-buffer.test.ts
-│   ├── booking-concurrency.test.ts
-│   ├── booking-soft-delete.test.ts
-│   ├── calendar-sync.test.ts
-│   ├── communications.test.ts
-│   ├── coverage-gaps.test.ts
-│   ├── coverage-ui-consistency.test.ts
-│   ├── coverage.test.ts
-│   ├── crm-appointments.test.ts
-│   ├── crud-routes.test.ts
-│   ├── customer.test.ts
-│   ├── customers.import.test.ts
-│   ├── demo-route.test.ts
-│   ├── exportData.test.ts
-│   ├── jwt-logging.test.ts
-│   ├── knowledge-import-document.test.ts
-│   ├── knowledge-policy-answer.test.ts
-│   ├── knowledge.explain.test.ts
-│   ├── knowledge.importWebsite.test.ts
-│   ├── knowledge.suggestions.test.ts
-│   ├── mappings.test.ts
-│   ├── provisioning.test.ts
-│   ├── provisioning.route.test.ts ← was: src/routes/provisioning.test.ts
-│   ├── reminders.deliveryStats.test.ts
-│   ├── routeHelpers.test.ts
-│   ├── selfService.test.ts
-│   ├── service-catalog.test.ts
-│   ├── service-enhancements.test.ts
-│   ├── shift-overrides-edge.test.ts
-│   ├── shift-overrides-routes.test.ts
-│   ├── shifts-routes.test.ts
-│   ├── skills.test.ts
-│   ├── solo-wizard.test.ts
-│   ├── square-routes.test.ts
-│   ├── tenant-reorder.test.ts
-│   ├── tenant-routes.test.ts
-│   ├── tenants-notification-prefs.test.ts
-│   ├── tenants-postgres-config.test.ts
-│   ├── tenants-update-config-loop.test.ts
-│   ├── token-refresh.test.ts
-│   ├── unanswered-questions.test.ts
-│   ├── auditLog.test.ts
-│   ├── users-routes.test.ts
-│   ├── versionHistory.test.ts
-│   ├── vocabulary-wiring.test.ts
-│   ├── vocabulary.test.ts
-│   ├── voice.test.ts
-│   └── webhook-signatures.test.ts
-│
-├── services/              ○ unit tests for src/services/*
-│   ├── appointmentValidation.test.ts
-│   ├── availability-search.test.ts
-│   ├── calendar-sync.test.ts
-│   ├── conflictLookup.test.ts
-│   ├── consentService.test.ts
-│   ├── crmDisconnect.test.ts
-│   ├── crmSyncStatus.test.ts
-│   ├── csv.test.ts
-│   ├── customerLookup.test.ts
-│   ├── deadlock-prevention.test.ts
-│   ├── demo-seed.test.ts
-│   ├── envWarnings.test.ts
-│   ├── expand-weekly-integration.test.ts
-│   ├── expandWeeklyToSchedule.test.ts
-│   ├── featureReadiness.test.ts
-│   ├── google-calendar.test.ts
-│   ├── knowledge-normalization.test.ts
-│   ├── knowledgeIngestion.test.ts
-│   ├── logger.test.ts
-│   ├── metrics.test.ts
-│   ├── nameUtils.test.ts
-│   ├── night-shift-availability.test.ts
-│   ├── normalizer.test.ts
-│   ├── oauthCallbackFactory.test.ts
-│   ├── oauthStateJwt.test.ts
-│   ├── outlook-calendar.test.ts
-│   ├── phoneLoopGuard.test.ts
-│   ├── phoneUtils.test.ts
-│   ├── poolExhaustion.test.ts
-│   ├── provisioningService.test.ts
-│   ├── queryExpander.test.ts
-│   ├── rag-normalization.test.ts
-│   ├── reminder-retry-worker.test.ts
-│   ├── scanRateLimit.test.ts
-│   ├── scheduling-atomic.test.ts
-│   ├── scheduling-overrides.test.ts
-│   ├── scheduling-timezone-bug.test.ts
-│   ├── scheduling.test.ts
-│   ├── selfServiceToken.test.ts
-│   ├── sentry.test.ts
-│   ├── serviceResolver.test.ts
-│   ├── skill-resource-matching-sweep.test.ts
-│   ├── square-client.test.ts
-│   ├── square-sync.test.ts
-│   ├── sync-orchestrator.test.ts
-│   ├── syncOrchestrator.test.ts
-│   ├── syncPaginate.test.ts
-│   ├── telnyxSms.test.ts
-│   ├── timezoneUtils.test.ts
-│   ├── tokenManagement.test.ts
-│   ├── communications/
-│   │   ├── TelnyxSmsAdapter.test.ts
-│   │   ├── communicationHistory.test.ts
-│   │   ├── communications.test.ts
-│   │   ├── emailService.test.ts
-│   │   ├── smsRateLimit.test.ts
-│   │   └── smsServiceMetrics.test.ts
-│   ├── reminders/
-│   │   ├── reminderProcessor-metrics.test.ts
-│   │   ├── reminders.test.ts
-│   │   ├── retryPolicy.test.ts
-│   │   └── scheduleForAppointment.test.ts
-│   └── tenants/
-│       └── bootstrap.test.ts
-│
-├── workers/               ○ unit tests for src/workers/*
-│   ├── reminderScheduler.test.ts
-│   └── voiceSessionReaper.test.ts
-│
-├── database/              ○
-│   └── database.test.ts
-│
-├── regression/            ○ cross-cutting bug-fix + schema suites
-│   ├── architecture-review-fixes.test.ts
-│   ├── bugfix-comprehensive.test.ts
-│   ├── critical-bugs.test.ts
-│   ├── high-bugs.test.ts
-│   ├── low-bugs.test.ts
-│   ├── medium-bugs.test.ts
-│   ├── multi-tenant-isolation.test.ts
-│   ├── pk-extension-tables.test.ts
-│   ├── pk-rename-coverage.test.ts
-│   ├── tenant-fk-cascade.test.ts
-│   ├── type-safety.test.ts
-│   └── voice-ai-fixes.test.ts
-│
-└── integration/           ○ all *.realdb.test.ts — require live Postgres
-    ├── agentToolsAiCost.realdb.test.ts
-    ├── agentToolsCancelReschedule.realdb.test.ts
-    ├── agentToolsCustomerSearch.realdb.test.ts
-    ├── agentToolsMessages.realdb.test.ts
-    ├── agentToolsRecordConsent.realdb.test.ts
-    ├── analytics.firstTimeFix.realdb.test.ts
-    ├── analytics.realdb.test.ts
-    ├── analyticsUtilization.realdb.test.ts
-    ├── auditLog.realdb.test.ts
-    ├── communications.realdb.test.ts
-    ├── coverageDryRun.realdb.test.ts
-    ├── crmSync.realdb.test.ts
-    ├── customerDelete.realdb.test.ts
-    ├── customers.import.realdb.test.ts
-    ├── employees.realdb.test.ts
-    ├── exportData.realdb.test.ts
-    ├── multiEmployeeScheduling.realdb.test.ts
-    ├── reminders.deliveryStats.realdb.test.ts
-    ├── rls.test.ts
-    ├── schema.test.ts
-    ├── scheduleForAppointment.realdb.test.ts
-    ├── selfService.realdb.test.ts
-    ├── serviceResolver.realdb.test.ts
-    ├── setupCommit.realdb.test.ts
-    ├── skills.realdb.test.ts
-    ├── tenants.realdb.test.ts
-    ├── users.realdb.test.ts
-    ├── users.revokeSessions.realdb.test.ts
-    ├── versionHistory.realdb.test.ts
-    ├── voice.realdb.test.ts
-    └── voiceSessionReaper.realdb.test.ts
+├── utils.ts, mock.ts      shared test helpers
+├── routes/                unit tests for src/routes/* (agentTools*.test.ts included)
+├── services/              unit tests for src/services/* (+ communications/, reminders/, tenants/)
+├── workers/               reminderScheduler, voiceSessionReaper, …
+├── database/              pool / deadlock-prevention
+├── shared/                tests for shared/*
+├── scripts/               tests for scripts/*
+├── regression/            cross-cutting bug-fix + schema suites (incl. rlsIsolation.test.ts)
+├── integration/           all *.realdb.test.ts — require live Postgres
+└── *.test.ts              top-level suites (question-tree round trip, preset catalog constraint, …)
 ```
 
 ---
@@ -432,30 +257,30 @@ tests/
 
 ```
 agent/src/
-├── index.ts              ✓ entry point
-├── config.ts             ✓
-├── prompt.ts             ✓
+├── index.ts              ✓ entry point — picks ONE of 3 call architectures at session start
+├── config.ts, configSchema.ts ✓
+├── prompt.ts             ✓ LADDER-path prompt (fallback only)
 ├── sessionContext.ts     ✓
 ├── tenantConfig.ts       ✓
 ├── toolsClient.ts        ✓
-├── transferClient.ts     ✓
+├── tools.ts              ✓ thin re-export; the real definitions are in tools/
+├── toolPhases.ts         ✓ LADDER-path only
+├── transferClient.ts, transferReport.ts ✓
 ├── transcript.ts         ✓
-├── callOutcome.ts        ✓
-├── callSummary.ts        ✓
-├── callClassify.ts       ✓
-├── greeting.ts           ✓
-├── fallback.ts           ✓
-├── logger.ts             ✓
-├── sentry.ts             ✓
-├── redactToolArgs.ts     ✓
+├── callOutcome.ts, callSummary.ts, callClassify.ts ✓
+├── greeting.ts, greetingPickup.ts ✓
+├── fallback.ts, logger.ts, sentry.ts, redactToolArgs.ts ✓
+├── customerContext.ts, dispatchReport.ts, nameCleanup.ts, openaiChatCompletion.ts,
+│   speechSanitizer.ts, toolCallLog.ts ✓
 │
 ├── checklist/            ✓ existing — THE LIVE CALL ARCHITECTURE (question trees)
 │   ├── types.ts          node shapes (text / choice / action) + the 10 NodeStatus values
-│   ├── trees.ts          PLATFORM_TREE_LIBRARY — the 9 trees a purpose can select
+│   ├── trees.ts          PLATFORM_TREE_LIBRARY — 10 hand-written trees + 30 from verticalIntakeTrees.ts
+│   ├── verticalIntakeTrees.ts  30 per-vertical slot-filling intake trees + their presets (#388)
 │   ├── tracker.ts        ChecklistTracker: all call state + isResolved() (the goodbye gate)
 │   ├── checklistAgent.ts ONE agent for the whole call + buildChecklistPrompt()
 │   ├── checklistTools.ts set_purpose / record_answer / finish_call / answer_question + wrapAction
-│   ├── presets.ts        the 4 shipped presets — WHICH TREES A TENANT CAN REACH
+│   ├── presets.ts        the 33 shipped presets (5 hand-written + 28 vertical) — WHICH TREES A TENANT CAN REACH
 │   ├── runtimeConfig.ts  the per-tenant compiled config ChecklistAgent receives
 │   ├── blockTypes.ts     conversation-block shapes
 │   ├── blockSchemas.ts   Zod validation for blocks
@@ -466,48 +291,29 @@ agent/src/
 │   ├── rung.ts           makeRung() generic core        superseded 2026-07-21
 │   ├── callRootAgent.ts  intent hand-off via begin_call
 │   ├── callPlan.ts       planCallTasks() + runtimePreamble() ← still shared with checklist/
-│   └── *Task.ts          identity / bookMeeting / meetingContext / takeMessage / scheduling
+│   └── *Task.ts          identity / bookMeeting / jobIntake / meetingContext / policyQa / takeMessage / scheduling
 │
 ├── session/              ✓ existing — well organized
 │   ├── fillerCache.ts
 │   ├── thinkingSound.ts
 │   ├── holdLines.ts      pre-synthesized dead-air lines, spoken from a TIMER
 │   ├── toolActivity.ts   isToolRunning() — so a hold line never names a lookup that isn't happening
-│   ├── turnDetector.ts   checklist-aware end-of-turn (reads the pending [ASK] node)
-│   └── watchdog.ts
+│   ├── turnDetector.ts, turnLatency.ts  checklist-aware end-of-turn + latency samples
+│   ├── watchdog.ts, outageGuard.ts
+│   ├── dnsWarm.ts, dnsIpv4.ts  resolve call-path hosts in prewarm; default-off A-only lookup shim
+│   └── workerTuning.ts
 │
-├── tools/                🔄 item 5 — group by capability
-│   ├── wrapTool.ts       ✓ existing
-│   ├── knowledge.ts      ○ get_company_policy_answer, get_service_catalog
-│   ├── messaging.ts      ○ take_message, capture_job_inquiry, page_owner_via_sms, verify-phone
-│   ├── identity.ts       ○ get_customer_context, find_caller_by_name, identify_caller, preferences
-│   ├── scheduling.ts     ○ get_available_slots, book_appointment, book_with_scheduling, cancel, reschedule
-│   ├── transfer.ts       ○ transfer_call
-│   └── index.ts          ○ buildTools(), CAPABILITY_OF, Capability type
-│
-└── tests/                ○ item 2 (agent) — agent tests separate from source
-    ├── callClassify.test.ts
-    ├── callOutcome.test.ts
-    ├── callSummary.test.ts
-    ├── fallback.test.ts
-    ├── greeting.test.ts
-    ├── logger.test.ts
-    ├── prompt.test.ts
-    ├── redactToolArgs.test.ts
-    ├── sentry.test.ts
-    ├── sessionContext.test.ts
-    ├── tenantConfig.test.ts
-    ├── tools.test.ts
-    ├── toolsClient.test.ts
-    ├── transcript.test.ts
-    ├── transferClient.test.ts
-    ├── session/
-    │   ├── fillerCache.test.ts
-    │   ├── thinkingSound.test.ts
-    │   └── watchdog.test.ts
-    └── tools/
-        └── wrapTool.test.ts
+└── tools/                ✓ item 5 — DONE, grouped by capability (re-exported by ../tools.ts)
+    ├── buildTools.ts     buildTools() composition
+    ├── types.ts          Capability type, CAPABILITY_OF
+    ├── wrapTool.ts       never-freeze contract applied at the compose boundary
+    ├── knowledge.ts, messaging.ts, identity.ts, scheduling.ts, verification.ts, sms.ts, transfer.ts
+    ├── reachability.ts   DEFINED_UNREACHABLE_ON_QUESTION_TREE
+    └── deps.ts, helpers.ts
 ```
+
+Agent tests are CO-LOCATED (`agent/src/**/*.test.ts` next to the module), not under a separate
+`agent/src/tests/` tree. `agent/scripts/` holds the `sim-*` simulation helpers and `verify-tts.mjs`.
 
 ---
 
@@ -525,37 +331,24 @@ dashboard/
 ├── types/                ✓
 ├── e2e/                  ✓ 40 committed Playwright spec files
 │
-└── components/
-    ├── ui/               ✓ primitives (Button, Card, Modal, Toast, …)
+└── components/           ✓ item 7 — DONE 2026-09-12: no loose .tsx at this level; every view is in a subdir
+    ├── ui/               ✓ shared primitives (Button, Card, Modal, Toast, …)
     ├── legal/            ✓ LegalDocLayout — shared chrome + the single source of
     │                       the legal constants (effective date, entity, contacts)
-    ├── SetupWizard/      ✓ existing — well organized
-    ├── admin/            ✓ existing
-    │
-    ├── layout/           ○ item 7 — AppShell, OutlookLayout, DashboardHome,
-    │                               ErrorBoundary, DemoBanner, FirstRunTour,
-    │                               SetupProgressPill, VersionBadge, LoginView,
-    │                               ProfileView, SettingsView, SetupView
-    │
-    ├── appointments/     ○ item 7 — AppointmentView, AppointmentDetailPanel,
-    │                               AppointmentListSidebar
-    ├── employees/        ○ item 7 — EmployeeManagementView, EmployeeServiceAssignmentView
-    ├── skills/           ○ item 7 — SkillManagementView, SkillAssignmentsView, SkillMatrixView,
-    │                               ServiceAssignmentView
-    ├── resources/        ○ item 7 — ResourceManagerView
-    ├── voice/            ○ item 7 — VoiceCallsView
-    ├── knowledge/        ○ item 7 — KnowledgeBaseView, KnowledgeSuggestions, ExplainAnswerView
-    ├── analytics/        ○ item 7 — AnalyticsView, UtilizationHeatmap, AIInsightsView
-    ├── crm/              ○ item 7 — CRMView, CRMIntegrationCard
-    ├── billing/          ○ item 7 — BillingView
-    ├── customers/        ○ item 7 — CustomerDetailPanel, DeletedRecordsPanel
-    ├── team/             ○ item 7 — TeamAccessView, TenantAdminForms, TenantCard,
-    │                               TenantCreateForm, TenantEditPanel, SuperAdminDashboard
-    ├── records/          ○ item 7 — RecordHistoryModal, AuditLogView
-    ├── scheduler/        ○ item 7 — SchedulerView, ShiftManagementView
-    ├── communications/   ○ item 7 — CommsSentView, ReminderDeliveryStats
-    └── phone/            ○ item 7 — AIConfigView, BusinessSettingsView (phone assistant config)
-```
+    ├── SetupWizard/      ✓ setup wizard steps + WizardModeChooser + Solo wizard
+    ├── admin/            ✓ super-admin surfaces
+    ├── layout/           ✓ AppShell, OutlookLayout, MobileTabBar, profile/tenant/theme dropdowns
+    ├── auth/             ✓ LoginView, ProfileView, FirstRunTour
+    ├── home/             ✓ DashboardHome + Home* cards
+    ├── business/         ✓ BusinessSettingsView, SetupView, BusinessTypeSection
+    ├── settings/         ✓ SettingsView + account cards
+    ├── aiconfig/         ✓ AIConfigView + persona / disclosure / forwarding sections (Phone Assistant tab)
+    ├── phone/            ✓ GoLivePanel
+    ├── appointments/, employees/, services/, resources/
+    ├── skills/, skill-map/, shifts/, scheduler/
+    ├── voice/            ✓ calls views
+    ├── knowledge/, analytics/, crm/, billing/, communications/, records/, team/
+    (list `ls dashboard/components` for the authoritative set)
 
 ---
 
@@ -564,7 +357,7 @@ dashboard/
 - **`shared/`** has no Node.js or framework deps — importable from backend, agent, and dashboard.
 - **`tests/integration/`** requires a live local Postgres (`docker compose up -d db`). CI sets `REQUIRE_DB_TESTS=1`.
 - **Dashboard tests** stay co-located in `dashboard/` (React convention; jsdom config is separate).
-- **Agent tests** move to `agent/src/tests/` to match the backend pattern without affecting the agent's own vitest config.
+- **Agent tests** are co-located with the source (`agent/src/**/*.test.ts`) under the agent's own vitest config.
 - **Migrations** (`supabase/migrations/`) are never reorganized — the numbered chain is the source of truth.
 
 ## `docs/` organization (updated 2026-09-04)
@@ -579,7 +372,7 @@ Flat *.md files reorganized into topic dirs to eliminate root clutter:
 - `workflow/` — DEVELOPMENT_WORKFLOW.*, CODING_STANDARDS.md, BRANCH_CHECKLIST.md, AGENTS.md, LESSONS_LEARNED.md
 - `operations/` — DEPLOYMENT.*, RUNBOOK.md, SECURITY.md, onboarding, TICKET_SUPPORT.md
 
-Existing structured subdirs unchanged: `legaldocs/`, `superpowers/{specs,plans}/`, `mockups/`.
+Existing structured subdirs unchanged: `legaldocs/`, `superpowers/{specs,plans}/`, `mockups/`, plus `calls/` (prod call archive) and `diagrams/` (`.mmd` sources).
 
 All cross-references and index tables in README.md updated. No stragglers (verified via repo search).
 
