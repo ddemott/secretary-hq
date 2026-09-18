@@ -692,17 +692,20 @@ describe('attachSilentTurnRecovery', () => {
     expect(f.sayCalls).toHaveLength(0);
   });
 
-  it('the nudge wording carries the two live-firing lessons (re-ask; end with a question)', () => {
+  it('the nudge wording carries the live-firing lessons (re-ask; falling-tone next step)', () => {
     // WHO: the 2026-07-17 16:02 UTC caller, on the recovery's FIRST live firing.
     // WHAT: v1 said "use what you already know" → the model answered its OWN
     //       pending read-back question ("Thank you! That's correct") — the
     //       caller never confirmed the number. And it promised "one moment"
     //       from a turn that holds no tools, then sat quiet for 20s.
-    // WHY: pin the two load-bearing phrases so a future rewording can't
-    //       silently drop either lesson.
+    // WHY: pin the load-bearing phrases so a future rewording can't
+    //       silently drop either lesson. Do NOT require every recovery to end
+    //       with a question mark — prefer falling-tone next step.
     expect(NUDGE_INSTRUCTIONS).toMatch(/ask that question again/i);
     expect(NUDGE_INSTRUCTIONS).toMatch(/you do not know their answer/i);
-    expect(NUDGE_INSTRUCTIONS).toMatch(/end by asking the caller a question/i);
+    expect(NUDGE_INSTRUCTIONS).toMatch(/falling tone/i);
+    expect(NUDGE_INSTRUCTIONS).toMatch(/Ask a question only when you truly need/i);
+    expect(NUDGE_INSTRUCTIONS).not.toMatch(/Always end by asking the caller a question/i);
     expect(NUDGE_INSTRUCTIONS).not.toMatch(/what you already know/i);
   });
 });

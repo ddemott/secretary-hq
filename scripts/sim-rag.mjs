@@ -6,7 +6,7 @@
 // whether retrieval is actually accurate. This seeds a known KB into an
 // ephemeral /demo/start tenant, then asks PARAPHRASED caller questions and
 // checks the right content is retrieved — plus that a genuinely out-of-scope
-// question correctly falls back ("I don't have specific information...") instead
+// question correctly falls back ("I don't have that on hand...") instead
 // of hallucinating a match. Reports a hit-rate; exits non-zero below threshold.
 //
 // Uses real OpenAI embeddings (+ normalization), so it's a true retrieval eval,

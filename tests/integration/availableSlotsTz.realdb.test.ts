@@ -224,7 +224,7 @@ describe('available-slots → real DB, non-UTC tenant, UTC session', () => {
       expect(offers[1]).toMatch(/at 1:30 PM$/);
       expect(offers[2]).toMatch(/at 2:00 PM$/);
       // The spoken line closes with the caller's own-choice invitation.
-      expect(String(body.result.spoken)).toMatch(/another day or time that suits you better/i);
+      expect(String(body.result.spoken)).toMatch(/Those times are open\. Tell me which you prefer, or name another day/i);
     } finally {
       // Cleanup: the added shift must not leak into the dated tests.
       await setup.query(

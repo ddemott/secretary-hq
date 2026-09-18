@@ -132,8 +132,8 @@ export function buildDisclosure(businessName: string, personaName?: string | nul
   const persona = personaName?.trim();
   const business = speakableName(businessName);
   return persona
-    ? `I'm ${persona}, an AI assistant for ${business}, and this call is transcribed for quality and service.`
-    : `I'm an AI assistant for ${business}, and this call is transcribed for quality and service.`;
+    ? `I'm ${persona}, an AI assistant for ${business}. This call is transcribed for quality and service.`
+    : `I'm an AI assistant for ${business}. This call is transcribed for quality and service.`;
 }
 
 /**
@@ -157,8 +157,8 @@ export function buildDisclosure(businessName: string, personaName?: string | nul
 export function buildDisclosureShort(personaName?: string | null): string {
   const persona = personaName?.trim();
   return persona
-    ? `I'm ${persona}, an AI assistant, and this call is transcribed for quality and service.`
-    : `I'm an AI assistant, and this call is transcribed for quality and service.`;
+    ? `I'm ${persona}, an AI assistant. This call is transcribed for quality and service.`
+    : `I'm an AI assistant. This call is transcribed for quality and service.`;
 }
 
 /**
@@ -185,18 +185,18 @@ export function resolveDisclosure(config: TenantDisplayConfig): string {
  * a weaker posture in all-party-consent states. Raise with counsel before
  * relying on it. Restoring the clause is a one-line change here.
  */
-export const CLOSER_NO_TRANSFER = 'How can I help you today?';
+export const CLOSER_NO_TRANSFER = 'Tell me how I can help.';
 
 /** Closer when a human transfer is actually available. A real opt-out strengthens consent. */
 export const CLOSER_WITH_TRANSFER =
-  'If you\'d rather speak with a person, just say "representative." Otherwise, how can I help you today?';
+  'If you\'d rather speak with a person, say "representative." Tell me how I can help.';
 
 /** The transfer opt-out sentence, prepended to WHATEVER closing question is in
  *  effect (default or a tenant's custom `greetingCloser`) when a transfer number
  *  is configured. Kept separate so a custom closer still gets the representative
  *  option. */
 const TRANSFER_PREFIX =
-  'If you\'d rather speak with a person, just say "representative." Otherwise, ';
+  'If you\'d rather speak with a person, say "representative." ';
 
 /**
  * Build the tenant-controlled opener.
@@ -274,7 +274,7 @@ export function buildGreeting(config: TenantDisplayConfig): string {
   // message?" — so a lost caller is handed concrete choices instead of a blank
   // "how can I help"). NULL/blank = the historical default. When a transfer
   // number exists, the representative opt-out is prepended to whichever closer
-  // is in effect (custom question lowercased to read after "Otherwise,").
+  // is in effect (custom closer kept as its own sentence after the representative line).
   const customCloser = config.greetingCloser?.trim();
   const closerQuestion = customCloser || CLOSER_NO_TRANSFER;
   // Human opt-out only when a transfer can actually run. Prefer the backend-
@@ -288,7 +288,7 @@ export function buildGreeting(config: TenantDisplayConfig): string {
       : Boolean(config.forwardPhone?.trim());
   const closer = transferReady
     ? customCloser
-      ? TRANSFER_PREFIX + closerQuestion.charAt(0).toLowerCase() + closerQuestion.slice(1)
+      ? TRANSFER_PREFIX + closerQuestion
       : CLOSER_WITH_TRANSFER
     : closerQuestion;
   // The owner's spoken services menu (2026-07-21, Dale: list the CORE lanes up

@@ -24,4 +24,4 @@ UPDATE business_templates
 SET first_message =
   'Thanks for calling {{business_name}}! I can help you book an appointment, '
   || 'leave a message, or answer questions about our services. '
-  || 'How can I help you today?';
+  || 'Tell me how I can help.';

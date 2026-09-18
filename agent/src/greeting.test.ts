@@ -200,7 +200,7 @@ describe('composition hygiene', () => {
   test('the DEFAULT wording is pinned: never "recorded", never "training"', () => {
     const d = buildDisclosure('Acme');
     expect(d).toBe(
-      "I'm an AI assistant for Acme, and this call is transcribed for quality and service."
+      "I'm an AI assistant for Acme. This call is transcribed for quality and service."
     );
     expect(d).not.toMatch(/record/i);
     expect(d).not.toMatch(/train/i);
@@ -238,7 +238,7 @@ describe('resolveDisclosure — tenant override with safe fallback', () => {
       tenant({ callDisclosure: 'Heads up: AI here, call is transcribed.', personaName: 'Beth' })
     );
     expect(g).toBe(
-      'Hi, this is Beth. Heads up: AI here, call is transcribed. How can I help you today?'
+      'Hi, this is Beth. Heads up: AI here, call is transcribed. Tell me how I can help.'
     );
     expect(g.match(/transcribed/g)).toHaveLength(1);
   });
@@ -288,8 +288,9 @@ describe('REGRESSION: the greeting must not speak template syntax, or repeat its
       })
     );
 
-    const asks = greeting.toLowerCase().split('how can i help you').length - 1;
+    const asks = greeting.toLowerCase().split('tell me how i can help').length - 1;
     expect(asks).toBe(1);
+    expect(greeting.toLowerCase().split('how can i help you').length - 1).toBe(0);
   });
 
   test('HAPPY: the disclosure still lands BETWEEN the opener and the question', () => {
@@ -305,7 +306,7 @@ describe('REGRESSION: the greeting must not speak template syntax, or repeat its
     );
 
     const disclosureAt = greeting.toLowerCase().indexOf('ai assistant');
-    const questionAt = greeting.toLowerCase().indexOf('how can i help you');
+    const questionAt = greeting.toLowerCase().indexOf('tell me how i can help');
     expect(disclosureAt).toBeGreaterThan(-1);
     expect(questionAt).toBeGreaterThan(disclosureAt);
   });
@@ -464,7 +465,7 @@ describe('the configurable closing question (greeting_closer, 2026-07-23)', () =
   // lost caller freezes on a generic "how can I help" and hangs up; concrete
   // choices ("hiring Dale, a computer fix, or a message") rescue them.
   const CLOSER =
-    'What do you need help with: hiring Dale, a computer fix, or maybe just leaving a message?';
+    'I can help with hiring Dale, a computer fix, or leaving a message. Tell me which.';
 
   test('a custom closer replaces the default AND ends the greeting', () => {
     const g = buildGreeting(tenant({ greetingCloser: CLOSER }));
@@ -473,7 +474,7 @@ describe('the configurable closing question (greeting_closer, 2026-07-23)', () =
     expect(g.trimEnd().endsWith(CLOSER)).toBe(true); // it's the last thing said
   });
 
-  test('NULL / blank closer keeps the default "How can I help you today?"', () => {
+  test('NULL / blank closer keeps the default falling-tone closer', () => {
     expect(buildGreeting(tenant({ greetingCloser: null }))).toContain(CLOSER_NO_TRANSFER);
     expect(buildGreeting(tenant({ greetingCloser: '   ' }))).toContain(CLOSER_NO_TRANSFER);
   });
@@ -487,6 +488,6 @@ describe('the configurable closing question (greeting_closer, 2026-07-23)', () =
   test('with a transfer number, the representative opt-out is prepended to the custom closer', () => {
     const g = buildGreeting(tenant({ greetingCloser: CLOSER, forwardPhone: '+16308229086' }));
     expect(g).toMatch(/say "representative/i);
-    expect(g).toContain('Otherwise, what do you need help with'); // custom closer, lowercased after "Otherwise,"
+    expect(g).toContain(CLOSER); // custom closer kept as its own sentence after representative
   });
 });

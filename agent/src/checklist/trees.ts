@@ -316,8 +316,8 @@ export const BUY_SERVICE_TREE: QuestionTreeDef = {
       type: 'choice',
       ask:
         'whether they want to see it working — OFFER the demonstration plainly once you have ' +
-        'the basics ("Would you like to see it in action? I can put you in with the owner for ' +
-        'a walkthrough."). Record wants_demo if they say yes — then add the booking tree with ' +
+        'the basics ("I can put you in with the owner for a walkthrough to see it in action. ' +
+        'Tell me if you want that."). Record wants_demo if they say yes — then add the booking tree with ' +
         'set_purpose and book a real time. Record not_now if they would rather think about it ' +
         'or just have the details emailed; that is a fine answer and is never pushed twice',
       options: {
@@ -393,7 +393,8 @@ export const JOB_TREE: QuestionTreeDef = {
       node_id: 'hiring_for',
       type: 'choice',
       ask:
-        'are they hiring for their OWN company, or PLACING someone with a client? Two ' +
+        'say both doors in a falling tone, then invite the choice: "I can note this as hiring ' +
+        'for your own company, or as placing someone with a client. Tell me which." Two ' +
         'separate companies must never collapse into one — the owner needs to know who ' +
         'called AND where the work is',
       options: {
@@ -451,7 +452,7 @@ export const JOB_TREE: QuestionTreeDef = {
           {
             node_id: 'team_timezone',
             type: 'text',
-            ask: 'what time zone is the job in?',
+            ask: 'tell me what time zone the job is in.',
           },
         ],
       },
@@ -470,9 +471,9 @@ export const JOB_TREE: QuestionTreeDef = {
       node_id: 'meeting_offer',
       type: 'choice',
       ask:
-        'offer ONCE, in one line with both doors open: "Would you like me to schedule a ' +
-        "meeting on the owner's calendar so you can talk it through, or should I just " +
-        'pass the details along?" A no is an answer — NEVER offer twice; a repeated ' +
+        'offer ONCE, falling tone with both doors open: "I can schedule a meeting on the ' +
+        "owner's calendar so you can talk it through, or just pass the details along. " +
+        'Tell me which." A no / details-only is an answer — NEVER offer twice; a repeated ' +
         'offer is a sales pitch. If they already asked for a meeting themselves, record ' +
         'wants_meeting without asking; if they already said "just pass it along" or ' +
         'equivalent, record details_only without asking',
