@@ -77,6 +77,19 @@ export interface WatchdogOptions {
    * the backend histogram, where an alert can actually see it.
    */
   onTurnLatency?: (latencyMs: number, holdPlayed: boolean) => void;
+
+  /**
+   * True once the outage guard has decided the call is broken and the outage
+   * line is on its way. The hold lines must then stand down: every one of them
+   * either implies the agent is still working on it ("Just a moment") or, worse,
+   * OFFERS A MESSAGE (RECOVERY_LINE) — which needs the very LLM that is down.
+   * 2026-09-18, SCL_MFD3o5QRKQJB: "Sorry, this is taking me a moment. If you'd
+   * like, I can take a message and have someone get right back to you" played
+   * two seconds after the guard had already tripped, ahead of "I'm having some
+   * technical trouble". The caller was promised a message that could not be
+   * taken.
+   */
+  outageTripped?: () => boolean;
 }
 
 type LogFn = (obj: Record<string, unknown>, msg: string) => void;
@@ -210,8 +223,19 @@ export function attachOutputWatchdog(
     }
   };
 
+  const outageStandDown = (label: string): boolean => {
+    if (!opts.outageTripped?.()) return false;
+    opts.log.info(
+      { event: 'watchdog_hold_skipped', label, reason: 'outage_tripped' },
+      'watchdog hold skipped — the call is being ended with the outage line'
+    );
+    disarm();
+    return true;
+  };
+
   const fireFiller = () => {
     timer1 = undefined;
+    if (outageStandDown('thinking')) return;
     // Re-check: the real reply may have started between the timer scheduling and
     // now. Only hold the line if the agent is still thinking (no audio yet).
     if (session.agentState !== 'thinking') return;
@@ -279,6 +303,7 @@ export function attachOutputWatchdog(
 
   const fireRecovery = () => {
     timer2 = undefined;
+    if (outageStandDown('recovery')) return;
     // AUDIO IS ROLLING → the caller is not in dead air. The filler is ~1.2s, so
     // 'speaking' at deadline2 (4s after the filler) cannot be the filler — it is
     // the real reply (which slipped into the queue around the filler). Speaking
@@ -449,6 +474,10 @@ export function attachSilentTurnRecovery(
      *  outputWatchdogActive is false — so exactly one of the two watchdogs
      *  feeds the collector, never both. */
     onTurnLatency?: (latencyMs: number, holdPlayed: boolean) => void;
+    /** Same contract as WatchdogOptions.outageTripped — a turn that died because
+     *  the LLM is down must not be "recovered" with a generateReply that will die
+     *  the same way, nor with a line that offers a message. */
+    outageTripped?: () => boolean;
   }
 ): () => void {
   // True from the moment we fire a nudge until any agent audio plays. If a
@@ -503,6 +532,17 @@ export function attachSilentTurnRecovery(
     // plain field on AgentSession (not in the typings); unknown shape → falsy
     // → the pre-guard behavior.
     if ((session as unknown as { closing?: boolean }).closing) return;
+
+    // The outage guard owns this turn's death: the model is down, so a forced
+    // generateReply would 429 the same way and a canned "recovery" line would
+    // offer a message nobody can take. The outage line is already queued.
+    if (opts.outageTripped?.()) {
+      opts.log.info(
+        { event: 'silent_turn_recovery_skipped', reason: 'outage_tripped' },
+        'turn ended with no audio, but the outage line owns it — not forcing a reply'
+      );
+      return;
+    }
 
     // The caller is mid-utterance (barge-in / a new turn already forming):
     // their speech will drive the next reply. Speaking now would talk over

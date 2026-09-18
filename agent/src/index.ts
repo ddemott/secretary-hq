@@ -48,6 +48,8 @@ import {
   noteAgentSpoke,
   OUTAGE_ERROR_LIMIT,
 } from './session/outageGuard.js';
+import { speakOutageLine } from './session/outagePlayback.js';
+import { describeSessionError, type SessionErrorInfo } from './session/sessionError.js';
 import { callPathHosts, warmDns, slowOrFailed } from './session/dnsWarm.js';
 import { forceIpv4Enabled, installIpv4OnlyLookup, warmLookupFor } from './session/dnsIpv4.js';
 import { idleProcessOverride } from './session/workerTuning.js';
@@ -619,6 +621,11 @@ export default defineAgent({
       // session.start). Declared at this scope so the close handler can see
       // it. Null when there's no callId.
       let finalizeCall: ((hook: 'close' | 'shutdown' | 'outage') => Promise<void>) | null = null;
+      // Why the outage guard ended this call, when it did. Read by finalizeCall so
+      // voice_sessions.metadata says so — on 2026-09-18 (OpenAI balance empty) the
+      // stored row for the broken call was indistinguishable from a clean 39-second
+      // hang-up: no outcome, empty metadata, empty summary.
+      let outageInfo: SessionErrorInfo | null = null;
       // Skipped when callId is absent (nothing to key the session on).
       if (sessionCtx.callId) {
         const callId = sessionCtx.callId;
@@ -735,6 +742,15 @@ export default defineAgent({
               // no turn was measured (silent hang-up) — an empty array would
               // read as a call with zero-latency turns.
               turn_latency_ms: turnLatency.toPayload(),
+              // Set only when the outage guard ended the call — the backend
+              // persists it and raises errors_total{llm_quota_exhausted | ...}.
+              llm_outage: outageInfo
+                ? {
+                    cause: outageInfo.cause,
+                    status_code: outageInfo.statusCode,
+                    message: outageInfo.message.slice(0, 500),
+                  }
+                : undefined,
             });
             // ToolsClient.call() resolves { ok:false } on a backend 5xx (does NOT
             // throw), so the catch below won't fire on a 500 — inspect the result
@@ -1754,12 +1770,18 @@ export default defineAgent({
         });
         session.on(voice.AgentSessionEventTypes.Error, (ev) => {
           const e: unknown = ev.error;
+          // `ev.error` is LiveKit's envelope `{ type, error, recoverable }`, NOT an
+          // Error — `String(e)` on it is the literal "[object Object]", which is
+          // what this line logged on the 2026-09-18 call whose real cause was
+          // `429 You have no credits remaining`. Unwrap it (sessionError.ts).
+          const info = describeSessionError(e);
           // Surface the provider error body too — a RealtimeModel APIError carries
           // a `body` with the precise cause (e.g. token/context-limit details);
           // without it the message is just "...error type: tokens" with no numbers.
           let errorBody: string | undefined;
           try {
-            const b = (e as { body?: unknown }).body;
+            const inner = (e as { error?: unknown } | null)?.error ?? e;
+            const b = (inner as { body?: unknown }).body;
             if (b != null) errorBody = JSON.stringify(b).slice(0, 1000);
           } catch {
             /* body not serializable — skip */
@@ -1767,13 +1789,17 @@ export default defineAgent({
           callLog.error(
             {
               event: 'agent_session_error',
-              error_message: e instanceof Error ? e.message : String(e),
-              error_name: e instanceof Error ? e.name : typeof e,
+              error_message: info.message,
+              error_name: info.name,
+              error_status: info.statusCode,
+              error_code: info.code,
+              error_cause: info.cause,
+              error_recoverable: info.recoverable,
               error_body: errorBody,
             },
             'AgentSession error (STT/LLM/TTS/realtime) — a prime suspect for mid-call dead air'
           );
-          captureSentry(e instanceof Error ? e : new Error(String(e)), {
+          captureSentry(e instanceof Error ? e : new Error(info.message), {
             event: 'agent_session_error',
             tenant_id: sessionCtx.tenantId,
             call_id: sessionCtx.callId ?? null,
@@ -1790,22 +1816,30 @@ export default defineAgent({
           // errors, and the caller heard nothing at all. The line below plays
           // from the pre-synthesized cache and falls back to a plain say() only
           // if the warm never completed.
-          if (noteSessionError(outageGuard)) {
+          //
+          // A FATAL error (empty provider balance, rejected key) trips on the
+          // FIRST occurrence: waiting for a second means waiting out the SDK's
+          // retries (a 429 is "retryable" to it), and the failing generation holds
+          // the speech queue the whole time.
+          if (noteSessionError(outageGuard, { fatal: info.fatal })) {
+            outageInfo = info;
             callLog.error(
               {
                 event: 'outage_voice_triggered',
-                consecutive_errors: OUTAGE_ERROR_LIMIT,
-                error_message: e instanceof Error ? e.message : String(e),
+                consecutive_errors: info.fatal ? 1 : OUTAGE_ERROR_LIMIT,
+                error_message: info.message,
+                error_status: info.statusCode,
+                error_cause: info.cause,
+                fatal: info.fatal,
               },
               'LLM/session errors back to back — telling the caller and ending the call rather than leaving dead air'
             );
             void (async () => {
               try {
+                // Interrupts the failing generation first — say() alone queues BEHIND
+                // it and waits out the SDK's retries (session/outagePlayback.ts).
                 const frame = ttsVoiceKey ? getFillerFrame(ttsVoiceKey, OUTAGE_LINE) : undefined;
-                const handle = frame
-                  ? session.say(OUTAGE_LINE, { audio: frameStream(frame) })
-                  : session.say(OUTAGE_LINE);
-                await (handle as { waitForPlayout?: () => Promise<void> })?.waitForPlayout?.();
+                await speakOutageLine(session, OUTAGE_LINE, frame ? frameStream(frame) : undefined);
               } catch (sayErr) {
                 // Saying it is best-effort: if even the cached path fails there
                 // is nothing left to try, and closing is still better than
@@ -1909,6 +1943,7 @@ export default defineAgent({
             // call shows whether dead-air handling actually fired (the 07-27
             // 40s-of-nothing calls could not).
             onSpoken: (text) => transcript.add('assistant', text),
+            outageTripped: () => outageGuard.tripped,
           });
           session.on(voice.AgentSessionEventTypes.Close, detachWatchdog);
         }
@@ -1932,6 +1967,7 @@ export default defineAgent({
           // watchdog is off), so a turn is never recorded twice.
           onTurnLatency: (ms) => turnLatency.record(ms),
           onSpoken: (text) => transcript.add('assistant', text),
+          outageTripped: () => outageGuard.tripped,
           // The turn made no sound, but its text is already in the transcript —
           // the framework records assistant turns off the token stream, not off
           // playout. Mark it rather than let the call record claim the caller

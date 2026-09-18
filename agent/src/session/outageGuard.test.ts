@@ -72,4 +72,27 @@ describe('outageGuard', () => {
     //      change to it a deliberate decision with this test in the diff.
     expect(OUTAGE_ERROR_LIMIT).toBe(2);
   });
+
+  it('SAD: a FATAL error (empty balance) trips on the FIRST occurrence, not the second', () => {
+    // WHO: the 2026-09-18 1:28 PM CT caller (SCL_MFD3o5QRKQJB).
+    // WHY: the second error only arrives after the SDK finishes retrying a "retryable"
+    //      429 (~4s), during which the failing generation holds the speech queue and
+    //      the outage line cannot play. An empty wallet cannot clear, so waiting for a
+    //      second error is pure caller time thrown away.
+    const s = createOutageGuard();
+    expect(noteSessionError(s, { fatal: true })).toBe(true);
+  });
+
+  it('SAD: a fatal trip still fires exactly ONCE', () => {
+    const s = createOutageGuard();
+    expect(noteSessionError(s, { fatal: true })).toBe(true);
+    expect(noteSessionError(s, { fatal: true })).toBe(false);
+    expect(noteSessionError(s)).toBe(false);
+  });
+
+  it('HAPPY: a non-fatal error still needs two — fatal is opt-in, never the default', () => {
+    const s = createOutageGuard();
+    expect(noteSessionError(s, { fatal: false })).toBe(false);
+    expect(noteSessionError(s, {})).toBe(true);
+  });
 });

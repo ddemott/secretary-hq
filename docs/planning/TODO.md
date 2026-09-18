@@ -102,6 +102,9 @@ observation sweep — all defects closed, sim suites green).
 - [ ] **(Dale)** Read the first `greeting_spoken` `ms_since_participant` values off
       prod agent logs (event `greeting_spoken` — **not** in Postgres). 2026-09-14 probe: no values in recent Railway agent logs / voice_sessions.metadata. **MEASURE before fixing** on next live call.
 
+- [ ] **(Dale, blocks live calls)** The prod OpenAI account is out of credits (`429 You have no credits remaining`, call `SCL_MFD3o5QRKQJB`, 2026-09-18 1:28 PM CT — every LLM turn fails, so every caller hears "technical trouble" and is hung up on; summaries/embeddings fail too). Code cannot fix a wallet. Top up at platform.openai.com/settings/organization/billing, then make one test call. Third occurrence (07-21, 09-11, 09-18) — consider auto-recharge. After the outage-guard PR deploys, the next empty-wallet call raises `errors_total{event="llm_quota_exhausted"}` and stamps `voice_sessions.metadata.llm_outage`; nothing scrapes `/metrics` today, so an alert on that counter is still unbuilt.
+- [ ] **(Decision, Dale)** During an LLM outage the caller's stated intent is only in the transcript — no `customer_messages` row is written (taking a message from host code with no model is possible but not built). Worth doing if outages recur; not done here.
+
 ---
 
 ## 🔴 P0 — Launch blockers (clear before the first paying customer)
