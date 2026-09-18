@@ -305,6 +305,8 @@ If "script" really means executable behavior, the platform inherits a debugger, 
 
 The exact table names can move, but the shape should be roughly this.
 
+> **As built (checked 2026-09-18):** none of `block_definitions` / `vertical_presets` / `tenant_block_configs` exist as tables. Block and preset definitions live in code (`agent/src/checklist/blockLibrary.ts`, `presets.ts`, `verticalIntakeTrees.ts`; ids in `shared/checklistPresetDerivation.ts`); tenant runtime config is `tenants.checklist_preset_id` + `tenants.checklist_overrides` compiled by `deriveChecklistRuntimeConfig`, and each tenant's own question-tree copy lives in `tenant_question_trees` / `tenant_question_nodes` (migration `20260814130000`). Only `intake_submissions` (§8.3) exists as a table, as designed.
+
 ### 8.1 Reusable definitions
 
 - `block_definitions`
@@ -515,6 +517,8 @@ Verified exit criteria:
 
 ### Phase 3 — prove reuse with a second block/preset
 
+**Checkpoint status:** completed 2026-08-12 via `attach-meeting-notes` → `src/services/meetingNotesCapture.ts` (`submission_type='meeting_notes'`); see `docs/planning/ROADMAP.md` Step 6.
+
 Exit criteria:
 
 - one more preset-backed path uses the same architecture cleanly
@@ -523,6 +527,8 @@ Exit criteria:
 
 ### Phase 4 — introduce business-type presets
 
+**Checkpoint status:** completed 2026-08-13 (`tenants.checklist_preset_id`, setup picker, #338); 33 presets today.
+
 Exit criteria:
 
 - tenants can choose a preset during setup
@@ -530,6 +536,8 @@ Exit criteria:
 - generated tenant runtime config is inspectable and versioned
 
 ### Phase 5 — safe tenant overrides
+
+**Checkpoint status:** completed 2026-08-13 (`tenants.checklist_overrides`, #338/#339, next-call dry-run in Business Settings → Call checklist).
 
 Exit criteria:
 
