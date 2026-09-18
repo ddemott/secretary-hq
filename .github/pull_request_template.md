@@ -28,7 +28,7 @@
 
 **E2E / Live QA (when applicable)**
 - [ ] Relevant Playwright tests run and pass (use `--grep` for targeted execution)
-- [ ] Live QA (`scripts/qa-live-test.py`) executed if voice/agent flows are involved
+- [ ] Simulation harness (`./scripts/simulate.sh tools` / `toolselect` / `call`) run if voice/agent flows are involved; `cd agent && npm run verify:tts` run if TTS changed
 
 **Manual / Local verification**
 - [ ] Ran locally with `npm start` + relevant flows
@@ -42,7 +42,7 @@
 - [ ] Other relevant `*.md` files updated
 - [ ] `npm run verify:claude-md` passes
 
-## Checklist (from [docs/DEVELOPMENT_WORKFLOW.md](/home/dale/projects/secretary-hq/docs/DEVELOPMENT_WORKFLOW.md))
+## Checklist (from [docs/workflow/DEVELOPMENT_WORKFLOW.md](https://github.com/ddemott/secretary-hq/blob/main/docs/workflow/DEVELOPMENT_WORKFLOW.md))
 
 - [ ] All code is linted and formatted (`npm run lint && npm run format:check`)
 - [ ] TypeScript is clean (root + dashboard)

@@ -29,8 +29,8 @@ Go to **Settings → Branches → Branch protection rules → Add rule** for the
 - [x] **Require conversation resolution before merging**
   - Forces all review comments to be resolved.
 
-- [x] **Restrict who can push to matching branches**
-  - Only allow pushes via pull requests (even for the repo owner).
+- [ ] **Restrict who can push to matching branches**
+  - NOT applied (`restrictions: null` live, checked 2026-09-18). Direct pushes are still blocked because the PR requirement above is enforced on admins too.
 
 ### Additional recommended settings
 
@@ -43,7 +43,7 @@ Go to **Settings → Branches → Branch protection rules → Add rule** for the
 - [x] **Allow deletions** → **Do not allow**
   - Keep this off.
 
-- [x] **Require signed commits** (optional but good practice)
+- [ ] **Require signed commits** (optional but good practice; NOT enabled live, checked 2026-09-18)
 
 ### Nice-to-have (when the team or project grows)
 
@@ -65,7 +65,7 @@ To verify live: `gh api repos/ddemott/secretary-hq/branches/main/protection` (sh
 
 ## Enforcement Alignment with Our Workflow
 
-These protection rules directly support the process defined in `docs/DEVELOPMENT_WORKFLOW.md`:
+These protection rules directly support the process defined in `docs/workflow/DEVELOPMENT_WORKFLOW.md`:
 
 - You **cannot** push directly to `main` (enforces feature branches).
 - You **must** open a PR (enforces the PR template and checklist).
