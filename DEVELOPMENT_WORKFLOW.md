@@ -12,7 +12,7 @@
      canonical service up, waits on its healthcheck rather than sleeping, proves
      `SELECT 1`, then runs the bootstrap below.
 2. Bootstrap test database: `npx tsx scripts/setup-test-db.ts`
-   - Creates `test_db` if missing.
+   - **Drops and recreates `test_db` from scratch on every run** (terminating open connections to it first) — never run it while another session or a test run is using `test_db`.
    - Runs every migration in `supabase/migrations/`, lexically, **as superuser** (was pinned to a hardcoded cutoff migration until 2026-09-12 — the cutoff fell 4 migrations behind disk and `test_db` silently ran an outdated schema, failing 72 unrelated tests with stale function/behavior errors; see `docs/workflow/LESSONS_LEARNED.md`).
    - Creates `app_user` role with `NOBYPASSRLS`.
    - Applies grants and verifies posture.
