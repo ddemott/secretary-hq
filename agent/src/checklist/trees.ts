@@ -44,15 +44,7 @@ const callerPhoneNode = {
   node_id: CALLER_PHONE,
   type: 'text',
   ask:
-    'the best callback number — ask PLAINLY ("What\'s the best number to reach you?") and ' +
-    'NEVER tell the caller how to say it: no "digit by digit", no "in three groups", no ' +
-    'format coaching of any kind. People know how to say their own phone number (2026-07-21 ' +
-    'live call: the agent lectured the 3-3-4 format at the caller twice and he hung up). ' +
-    'When they give it, record_answer it IMMEDIATELY — do NOT read it back first: the ' +
-    'recording result hands you the exact read-back to speak (one read-back, one yes, ' +
-    'never more — a ten-digit number is complete; never ask for "the rest" of it). If ' +
-    'they say the number you have (caller ID) is wrong, drop it entirely and collect ' +
-    'fresh — never argue, never repeat the disputed number',
+    'the best callback number — ask PLAINLY ("Tell me the best number to reach you.") and NEVER tell the caller how to say it: no "digit by digit", no "in three groups", no format coaching of any kind. People know how to say their own phone number (2026-07-21 live call: the agent lectured the 3-3-4 format at the caller twice and he hung up). When they give it, record_answer it IMMEDIATELY — do NOT read it back first: the recording result hands you the exact read-back to speak (one read-back, one yes, never more — a ten-digit number is complete; never ask for "the rest" of it). If they say the number you have (caller ID) is wrong, drop it entirely and collect fresh — never argue, never repeat the disputed number',
 } as const;
 
 /** WHO IS THIS — the floor under every goal that needs a contact. */
@@ -386,7 +378,7 @@ export const JOB_TREE: QuestionTreeDef = {
       type: 'text',
       ask:
         'the company the CALLER works for — their own employer or staffing agency. Ask ' +
-        '"which company are you calling from?" EVEN IF they already named a client, because ' +
+        '"Tell me which company you are calling from." EVEN IF they already named a client, because ' +
         "the client is a DIFFERENT company. The client's name never goes here",
     },
     {
@@ -422,7 +414,7 @@ export const JOB_TREE: QuestionTreeDef = {
     {
       node_id: 'employment_type',
       type: 'choice',
-      ask: 'contract, full time, or contract-to-hire?',
+      ask: 'I can note this as contract, full time, or contract-to-hire. Tell me which.',
       options: {
         contract: [
           { node_id: 'rate_range', type: 'text', ask: 'the rate range' },
@@ -444,7 +436,7 @@ export const JOB_TREE: QuestionTreeDef = {
     {
       node_id: 'work_mode',
       type: 'choice',
-      ask: 'onsite, remote, or hybrid?',
+      ask: 'I can note the work as onsite, remote, or hybrid. Tell me which.',
       options: {
         onsite: [{ node_id: 'position_address', type: 'text', ask: 'the address of the position' }],
         hybrid: [{ node_id: 'position_address', type: 'text', ask: 'the address of the position' }],
@@ -508,7 +500,7 @@ export const SCHEDULE_CHANGE_TREE: QuestionTreeDef = {
     {
       node_id: 'change_type',
       type: 'choice',
-      ask: 'do they want to cancel the appointment, or move it to another time?',
+      ask: 'I can cancel the appointment, or move it to another time. Tell me which.',
       options: {
         cancel: [
           {
@@ -576,8 +568,7 @@ export const FIX_COMPUTER_TREE: QuestionTreeDef = {
       type: 'text',
       ask:
         'whether their data is backed up, and whether anything on the machine is ' +
-        'irreplaceable (photos, documents, work files). Ask it plainly ("is your data ' +
-        'backed up anywhere?") — repairs can involve wiping a drive, and finding out ' +
+        'irreplaceable (photos, documents, work files). Ask it plainly ("Tell me if your data is backed up anywhere.") — repairs can involve wiping a drive, and finding out ' +
         'AFTER is the worst conversation this business can have',
     },
   ],
@@ -646,7 +637,7 @@ export const CASE_INTAKE_TREE: QuestionTreeDef = {
       type: 'choice',
       ask:
         'whether another lawyer is ALREADY representing them on this matter. Ask it early ' +
-        'and plainly ("Is another attorney already representing you on this?"). If yes, do ' +
+        'and plainly ("Tell me if another attorney is already representing you on this."). If yes, do ' +
         'NOT keep collecting the facts of the matter and do not discuss it — say the firm ' +
         'generally cannot step into a matter another lawyer is handling, that you will pass ' +
         'the message along, and let the attorney make that call',
@@ -808,7 +799,7 @@ export const CASE_INTAKE_TREE: QuestionTreeDef = {
       ask:
         'which STATE the incident or the policy is in — the firm can only act where it is ' +
         'licensed, so this decides whether the matter is reachable at all. Ask plainly ' +
-        '("Which state did this happen in?")',
+        '("Tell me which state this happened in.")',
     },
     {
       // The conflict check. Names, because a conflict search runs on names.
