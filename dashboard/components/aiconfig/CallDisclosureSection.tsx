@@ -32,8 +32,8 @@ function defaultDisclosure(businessName: string, personaName?: string): string {
   const name = speakableBusinessName(businessName) || 'your business';
   const persona = personaName?.trim();
   return persona
-    ? `I'm ${persona}, an AI assistant for ${name}, and this call is transcribed for quality and service.`
-    : `I'm an AI assistant for ${name}, and this call is transcribed for quality and service.`;
+    ? `I'm ${persona}, an AI assistant for ${name}. This call is transcribed for quality and service.`
+    : `I'm an AI assistant for ${name}. This call is transcribed for quality and service.`;
 }
 
 export function CallDisclosureSection({

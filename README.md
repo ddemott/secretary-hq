@@ -85,15 +85,15 @@ Below is a full list of its features:
 
 [![CI](https://github.com/ddemott/secretary-hq/actions/workflows/ci.yml/badge.svg)](https://github.com/ddemott/secretary-hq/actions/workflows/ci.yml)
 
-|               |                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Phase**     | 13 — Production Readiness                                                                                                                                                                                                                                                                                                                                             |
-| **Backend**   | Live on Railway (`secretary-hq-production.up.railway.app`)                                                                                                                                                                                                                                                                                                            |
-| **Dashboard** | Live at `https://www.secretaryhq.com` (Railway origin `dashboard-production-cee3.up.railway.app`); set `DASHBOARD_URL` on backend Railway service for Stripe/OAuth redirects                                                                                                                                                                                          |
-| **Voice AI**  | Live — Telnyx → LiveKit Cloud → Deepgram Nova-3 (STT) + OpenAI GPT-4.1-mini (LLM) + Deepgram Aura (TTS). Call flow = question trees (`agent/src/checklist/`). PSTN inbound reaches the agent (confirmed 2026-06-30); the booking + transfer legs still need a live different-carrier call — see `docs/planning/TODO.md` (P0 Voice) + `docs/operations/RUNBOOK.md` §7. |
-| **Phone**     | `+1 630-822-9086` (current). Previous `+1 630-866-1960` (purchased 2026-06-02) dead. Test verification number `+1 630-822-9086`. Old `+1-630-937-9478` dead.                                                                                                                                                                                                          |
-| **Tests**     | Root `npm test` green: 3,205 passing (268 files). Dashboard 1,173 (107 files) + agent 1,061 (61 files) green. See `docs/planning/TEST_COVERAGE.md` for coverage detail.                                                                                                                                                                                               |
-| **E2E**       | 40 committed Playwright spec files                                                                                                                                                                                                                                                                                                                                    |
+|               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Phase**     | 13 — Production Readiness                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Backend**   | Live on Railway (`secretary-hq-production.up.railway.app`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Dashboard** | Live at `https://www.secretaryhq.com` (Railway origin `dashboard-production-cee3.up.railway.app`); set `DASHBOARD_URL` on backend Railway service for Stripe/OAuth redirects                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Voice AI**  | Live — Telnyx → LiveKit Cloud → Deepgram Nova-3 (STT) + OpenAI GPT-4.1-mini (LLM) + Deepgram Aura (TTS; Grok/xAI TTS removed 2026-06-25). Call flow = question trees (`agent/src/checklist/`). Falling-tone spoken-prompt rewrites are in flight on [PR #527](https://github.com/ddemott/secretary-hq/pull/527) (`fix/voice-falling-tone-prompts` @ `98b3240b`). PSTN inbound reaches the agent (confirmed 2026-06-30); the booking + transfer legs still need a live different-carrier call — see `docs/planning/TODO.md` (P0 Voice) + `docs/operations/RUNBOOK.md` §7. |
+| **Phone**     | `+1 630-822-9086` (current). Previous `+1 630-866-1960` (purchased 2026-06-02) dead. Test verification number `+1 630-822-9086`. Old `+1-630-937-9478` dead.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Tests**     | Root `npm test` green: 3,205 passing (268 files). Dashboard 1,173 (107 files) + agent 1,061 (61 files) green. See `docs/planning/TEST_COVERAGE.md` for coverage detail.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **E2E**       | 40 committed Playwright spec files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 **Quick status commands** (see `scripts/simulate.sh`):
 
@@ -105,6 +105,15 @@ Below is a full list of its features:
 **CI gate**: GitHub branch protection on `main` (applied 2026-06-15) requires the 4 CI jobs to be green before merges (and thus Railway deploys from `main`) are allowed. Always run `npm run ci:status` before merging. (See `.github/BRANCH_PROTECTION.md` + `docs/planning/TODO.md`.)
 
 See `docs/planning/TODO.md` for remaining work and `docs/planning/RESOLVED.md` for completed phases + historical session notes.
+
+### Current open work (as of 2026-09-18)
+
+| PR                                                       | Branch                                        | What                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [#527](https://github.com/ddemott/secretary-hq/pull/527) | `fix/voice-falling-tone-prompts` @ `98b3240b` | Falling-tone rewrites for natural spoken prompts (greetings, hold lines, question trees in `agent/src/checklist/trees.ts`). Adds migration `20260918014212_voice_falling_tone_first_messages.sql` which UPDATEs `business_templates.first_message` to falling-tone openers (existing tenants keep their own `first_message`; new tenants inherit via the template fill trigger). **Not merged yet.** |
+| [#526](https://github.com/ddemott/secretary-hq/pull/526) | `feat/admin-tenant-consent-gate-2`            | Gate admin-provisioned tenants behind emailed consent confirmation. Separate from voice — do not fold into #527.                                                                                                                                                                                                                                                                                     |
+
+**Prod migration ops (do not skip after #527 merges):** Prod migrations are **not** automated. After merge, someone must run `npm run db:migrate` against prod by hand. A Railway `preDeployCommand` / `npm run db:migrate` attempt was tried and **reverted** (2026-09-15 in `docs/planning/RESOLVED.md`) because the injected Railway DB user cannot run DDL.
 
 ---
 
@@ -142,16 +151,16 @@ Telnyx (carrier + SIP trunk) --> LiveKit Cloud (SIP ingress)
                                 Next.js 16 Dashboard
 ```
 
-| Layer             | Tech                                                                                                                                                                                                                                                                                                                  |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Voice**         | Telnyx (carrier + SIP trunk), LiveKit Cloud (orchestrator), Deepgram Nova-3 (STT), OpenAI GPT-4.1-mini (voice LLM; 4o-mini for summaries/classify), Deepgram Aura (TTS, streaming, per-tenant voice via dashboard AI Persona page; `tts_speed` is inert under Aura)                                                   |
-| **Backend**       | Fastify 5.x, 29 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware/fastify-middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                            |
-| **Frontend**      | Next.js 16 (App Router), React 19, Tailwind CSS 3.4, TypeScript, Lucide icons                                                                                                                                                                                                                                         |
-| **Database**      | PostgreSQL + pgvector, 204 migrations, Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)                                                      |
-| **Agent runtime** | LiveKit Agents (Node) on Railway as `secretary-hq-agent`. Call flow = **question trees** (`agent/src/checklist/`): host-owned checklist, purpose-selected trees, goodbye gate. 27 tools are defined in `agent/src/tools.ts`; the live question-tree path offers a subset — see `docs/architecture/ARCHITECTURE.md` §7 |
-| **Async**         | Inline in Fastify routes (post-call summaries, calendar sync, SMS)                                                                                                                                                                                                                                                    |
-| **Billing**       | Stripe Checkout route + subscription gate exist in code; pricing is provisional and the webhook endpoint is not yet registered                                                                                                                                                                                        |
-| **Security**      | @fastify/helmet, @fastify/rate-limit, CORS restriction, bcrypt, FORCE RLS                                                                                                                                                                                                                                             |
+| Layer             | Tech                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Voice**         | Telnyx (carrier + SIP trunk), LiveKit Cloud (orchestrator), Deepgram Nova-3 (STT), OpenAI GPT-4.1-mini (voice LLM; 4o-mini for summaries/classify), Deepgram Aura (TTS, streaming, per-tenant voice via dashboard AI Persona page; `tts_speed` is inert under Aura). Grok/xAI TTS removed 2026-06-25 — see `docs/voice/FRAMEWORK_MIGRATIONS.md`.                           |
+| **Backend**       | Fastify 5.x, 29 top-level route modules plus the `agentTools/` module dir, JWT auth via `registerJwtAuthHook` in `src/middleware/fastify-middleware.ts`, Zod validation, RLS via `withTenantClient()` (factory in `src/database/index.ts`)                                                                                                                                 |
+| **Frontend**      | Next.js 16 (App Router), React 19, Tailwind CSS 3.4, TypeScript, Lucide icons                                                                                                                                                                                                                                                                                              |
+| **Database**      | PostgreSQL + pgvector, **204 migrations on `main`** (PR #527 adds `20260918014212_voice_falling_tone_first_messages.sql` → **205 after merge**). Row Level Security, atomic booking RPCs with GiST exclusion constraints to close the find-then-insert race. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`) |
+| **Agent runtime** | LiveKit Agents (Node) on Railway as `secretary-hq-agent`. Call flow = **question trees** (`agent/src/checklist/`): host-owned checklist, purpose-selected trees, goodbye gate. 27 tools are defined in `agent/src/tools.ts`; the live question-tree path offers a subset — see `docs/architecture/ARCHITECTURE.md` §7                                                      |
+| **Async**         | Inline in Fastify routes (post-call summaries, calendar sync, SMS)                                                                                                                                                                                                                                                                                                         |
+| **Billing**       | Stripe Checkout route + subscription gate exist in code; pricing is provisional and the webhook endpoint is not yet registered                                                                                                                                                                                                                                             |
+| **Security**      | @fastify/helmet, @fastify/rate-limit, CORS restriction, bcrypt, FORCE RLS                                                                                                                                                                                                                                                                                                  |
 
 See `docs/architecture/ARCHITECTURE.md` for the full technical deep-dive.
 
@@ -227,7 +236,7 @@ Default credentials are created by the seed script. See `supabase/seed.sql` for 
 │   ├── lib/                API client, hooks, types, SessionContext
 │   └── e2e/                Playwright tests
 ├── supabase/
-│   ├── migrations/         204 SQL migrations
+│   ├── migrations/         204 SQL migrations on `main` (205 after PR #527 merges)
 │   └── seed.sql            Platform admin + Bella's Hair Studio demo tenant
 ├── shared/                 Cross-runtime code (embeddings, scheduling, voice CRM types + prompt formatter)
 ├── scripts/                Automation (bootstrap, setup-db, seed-db, deploy, QA)
@@ -295,9 +304,19 @@ npm run ci:status   # wait for all 4 CI jobs green
 gh pr merge --squash
 ```
 
-Apply production DB migrations **before** the merge. Environment variables are set
-on the Railway services themselves; `.env.production.example` lists what each one
-needs.
+**Prod DB migrations are manual.** Railway does **not** run migrations on deploy.
+A `preDeployCommand` / `npm run db:migrate` automation was tried and **reverted**
+(2026-09-15 — see `docs/planning/RESOLVED.md`) because the injected Railway DB
+user cannot run DDL. After merging a PR that adds SQL under `supabase/migrations/`
+(including [#527](https://github.com/ddemott/secretary-hq/pull/527)'s falling-tone
+`first_message` migration), run against prod by hand:
+
+```bash
+npm run db:migrate   # uses DATABASE_URL from the prod env you point it at
+```
+
+Environment variables are set on the Railway services themselves;
+`.env.production.example` lists what each one needs.
 
 See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
@@ -323,7 +342,7 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 ## Documentation
 
-`docs/README.md` is the in-folder index. Full inventory below (re-verified 2026-09-13 — the 2026-07-04 pass had gone stale: `docs/` was reorganized into subdirectories by PR #401, 2026-09-04, and most links below still pointed at the old flat paths for over a week).
+`docs/README.md` is the in-folder index. Full inventory below (re-verified 2026-09-13; Status / open PRs / prod migrate ops refreshed 2026-09-18 — the 2026-07-04 pass had gone stale: `docs/` was reorganized into subdirectories by PR #401, 2026-09-04, and most links below still pointed at the old flat paths for over a week).
 
 **Root**
 
@@ -356,13 +375,13 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 **Voice AI**
 
-| Doc                                        | Purpose                                                             |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| `docs/voice/VOICE_AGENT_PLAYBOOK.md`       | Authoritative rulebook for building customer voice scripts          |
-| `docs/voice/VOICE_DEADAIR_RESEARCH.md`     | Dead-air / latency research findings (mostly shipped)               |
-| `docs/voice/AIASSISTANT_PERSONA_DRAFT.md`  | Thinking Hammer persona + call-flow draft                           |
-| `docs/voice/aiassistant-knowledge-base.md` | Source content for the Thinking Hammer AI assistant's KB            |
-| `docs/voice/FRAMEWORK_MIGRATIONS.md`       | Voice-stack migration history (Vapi→LiveKit, Grok→OpenAI TTS, etc.) |
+| Doc                                        | Purpose                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `docs/voice/VOICE_AGENT_PLAYBOOK.md`       | Authoritative rulebook for building customer voice scripts                                                    |
+| `docs/voice/VOICE_DEADAIR_RESEARCH.md`     | Dead-air / latency research findings (mostly shipped)                                                         |
+| `docs/voice/AIASSISTANT_PERSONA_DRAFT.md`  | Thinking Hammer persona + call-flow draft                                                                     |
+| `docs/voice/aiassistant-knowledge-base.md` | Source content for the Thinking Hammer AI assistant's KB                                                      |
+| `docs/voice/FRAMEWORK_MIGRATIONS.md`       | Voice-stack migration history (Vapi→LiveKit; Grok TTS removed; OpenAI TTS interim; **Deepgram Aura current**) |
 
 **Onboarding & operations**
 

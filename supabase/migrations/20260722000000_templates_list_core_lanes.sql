@@ -17,11 +17,12 @@
 -- `first_message`, so this changes nothing live — it is the default a FUTURE
 -- tenant inherits via the first_message-fill trigger when its own is NULL.
 --
--- The trailing "How can I help you today?" is deduped by the greeting composer
--- (agent/src/greeting.ts) — the closer re-adds it once, after the disclosure —
--- so it is spoken a single time at the end, not twice.
+-- The trailing "Tell me how I can help." matches the closer's own text
+-- (CLOSER_NO_TRANSFER, agent/src/greeting.ts) and is deduped by the greeting
+-- composer — the closer re-adds it once, after the disclosure — so it is
+-- spoken a single time at the end, not twice.
 UPDATE business_templates
 SET first_message =
   'Thanks for calling {{business_name}}! I can help you book an appointment, '
   || 'leave a message, or answer questions about our services. '
-  || 'How can I help you today?';
+  || 'Tell me how I can help.';

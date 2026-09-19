@@ -296,7 +296,7 @@ describe('Knowledge upload → policy-answer retrieval (real DB + pgvector)', ()
     expect(body.success).toBe(true);
     // The fallback string is conversational, not empty — its presence
     // proves the agent prompt has SOMETHING safe to say.
-    expect(body.result).toMatch(/take a message|don't have specific information/i);
+    expect(body.result).toMatch(/take a message|don't have that on hand/i);
 
     // The unanswered_questions write is fire-and-forget. Poll up to
     // 2 seconds for the row to appear — a single setImmediate tick
