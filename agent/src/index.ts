@@ -2090,17 +2090,24 @@ export default defineAgent({
               // started before pickup; finish it, then play. Do not fall
               // through to the silent stream just to avoid waiting.
               await warmedGreetingP.catch(() => undefined);
+              const greetingFrame = getFillerFrame(ttsVoiceKey, greeting);
+              const speak = greetingSpeakPath(Boolean(greetingFrame));
               // 300ms pre-roll AFTER the greeting is warmed and ready — lets
               // the caller's own handset/carrier audio path finish opening
               // before the first word plays, so it isn't clipped. See
               // greetingPickup.ts (2026-09-16 comment) for why this doesn't
               // reintroduce the dead-air defect this section's history is
               // full of: it never waits ON the greeting, only after it.
-              if (GREETING_POST_PICKUP_WAIT_MS > 0) {
+              //
+              // Gated on play_cache only: on speak_live (cache miss/cold
+              // worker), the caller already sat through the warm attempt
+              // timing out — stacking a flat 300ms on top of that is the
+              // exact "waiting after pickup" defect this file's own history
+              // warns about, with nothing yet to play. Only the frame-ready
+              // path gets the pre-roll.
+              if (speak === 'play_cache' && GREETING_POST_PICKUP_WAIT_MS > 0) {
                 await new Promise((resolve) => setTimeout(resolve, GREETING_POST_PICKUP_WAIT_MS));
               }
-              const greetingFrame = getFillerFrame(ttsVoiceKey, greeting);
-              const speak = greetingSpeakPath(Boolean(greetingFrame));
               const opener =
                 speak === 'play_cache' && greetingFrame
                   ? session.say(greeting, {
