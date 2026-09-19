@@ -25,7 +25,7 @@ If a task requires reasoning about new logic, designing new code, fixing failing
 
 ## Verification (minimal)
 
-- Type check after the rename: `cd dashboard && npm run typecheck`
+- Type check after the rename: `cd dashboard && npx tsc --noEmit` (the dashboard has no `typecheck` script; the agent package does: `cd agent && npm run typecheck`)
 - Read the output. Report errors verbatim if any appear.
 - Do not run `npm test`. Test verification is being handled separately.
 

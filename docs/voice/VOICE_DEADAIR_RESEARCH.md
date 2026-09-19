@@ -122,6 +122,8 @@ turnHandling: {
     resumeFalseInterruption: true, // ✅
   },
   endpointing:  { minDelay: 1300, maxDelay: 4000 },  // conservative, aggregates multi-part answers
+  // (2026-09-18: with the checklist-aware turn detector active — agent/src/session/turnDetector.ts —
+  //  index.ts uses { minDelay: 900, maxDelay: 4500 } and the detector picks per utterance; 1300/4000 is the fallback)
 }
 session.say(greeting, { allowInterruptions: false })  // ✅ greeting plays through uninterrupted
 speakFiller = () => {}      // NO-OP since #97 — awaiting a supported re-enable

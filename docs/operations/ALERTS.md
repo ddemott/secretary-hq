@@ -47,7 +47,7 @@ turn it into pages. §2 and §4 cover both. §3 is the rule catalog (collector-a
 | ---------------------------------- | --------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `http_requests_total`              | counter   | `route`, `method`, `status`    | `status` ∈ `2xx`/`4xx`/`5xx`                                                                                                                                                                                                                                                                                                                                                |
 | `http_request_duration_ms`         | histogram | `route`, `method`, `status`    | buckets: 10,25,50,100,250,500,1000,2500,5000,10000 ms                                                                                                                                                                                                                                                                                                                       |
-| `booking_attempts_total`           | counter   | `outcome`, `source`            | `outcome` ∈ success, timeslot_occupied, employee_not_scheduled, no_skilled_employee, no_availability, validation_error, other_error · `source` ∈ api, agent                                                                                                                                                                                                                 |
+| `booking_attempts_total`           | counter   | `outcome`, `source`            | `outcome` ∈ success, timeslot_occupied, employee_not_scheduled, no_skilled_employee, no_availability, validation_error, past_time, duplicate_same_day, no_such_person, ambiguous_person, other_error · `source` ∈ api, agent                                                                                                                                                |
 | `tool_calls_total`                 | counter   | `tool`, `outcome`              | `outcome` ∈ success, error, validation_error                                                                                                                                                                                                                                                                                                                                |
 | `sync_dispatches_total`            | counter   | `provider`, `entity`, `action` | —                                                                                                                                                                                                                                                                                                                                                                           |
 | `errors_total`                     | counter   | `event`                        | the `event` arg passed to `logError()` (e.g. `voice_session_reaped`, `provisioning_failed`, `unhandled_route_error`)                                                                                                                                                                                                                                                        |
@@ -59,6 +59,8 @@ turn it into pages. §2 and §4 cover both. §3 is the rule catalog (collector-a
 | `call_outcome_total`               | counter   | `outcome`                      | booked, transferred, message, price, no_availability, unknown, … (whatever the agent's outcome tracker sends; absent → `unknown`). **Added 2026-09-03 (T-006).** Counted only when `end_voice_session` returns `ended:true` — the agent posts voice-session-end TWICE per call (finalize + enrich) and that flag is the only thing preventing double-counting.              |
 | `turn_latency_ms`                  | histogram | —                              | buckets: 250,500,1000,1500,2000,2500,3000,4000,6000,10000 ms. **Added 2026-09-03 (T-006).** Caller turn end → first real agent audio. Measured in the AGENT (the backend never sees a turn) and shipped as per-call samples on `voice-session-end`, capped at 100/call.                                                                                                     |
 | `webhook_signature_failures_total` | counter   | `provider`, `endpoint`         | `provider` ∈ stripe, telnyx · `endpoint` ∈ billing_webhook, status_callback, inbound_sms. **Added 2026-09-03 (T-006).** A missing signature counts the same as a bad one.                                                                                                                                                                                                   |
+| `silent_hangups_total`             | counter   | `bucket`                       | `bucket` ∈ under_20s, over_20s — calls that ended with no caller speech at all (counted on `voice-session-end`, `src/routes/agentTools/session.ts`).                                                                                                                                                                                                                        |
+| `inbound_sms_total`                | counter   | `outcome`                      | opted_out, opted_in, ignored, unknown_tenant, rejected (`rejected` = failed signature on `/communications/telnyx/inbound`).                                                                                                                                                                                                                                                 |
 
 > Histograms expose `_bucket{le=…}`, `_count`, and `_sum` suffixes — the
 > `histogram_quantile()` rules below depend on `_bucket`.
@@ -86,9 +88,9 @@ Point Alertmanager (or any Prometheus-compatible backend) at this scrape and
 load the rules in §3. The rules are collector-agnostic — nothing below assumes a
 particular vendor.
 
-> Sizing, if you ever evaluate a hosted backend: the registry declares 10 metrics,
+> Sizing, if you ever evaluate a hosted backend: the registry declares 16 metrics,
 > each hard-capped at `MAX_LABEL_CARDINALITY = 1000` (`src/services/metrics.ts:29`),
-> so the absolute worst case is 10,000 active series. In practice
+> so the absolute worst case is 16,000 active series. In practice
 > `http_request_duration_ms` dominates (~29 route modules × 3 status families ×
 > 12 series each) and the total lands around 2–3K. See the status note at the top
 > of this file for why no vendor was chosen.
@@ -199,7 +201,7 @@ Booking is the revenue path. `success` vs everything-else:
   labels: { severity: page }
   annotations:
     summary: '>50% of booking attempts failing over 15m'
-    runbook: 'docs/operations/RUNBOOK.md — Booking failures'
+    runbook: 'docs/operations/RUNBOOK.md §5–§6 (no dedicated booking-failure section yet)'
 ```
 
 > Note: a high `no_availability` / `employee_not_scheduled` share can be
@@ -292,7 +294,7 @@ are expected under burst and are retried by the worker, not incidents.
   labels: { severity: page }
   annotations:
     summary: '>20% of SMS sends failing over 15m — check TELNYX_PHONE_NUMBER is still owned'
-    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md §3 item 2 (no dedicated SMS-failure section yet)'
 ```
 
 Earlier warn tier (added 2026-09-03, T-006). 20% is where a `from` number is
@@ -309,7 +311,7 @@ rather than pages precisely so it can sit at a threshold a page could not:
   labels: { severity: warn }
   annotations:
     summary: '>5% of SMS sends failing over 30m — check for a single bad recipient or a carrier rejecting'
-    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md §3 item 2 (no dedicated SMS-failure section yet)'
 ```
 
 Cheaper companion that needs no ratio — any failed opt-out confirmation is a
@@ -322,7 +324,7 @@ compliance event, because that path persists no `communications_history` row:
   labels: { severity: page }
   annotations:
     summary: 'An opt-out confirmation SMS failed — TCPA exposure, no DB record exists'
-    runbook: 'docs/operations/RUNBOOK.md — SMS delivery failures'
+    runbook: 'docs/operations/RUNBOOK.md §3 item 2 (no dedicated SMS-failure section yet)'
 ```
 
 ### 3.10 Reminder batch failing — `page`
@@ -343,7 +345,7 @@ minutes. The threshold sits above transient blips and far below a total outage.
   labels: { severity: page }
   annotations:
     summary: 'Reminder batch failing repeatedly — no reminders or confirmations are going out'
-    runbook: 'docs/operations/RUNBOOK.md — reminder pipeline'
+    runbook: 'docs/operations/RUNBOOK.md §3 (reminders not sending)'
 ```
 
 Pair it with a silence check: a worker that stops throwing because it stopped
@@ -365,7 +367,7 @@ need a human the same hour — the second one silently drops real traffic.
   labels: { severity: page }
   annotations:
     summary: 'Webhook signature verification failing on {{ $labels.provider }}/{{ $labels.endpoint }} — forged traffic or a half-rotated secret'
-    runbook: 'docs/operations/RUNBOOK.md — webhook verification'
+    runbook: 'docs/operations/RUNBOOK.md §4 (Stripe only; no Telnyx webhook section yet)'
 ```
 
 Tell the two causes apart by whether legitimate traffic on the SAME endpoint kept
@@ -378,7 +380,7 @@ flowing → forgery attempts. Stopped → the secret is the problem.
 
 Dead air is the failure callers actually hang up on, and it is invisible in every
 other series: the call completes, the outcome is recorded, and the transcript
-reads fine. 3000 ms is the line — the hold line fires at 2500 ms, so a p95 above
+reads fine. 3000 ms is the line — the hold line fires at 2800 ms in production (`WATCHDOG_DEADLINE_1_MS`, passed by `agent/src/index.ts`; the watchdog module's own default is 2500), so a p95 above
 3000 means the filler has become the normal case rather than a backstop.
 
 ```yaml
@@ -389,11 +391,11 @@ reads fine. 3000 ms is the line — the hold line fires at 2500 ms, so a p95 abo
   labels: { severity: warn }
   annotations:
     summary: 'p95 agent turn latency above 3s over 15m — callers are sitting in silence'
-    runbook: 'docs/operations/RUNBOOK.md — voice latency'
+    runbook: 'docs/operations/RUNBOOK.md §2 step 4 (TTS / LLM)'
 ```
 
 **Read the buckets, not just the quantile, before acting.** The 2026-08-15 case
-looked like slow TTS and was one DNS lookup taking 11 seconds (`dnsWarm.ts`).
+looked like slow TTS and was one DNS lookup taking 11 seconds (`agent/src/session/dnsWarm.ts`).
 A latency alert says _where the caller waited_, never _why_.
 
 ---

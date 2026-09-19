@@ -2,7 +2,7 @@
 
 Companion to `ARCHITECTURE.md`. Every diagram is a Mermaid block — renders natively on GitHub and on claude.ai (paste into chat, or upload this file and ask for an artifact).
 
-**Last synced to architecture doc:** 2026-08-11
+**Last synced to architecture doc:** 2026-09-18 (filesystem-verified: migration count, PK names/columns in the ER diagram, call-end path, nav tabs, RLS role)
 
 ## Contents
 
@@ -50,7 +50,7 @@ flowchart TB
   Fastify["Fastify Backend<br/>29 route modules + agentTools dir<br/>secretary-hq-production.up.railway.app<br/>(Railway + Nixpacks, Node 22)"]
   Agent -->|POST /agent-tools/* + x-agent-secret| Fastify
 
-  Postgres[("Postgres + pgvector<br/>Supabase us-west-2<br/>184 migrations")]
+  Postgres[("Postgres + pgvector<br/>Supabase us-west-2<br/>205 migrations")]
   Stripe["Stripe"]
   Integrations["Google / Outlook calendars<br/>+ Square CRM"]
   Dashboard["Next.js 16 Dashboard<br/>dashboard-production-cee3.up.railway.app"]
@@ -67,7 +67,7 @@ flowchart TB
 
 ## 2. Data Model (ER)
 
-20 RLS-scoped tenant tables + the core relationships. `business_templates`, `audit_log`, `record_versions`, `voice_sessions`, `consent_records`, `opt_out_records` are global/platform-scoped and omitted here for clarity. `tenant_integration_settings` (Square OAuth tokens) and `entity_sync_map` (Square local↔external ID mapping) are actively written by the live Square CRM sync — the only external CRM surviving the 2026-06-12 removal of Jobber/HubSpot/ServiceTitan/GoHighLevel. Calendar sync uses `appointment_sync_map`.
+The core tenant-scoped tables and relationships (the full schema has grown to ~40 RLS-enabled tables — see `supabase/baseline.sql`; PKs follow the `<table_singular>_id` convention). `business_templates`, `audit_log`, `record_versions`, `voice_sessions`, `consent_records`, `opt_out_records` are global/platform-scoped and omitted here for clarity. `tenant_integration_settings` (Square OAuth tokens) and `entity_sync_map` (Square local↔external ID mapping) are actively written by the live Square CRM sync — the only external CRM surviving the 2026-06-12 removal of Jobber/HubSpot/ServiceTitan/GoHighLevel. Calendar sync uses `appointment_sync_map`.
 
 ```mermaid
 erDiagram
@@ -88,10 +88,9 @@ erDiagram
 
   employees ||--o{ employee_schedule : "scheduled"
   employees ||--o{ service_employee : "qualified for"
-  services ||--o{ service_employee : "needs skill"
+  services ||--o{ service_employee : "performed by"
   services ||--o{ service_resource : "needs resource"
   resources ||--o{ service_resource : "capable of"
-  tenant_skills ||--o{ service_employee : "via skill"
 
   customers ||--o{ appointments : "books"
   employees ||--o{ appointments : "assigned"
@@ -103,50 +102,51 @@ erDiagram
   customers ||--o{ entity_sync_map : "external id"
 
   tenants {
-    uuid id PK
+    uuid tenant_id PK
     text name
-    text phone_number
+    text inbound_phone
     text subscription_status
     text subscription_plan
     text timezone
     int sort_order
   }
   users {
-    uuid id PK
+    uuid user_id PK
     uuid tenant_id FK
-    text email "per-tenant unique"
+    text email "unique per (tenant_id, email)"
     text password_hash
   }
   customers {
-    uuid id PK
+    uuid customer_id PK
     uuid tenant_id FK
     text phone "E.164"
     text name
     bool is_deleted
   }
   employees {
-    uuid id PK
+    uuid employee_id PK
     uuid tenant_id FK
+    text name
     text first_name
     text last_name
     bool is_deleted
   }
   employee_schedule {
-    uuid id PK
-    uuid tenant_id FK
-    uuid employee_id FK
-    date schedule_date
+    uuid tenant_id PK
+    uuid employee_id PK
+    date shift_date PK
     time start_time
     time end_time "may be cross-midnight"
+    bool is_off
   }
   resources {
-    uuid id PK
+    uuid resource_id PK
     uuid tenant_id FK
     text name
     bool is_deleted
   }
   services {
-    uuid id PK
+    uuid service_id PK
     uuid tenant_id FK
     text name
     int duration_minutes
@@ -154,7 +154,7 @@ erDiagram
     bool is_deleted
   }
   appointments {
-    uuid id PK
+    uuid appointment_id PK
     uuid tenant_id FK
     timestamptz start_time
     timestamptz end_time
@@ -166,48 +166,48 @@ erDiagram
     text call_id
   }
   tenant_docs {
-    uuid id PK
+    uuid tenant_doc_id PK
     uuid tenant_id FK
-    text source_file
-    text text
+    text title
+    text source
+    text content
     text normalized_text
     vector embedding "dim 1536"
   }
   call_transcripts {
-    uuid id PK
+    uuid call_transcript_id PK
     uuid tenant_id FK
     text call_id
-    text transcript
+    text raw_text
   }
   call_summaries {
-    uuid id PK
+    uuid call_summary_id PK
     uuid tenant_id FK
     text call_id
     text summary
     vector embedding
   }
   tenant_integration_settings {
-    uuid id PK
-    uuid tenant_id FK
-    text provider
+    uuid tenant_id PK
+    text provider PK "square only"
     text access_token
     text refresh_token
-    timestamptz expires_at
+    timestamptz token_expires_at
     bool is_active
   }
   entity_sync_map {
-    uuid id PK
+    uuid entity_sync_map_id PK
     uuid tenant_id FK
-    text local_entity_type
+    text entity_type
     uuid local_id
     text provider
     text external_id
-    timestamptz external_updated_at
+    timestamptz remote_updated_at
   }
   service_employee {
+    uuid tenant_id FK
     uuid service_id FK
     uuid employee_id FK
-    uuid skill_id FK
   }
   service_resource {
     uuid service_id FK
@@ -262,10 +262,10 @@ sequenceDiagram
 
   Caller--xLK: hangup
   LK->>Agent: room.closed
-  Agent->>API: POST /voice/session/end
-  API->>API: generate summary + embedding
-  API->>DB: INSERT call_summaries<br/>link_orphaned_transcripts()
-  API-)API: fire-and-forget calendar + Square sync
+  Agent->>Agent: post-call summary (callSummary.ts, bounded)
+  Agent->>API: POST /agent-tools/voice-session-end<br/>(duration, outcome, transcript, summary, appointment_id)
+  API->>DB: end_voice_session() RPC<br/>(voiceSessionReaper backstops a missed call)
+  Note over API: calendar + Square sync fires earlier,<br/>fire-and-forget from the booking route
 ```
 
 ---
@@ -327,7 +327,7 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant LLM
-  participant Tool as book_with_scheduling<br/>(edge fn today, Fastify tomorrow)
+  participant Tool as POST /agent-tools/book-with-scheduling<br/>(Fastify)
   participant RPC as book_with_scheduling_atomic()
   participant DB as Postgres
 
@@ -338,11 +338,14 @@ sequenceDiagram
   Note over RPC,DB: atomic — all checks or nothing
   RPC->>DB: 1. Past-time check<br/>(now AT TIME ZONE tenant.tz)
   alt in the past
-    RPC-->>Tool: INVALID_PARAMS
-    Tool-->>LLM: "ERROR: INVALID_PARAMS"
+    RPC-->>Tool: PAST_TIME
+    Tool-->>LLM: { success: false, error }
   end
 
-  RPC->>DB: 2. Business-hours check
+  RPC->>DB: 2. Closed-day check (blackout_dates)
+  alt business closed that day
+    RPC-->>Tool: BUSINESS_CLOSED
+  end
   RPC->>DB: 3. Resource availability<br/>(no overlap on resource_id)
   alt resource busy
     RPC-->>Tool: TIMESLOT_OCCUPIED
@@ -489,7 +492,7 @@ sequenceDiagram
 
   Note over User,API: Login
   User->>Dash: login form
-  Dash->>API: POST /auth/login<br/>(rate-limit 5 / 5min)
+  Dash->>API: POST /login<br/>(rate-limit 5 / 5min)
   API->>API: SELECT user → bcrypt.compare
   API-->>Dash: { token }
 
@@ -590,11 +593,10 @@ flowchart TB
   Schedule --> DayFocus["EmployeeDayFocusPanel"]
   Schedule --> Profile["StaffProfileCard"]
 
-  Advanced --> MyBiz["My Business<br/>services / resources"]
-  Advanced --> MyTeam["My Team<br/>employees / skills / schedules"]
+  Advanced --> Setup["Setup<br/>My Business / My Team / Business Settings sub-tabs"]
   Advanced --> AIInsights["Phone Assistant<br/>persona / knowledge base / analytics"]
 
-  subgraph UI["components/ui/ — 16 primitives"]
+  subgraph UI["components/ui/ — shared primitives (subset shown)"]
     direction LR
     Button
     Card
@@ -625,7 +627,7 @@ flowchart TB
 
 ## 11. RLS Context Flow (withTenantClient)
 
-Shows how per-request tenant isolation is enforced on a single shared `DATABASE_URL` pool, and why `FORCE ROW LEVEL SECURITY` is required on Supabase.
+Shows how per-request tenant isolation is enforced on a single shared `DATABASE_URL` pool, and why production must connect as the non-bypass role `app_user` (not a superuser) for the policies to bind.
 
 ```mermaid
 sequenceDiagram
@@ -651,10 +653,10 @@ sequenceDiagram
   RLS-->>Client: filtered rows
   Client-->>Route: rows (this tenant only)
 
-  Note over Client,RLS: FORCE ROW LEVEL SECURITY means the<br/>policy applies even to the postgres<br/>superuser role — required because<br/>Supabase doesn't allow a separate<br/>api_user role.
+  Note over Client,RLS: Production connects as app_user<br/>(non-superuser, no BYPASSRLS) so the<br/>policy really applies. FORCE ROW LEVEL<br/>SECURITY also binds the table owner,<br/>but never a superuser/BYPASSRLS role.
 
   Route-->>WTC: handler returns value
-  WTC->>Client: SELECT set_tenant_context(NULL)
+  WTC->>Client: set_config('app.current_tenant_id', '', false)
   WTC->>Client: client.release()
   WTC-->>Route: result
 
@@ -703,7 +705,7 @@ flowchart TB
 
 | Idea | Where | Why |
 |---|---|---|
-| Questions are DATA, not prose | `checklist/trees.ts` | 9 trees; a call's checklist is the MERGE of the trees its purpose selects, and the tenant's PRESET decides which trees are selectable at all |
+| Questions are DATA, not prose | `checklist/trees.ts` | 10 hand-written trees + 30 vertical intake trees; a call's checklist is the MERGE of the trees its purpose selects, and the tenant's PRESET decides which trees are selectable at all |
 | Host code owns state | `checklist/tracker.ts` | the model is never trusted to remember what is done |
 | Actions complete on a real id | `wrapAction` | "booked" cannot be said into existence |
 | The goodbye gate | `tracker.isResolved()` | replaced book-first sequencing — a stated goal can't be forgotten because the call can't END on it |

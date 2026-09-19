@@ -109,7 +109,7 @@ Current recommended hooks:
 - `pre-commit`: Runs on staged files only (fast & relevant)
 - `pre-push`: Runs full quality checks + unit tests before pushing
 
-To manually manage:
+To manually manage (legacy — `setup-hooks` just points you back at Husky's `npm run prepare`; `remove-hooks` only cleans stale `.git/hooks` entries):
 
 ```bash
 npm run setup-hooks

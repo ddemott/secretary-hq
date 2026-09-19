@@ -1,5 +1,7 @@
 # CALL_FIX_PLAN — the PR series behind CALL_IMPROVEMENTS.md
 
+> **Status 2026-09-18:** all seven batches (G #307, H #308, A #309, B #310, C #311, D #312, E #313, F #314) are merged to `main` (verified via `git log`). The root `CALL_IMPROVEMENTS.md` this plan cites was deleted in #401 once its fix batches closed — references to it below are historical.
+
 Plan drawn up 2026-07-30 from the 12-call analysis in `CALL_IMPROVEMENTS.md` (root)
 plus the same-day deep dive into call #1 (SCL_nRKo3KEVw8Yh), which surfaced defects
 the original analysis missed. Each batch below is one PR. Mark batches with their PR
@@ -104,7 +106,7 @@ question lengthens calls; callback phone already on every lead).
 5. Provenance rule + sim case: hedged company mentions ("companies like X") get a
    confirm question, never direct capture.
 
-## C — availability says WHY (calls #7, #8) — **PR pending**
+## C — availability says WHY (calls #7, #8) — **PR #311**
 
 1. `available-slots` accepts optional `requested_time`; when that time is missing from
    results the response carries the reason: `occupied_by_caller` / `occupied` /
@@ -114,7 +116,7 @@ question lengthens calls; callback phone already on every lead).
    have 2:30 booked") instead of inventing one ("we can only book on the quarter
    hour" — call #8's hallucinated explanation for a slot list it didn't understand).
 
-## D — corrections propagate (call #2) — **PR pending**
+## D — corrections propagate (call #2) — **PR #312**
 
 1. Partial UNIQUE on `customer_messages (tenant_id, call_id) WHERE call_id IS NOT
 NULL`; route becomes `ON CONFLICT DO UPDATE` — retry-safe AND correction-capable
@@ -129,7 +131,7 @@ NULL`; route becomes `ON CONFLICT DO UPDATE` — retry-safe AND correction-capab
 4. Normalize spelled corrections ("C-A-M-I-L-L-E" → "Camille") before save; prompt:
    name node gets the name ONLY, "from <company>" goes to the company node.
 
-## E — junk rows + urgency (calls #3, #7) — **PR pending**
+## E — junk rows + urgency (calls #3, #7) — **PR #313**
 
 > COURSE CORRECTION during the build: the plan said "stop creating customer rows
 > at voice-session-start". That would have REVERTED a deliberate 2026-07-27 fix
@@ -150,7 +152,7 @@ NULL`; route becomes `ON CONFLICT DO UPDATE` — retry-safe AND correction-capab
    passthrough (gated on tenant forward-phone) is a separate later PR needing
    live-call verification.
 
-## F — call hygiene (calls #1, #4, #5, #6, #11, #12) — **PR pending**
+## F — call hygiene (calls #1, #4, #5, #6, #11, #12) — **PR #314**
 
 1. Caller-silence timer: >10s post-greeting → one "Are you still there? I can take a
    message or book a time." → graceful close, `outcome='silent_hangup'`. (No
