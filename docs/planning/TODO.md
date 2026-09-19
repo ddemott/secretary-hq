@@ -99,8 +99,8 @@ Shipped series detail: `docs/planning/CALL_FIX_PLAN.md` (2026-07-30 batches) and
 observation sweep — all defects closed, sim suites green).
 
 - [x] **(Dale)** Run `scripts/pin-owner-for-hire-preset.sql` against prod after deploy — **DONE 2026-09-14.** Thinking Hammer `checklist_preset_id` → `owner_for_hire_front_desk` (was NULL). `job_inquiries` already had rows; recent calls already selected `job` tree. Re-test call optional belt-and-braces.
-- [ ] **(Dale)** Read the first `greeting_spoken` `ms_since_participant` values off
-      prod agent logs (event `greeting_spoken` — **not** in Postgres). 2026-09-14 probe: no values in recent Railway agent logs / voice_sessions.metadata. **MEASURE before fixing** on next live call.
+- [x] **(Dale)** Read the first `greeting_spoken` `ms_since_participant` values off
+      prod agent logs (event `greeting_spoken` — **not** in Postgres). 2026-09-14 probe: no values in recent Railway agent logs / voice_sessions.metadata. **CONSIDERED FIXED 2026-09-16 (Dale verbal)** — the DNS-warm fix this item was tracking is trusted without a fresh log pull. Separate, newly-reported defect from live calls the same day: the greeting's first word(s) were getting clipped at pickup (caller's own handset/carrier audio path not fully open yet). Fixed with a 300ms pre-roll AFTER the greeting is warmed and ready to play (`agent/src/greetingPickup.ts`'s `GREETING_POST_PICKUP_WAIT_MS`, was `0`) — deliberately not a wait FOR the greeting, so it does not reintroduce the 2026-08-14 dead-air defect this constant's own history documents.
 
 ---
 
