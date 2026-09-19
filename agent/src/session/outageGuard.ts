@@ -43,15 +43,31 @@ export function createOutageGuard(): OutageGuardState {
   return { consecutiveErrors: 0, tripped: false };
 }
 
+export interface NoteSessionErrorOptions {
+  /**
+   * The error cannot clear by waiting (empty provider balance, rejected key —
+   * see sessionError.ts). Trip on THIS error rather than the second: the SDK
+   * retries a 429 three times over ~4s, and a second error would only arrive
+   * after that — while the failing generation still holds the speech queue, so
+   * the outage line could not play. 2026-09-18, SCL_MFD3o5QRKQJB: the caller sat
+   * through ~5s of silence and a false "I can take a message" offer waiting for
+   * a verdict the first response had already delivered.
+   */
+  fatal?: boolean;
+}
+
 /**
  * Record a session error. Returns true when the caller should now be told the
  * call is broken — and only ever returns true ONCE per call, because the
  * outage line is followed by a close and a second one would talk over it.
  */
-export function noteSessionError(state: OutageGuardState): boolean {
+export function noteSessionError(
+  state: OutageGuardState,
+  opts: NoteSessionErrorOptions = {}
+): boolean {
   if (state.tripped) return false;
   state.consecutiveErrors += 1;
-  if (state.consecutiveErrors < OUTAGE_ERROR_LIMIT) return false;
+  if (!opts.fatal && state.consecutiveErrors < OUTAGE_ERROR_LIMIT) return false;
   state.tripped = true;
   return true;
 }
