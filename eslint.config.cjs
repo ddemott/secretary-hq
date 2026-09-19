@@ -20,6 +20,11 @@ module.exports = [
     ignores: [
       'dist/',
       'node_modules/',
+      // Nested full-repo checkouts made by `git worktree add` for isolated agent
+      // sessions. Without this `eslint .` lints every accumulated worktree's src/
+      // too and dies with a 4 GB heap OOM (which blocked pre-push 2026-09-18);
+      // vitest.config.mts excludes the same directory for the same reason.
+      '.claude/',
       'coverage/',
       'coverage_data/',
       'dashboard/',

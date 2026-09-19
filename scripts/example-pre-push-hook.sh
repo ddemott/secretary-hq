@@ -20,8 +20,9 @@ echo "==> Running pre-push checks (projectType: $PTYPE)..."
 
 # ── Docs-only fast path ──────────────────────────────────────────────────────
 # A push whose changes touch ONLY documentation never needs the unit suite —
-# prose can't break a test. Skip the expensive unitTests below; the fast
-# `checks` step still runs as a safety net.
+# prose can't break a test. Skip the expensive unitTests below, and swap the
+# full `checks` step (eslint + two tsc runs) for just the format check and the
+# CLAUDE.md drift detector — the only checks that can fail on prose.
 #
 # Git pipes the refs being pushed on the hook's stdin, one per line:
 #   <local ref> <local sha> <remote ref> <remote sha>
@@ -62,12 +63,22 @@ $STDIN_REFS
 EOF_REF
         if [ -n "${lsha:-}" ] && [ "$lsha" != "$ZERO" ]; then
             if [ "${rsha:-$ZERO}" = "$ZERO" ]; then
-                # New branch (no remote counterpart yet): diff vs the default branch.
-                BASE="origin/$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || echo main)"
+                # New branch (no remote counterpart yet): what the branch adds on
+                # top of the default branch. THREE-dot (merge-base) on purpose: a
+                # two-dot diff also lists main's newer commits in reverse whenever
+                # the branch has fallen behind main, so a docs-only branch looked
+                # like a code change and ran the whole suite.
+                # `git symbolic-ref` fails when origin/HEAD was never set (fresh
+                # clones and `git remote add` setups) — and it sits in a pipe, so
+                # the old `|| echo main` never fired and BASE became just "origin/",
+                # which made the diff error out and disabled the fast path.
+                DEFAULT_BRANCH="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+                DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+                DIFF_RANGE="origin/$DEFAULT_BRANCH...$lsha"
             else
-                BASE="$rsha"             # existing branch: diff the exact pushed range
+                DIFF_RANGE="$rsha..$lsha"   # existing branch: the exact pushed range
             fi
-            CHANGED_FILES="$(git diff --name-only "$BASE" "$lsha" 2>/dev/null || true)"
+            CHANGED_FILES="$(git diff --name-only "$DIFF_RANGE" 2>/dev/null || true)"
             if [ -n "$CHANGED_FILES" ] && ! printf '%s\n' "$CHANGED_FILES" | grep -qvE '(\.md$|\.mdx$|\.txt$|^docs/)'; then
                 DOCS_ONLY=1
                 echo "  📝 Docs-only push — will skip the unit test suite."
@@ -81,7 +92,27 @@ fi
 # next step. Without this, `unitTests` ("npm test") was silently running from
 # dashboard/ — so the backend suite never ran on push.
 CHECKS_CMD="$(get_command checks)"
-if is_real_command "$CHECKS_CMD"; then
+if [ "$DOCS_ONLY" = "1" ]; then
+    # eslint + two tsc runs cannot fail on prose. Keep what can: the formatter
+    # and the CLAUDE.md drift detector (CI runs the detector on docs-only PRs too).
+    FORMAT_CMD="$(get_command formatCheck)"
+    DOCS_CHECKS=""
+    if is_real_command "$FORMAT_CMD"; then DOCS_CHECKS="$FORMAT_CMD"; fi
+    if grep -q '"verify:claude-md"' package.json 2>/dev/null; then
+        DOCS_CHECKS="${DOCS_CHECKS:+$DOCS_CHECKS && }npm run verify:claude-md"
+    fi
+    if [ -n "$DOCS_CHECKS" ]; then
+        echo "  - Docs-only push — running format check + doc drift only (skipping lint/typecheck)..."
+        if ( eval "$DOCS_CHECKS" ); then
+            echo "    ✅ Docs checks passed"
+        else
+            echo "    ❌ Docs checks failed. Fix before pushing."
+            exit 1
+        fi
+    else
+        echo "  - Quality checks (skipped — docs-only push, no docs checks defined)"
+    fi
+elif is_real_command "$CHECKS_CMD"; then
     echo "  - Running quality checks..."
     if ( eval "$CHECKS_CMD" ); then
         echo "    ✅ Quality checks passed"
