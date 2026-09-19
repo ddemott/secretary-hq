@@ -47,7 +47,7 @@ Inbound Call
 | Backend       | `src/`       | Fastify 5, TypeScript, Zod, JWT                         |
 | Agent (voice) | `agent/`     | LiveKit Agents (Node), Deepgram, OpenAI                 |
 | Dashboard     | `dashboard/` | Next.js 16 (App Router), React 19, Tailwind             |
-| Database      | `supabase/`  | PostgreSQL + pgvector, 190 migrations, RLS              |
+| Database      | `supabase/`  | PostgreSQL + pgvector, 205 migrations, RLS              |
 | Shared        | `shared/`    | Cross-runtime code (derivation, scheduling, embeddings) |
 
 ### 0.3 How the call flow works (CRITICAL — most tasks touch this)
@@ -295,7 +295,7 @@ OWNER: Human-only (requires two real phones)
 PRIORITY: CRITICAL
 EFFORT: 30m call + 1h analysis
 DEPENDS_ON: None
-CONTEXT: Production has **never booked an appointment on a real call** (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer the greeting word **"representative"** (plus one "talk to a person") for the transfer leg. Treat step 5 as a **first live attempt**, not an auto-pass: fail on double-REFER, dead air, false "you're connected", or goodbye trap after a failed REFER — residual P0 hardening is still open (terminal lock, failure→message, checklist prompt). If the transfer destination is unavailable, fall back to the urgent-message path for product acceptance and record why transfer was skipped.
+CONTEXT: _(Audit note 2026-09-18: `docs/planning/TODO.md` records the live validation call as CLOSED 2026-09-14 on Dale's verbal confirmation; the acceptance-query output below was not pasted into this doc or a PR, so the status here is deliberately not flipped — Dale to decide whether the verbal close satisfies §0.7.)_ Production had **never booked an appointment on a real call** when this task was written (5 calls, 0 bookings all-time). This validates the booking leg end-to-end. Code wiring for live human transfer shipped 2026-09-14 (#462 — always-on `transfer_call` when a forward number is set); still needs a live ring proof on the same call. Prefer the greeting word **"representative"** (plus one "talk to a person") for the transfer leg. Treat step 5 as a **first live attempt**, not an auto-pass: fail on double-REFER, dead air, false "you're connected", or goodbye trap after a failed REFER — residual P0 hardening is still open (terminal lock, failure→message, checklist prompt). If the transfer destination is unavailable, fall back to the urgent-message path for product acceptance and record why transfer was skipped.
 FILES: findings go to `docs/planning/CALL_FIX_PLAN.md` (append a dated section).
 STEPS:
 
@@ -1239,7 +1239,7 @@ OWNER: Claude-able
 PRIORITY: MEDIUM
 EFFORT: 6–8h
 DEPENDS_ON: T-008 (per-vertical intake trees stable)
-CONTEXT: Owners must rename services/resources to their own words (e.g. "bay" vs "chair", "consult" vs "appointment") so the agent speaks their language. This maps display labels to the fixed tree slots; slot ids do not change.
+CONTEXT: _(As-built note 2026-09-18: a partial predecessor already exists — `tenant_vocabulary_overrides` + `vocabulary_columns` migrations (March 2026), `src/routes/vocabulary.ts`, `dashboard/lib/VocabularyContext.tsx`, and `dashboard/e2e/vocabulary-overrides.spec.ts` — for dashboard labels. What is NOT built is the agent-side label resolver named in FILES; `agent/src/checklist/labels.ts` does not exist.)_ Owners must rename services/resources to their own words (e.g. "bay" vs "chair", "consult" vs "appointment") so the agent speaks their language. This maps display labels to the fixed tree slots; slot ids do not change.
 FILES: `dashboard/components/Vocabulary/` (new), `src/routes/vocabulary.ts`, `agent/src/checklist/labels.ts` (new label resolver), `supabase/migrations/<new>_vocabulary_overrides.sql` (`vocab_overrides(tenant_id, slot_key, label)`).
 STEPS:
 
@@ -1308,8 +1308,8 @@ exist. Read this before continuing it.
   ALREADY EXISTED, contrary to the spec's FILES list: there is no
   `src/services/availability.ts` or `getSlots` — the suggester is
   `src/services/availabilitySearch.ts` (`findNextAvailableSlots`), the booking
-  RPCs are in supabase/migrations, and `dashboard/components/SchedulerView.tsx`
-  plus `components/scheduler/` already render appointments.
+  RPCs are in supabase/migrations, and `dashboard/components/scheduler/SchedulerView.tsx`
+  (moved from `dashboard/components/` 2026-09-12) plus its siblings already render appointments.
 -->
 
 OWNER: Claude-able
@@ -1559,7 +1559,7 @@ OWNER: Claude-able
 PRIORITY: MEDIUM
 EFFORT: 12–14h
 DEPENDS_ON: None
-CONTEXT: A tenant needs multiple user logins with roles (owner, manager, staff) and permission gating (e.g. only owner edits billing). Invitations by email; role checked server-side on every protected route.
+CONTEXT: _(As-built note 2026-09-18: a smaller version already ships — `users.role` is `owner` | `front_desk` (`users_role_check`), owner-only `POST /users/invite` (`src/routes/users.ts`), and server-side `requireOwnerRole()` gating on sensitive routes as of #522/#523. There is no `manager` role, no `tenant_users`/`invitations` tables, and no `src/routes/team.ts`.)_ A tenant needs multiple user logins with roles (owner, manager, staff) and permission gating (e.g. only owner edits billing). Invitations by email; role checked server-side on every protected route.
 FILES: `supabase/migrations/<new>_users_roles.sql` (`tenant_users(tenant_id, user_id, role)`, `invitations(tenant_id, email, role, token, expires_at)`), `src/middleware/authorize.ts` (new role guard), `src/routes/team.ts`, `dashboard/components/Team/` (new).
 STEPS:
 
@@ -1722,7 +1722,7 @@ OWNER: Claude-able
 PRIORITY: MEDIUM
 EFFORT: 8–10h
 DEPENDS_ON: T-101 (onboarding), T-000 (verticals)
-CONTEXT: A prospect can spin up a fully-seeded demo tenant for a chosen vertical (sample services, schedule, KB, persona) and place a simulated call — no billing, auto-expires in 7 days. Drives conversion.
+CONTEXT: _(As-built note 2026-09-18: a different shape of this already ships — `POST /demo/start` (`src/routes/demo.ts`, seeder `src/services/demoSeed.ts`) provisions an ephemeral tenant with `tenants.is_demo` / `demo_expires_at`, 30-minute TTL, reaped by the demo-expiry worker; there is no per-vertical picker or 7-day trial.)_ A prospect can spin up a fully-seeded demo tenant for a chosen vertical (sample services, schedule, KB, persona) and place a simulated call — no billing, auto-expires in 7 days. Drives conversion.
 FILES: `src/services/demoTenant.ts` (new seeder), `src/routes/demo.ts`, `supabase/migrations/<new>_demo_flag.sql` (`tenants.is_demo`, `tenants.expires_at`), reuse simulator for the fake call.
 STEPS:
 

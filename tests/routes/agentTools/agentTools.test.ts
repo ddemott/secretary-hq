@@ -1832,7 +1832,7 @@ describe('agentTools /policy-answer', () => {
       question: 'Do you accept Dogecoin?',
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().result).toContain("don't have specific information");
+    expect(res.json().result).toContain("don't have that on hand");
     // Wait a tick for the fire-and-forget insert to enqueue
     await new Promise((r) => setImmediate(r));
     expect(queries.some((q) => q.text.includes('unanswered_questions'))).toBe(true);
@@ -4700,8 +4700,8 @@ describe('agentTools /voice-session-start + /voice-session-end (call logging)', 
       duration_seconds: 18,
       transcript:
         "Assistant [0:00]: Thanks for calling! I'm Piper.\n" +
-        'Assistant [0:11]: Are you still there? I can take a message or set up a time.\n' +
-        "Assistant [0:23]: I'll let you go for now — do call back any time.",
+        "Assistant [0:11]: I'm still here. I can take a message, or we can set up a time.\n" +
+        "Assistant [0:23]: I'll let you go for now. Call back any time.",
     });
     expect(counterValue('silent_hangups_total', { bucket: 'under_20s' })).toBe(before + 1);
   });

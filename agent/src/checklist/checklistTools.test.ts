@@ -501,7 +501,7 @@ describe('the work-direction gate — declared axis checked against the selectio
       trees: ['job'],
     });
     expect(out).toMatch(/REFUSED/);
-    expect(out).toMatch(/clarifying question/i);
+    expect(out).toMatch(/falling tone/i);
     expect(tracker.selectedTrees()).toEqual([]);
   });
 
@@ -2161,7 +2161,7 @@ describe('an "opportunity" message is questioned before it is filed', () => {
       node_id: 'message_body',
       value: 'Neil Ashford called about a business opportunity.',
     });
-    expect(res).toContain('Ask ONE question now');
+    expect(res).toContain('Clarify once now in a falling tone');
     expect(res).toContain('buy_service');
     // The answer is NOT refused — the caller's words are kept either way.
     expect(tracker.value('message_body')).toContain('business opportunity');
@@ -2269,7 +2269,7 @@ describe('an unanswerable question takes a message instead of ending the call', 
    *      and the model treated the fallback sentence as permission to close.
    */
   const noAnswer =
-    "I don't have specific information on that topic right now. I'd be happy to take a message.";
+    "I don't have that on hand. I can take a message, or help with a booking.";
 
   it('selects the message + identity trees off the back of a no-answer result', async () => {
     const { toolkit, tracker, fakes } = makeKit();

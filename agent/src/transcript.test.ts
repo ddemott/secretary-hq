@@ -105,7 +105,7 @@ describe('TranscriptRecorder', () => {
 // (and summarizeCall/classifyCallOutcome) skip enrichment when the caller never
 // spoke. These cases walk the ways a real call ends.
 const GREETING =
-  "Thanks for calling! I'm Piper, Dale's AI Assistant. This call is transcribed for quality and service. What do you need help with: hiring Dale, getting a computer fixed, or maybe just leaving a message?";
+  "Thanks for calling! I'm Piper, Dale's AI Assistant. This call is transcribed for quality and service. I can help with hiring Dale, getting a computer fixed, or leaving a message. Tell me which.";
 
 describe('TranscriptRecorder.hasCallerTurn — how real calls end', () => {
   it('SAD: immediate hang-up — greeting plays, caller drops', () => {

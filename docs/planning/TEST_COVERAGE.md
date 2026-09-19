@@ -1,8 +1,10 @@
 # Test Coverage
 
-**Latest verification rerun:** 2026-08-19. `npm test` at repo root finished **2,750 passing (226 files)**; `cd dashboard && npm test` finished **1,044 passing (97 files)**; `cd agent && npm test` finished **943 passing (56 files)**; `cd agent && npm run build` exited **0**. Production freshness also moved the same day: `GET https://secretary-hq-production.up.railway.app/health` returned `{"status":"ok","started_at":"2026-08-19T08:22:19.112Z"}` and `POST /demo/start` returned `{"success":true,...}`.
+**Latest verification rerun (suite totals):** 2026-09-16 (recorded in `CLAUDE.md` Project Status and the TODO.md doc-hygiene pass). `npm test` at repo root finished **3,205 passing (268 files)**; `cd dashboard && npm test` finished **1,173 passing (107 files)**; `cd agent && npm test` finished **1,061 passing (61 files)**.
 
-**Latest V8 coverage rerun:** 2026-08-19. Root `npx vitest run --coverage` finished **2,805 passing (233 files)** with coverage **74.17% statements / 66.35% branches / 72.64% functions / 76.08% lines**. Dashboard `cd dashboard && npx vitest run --coverage` finished **1,044 passing (97 files)** with coverage **61.99% statements / 58.17% branches / 57.60% functions / 63.97% lines**.
+**Prior verification rerun:** 2026-08-19. `npm test` at repo root finished 2,750 passing (226 files); dashboard 1,044 passing (97 files); agent 943 passing (56 files); `cd agent && npm run build` exited **0**. Production freshness also moved the same day: `GET https://secretary-hq-production.up.railway.app/health` returned `{"status":"ok","started_at":"2026-08-19T08:22:19.112Z"}` and `POST /demo/start` returned `{"success":true,...}`.
+
+**Latest V8 coverage rerun:** 2026-08-19 (percentages below have NOT been re-measured since; suite totals above have). Root `npx vitest run --coverage` finished **2,805 passing (233 files)** with coverage **74.17% statements / 66.35% branches / 72.64% functions / 76.08% lines**. Dashboard `cd dashboard && npx vitest run --coverage` finished **1,044 passing (97 files)** with coverage **61.99% statements / 58.17% branches / 57.60% functions / 63.97% lines**.
 
 **Warnings seen during the 2026-08-19 reruns, but both commands exited 0:**
 - Dashboard test/coverage emits `ReferenceError: closeMobileMenu is not defined` from a jsdom inline click handler.
@@ -29,12 +31,12 @@ Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pa
 
 | Suite | Tests | Status | Runtime |
 |---|---|---|---|
-| Root/backend (`npm test`) | 2,750 passing (226 files) | ✅ | 2026-08-19 rerun |
-| Dashboard (`cd dashboard && npm test`) | 1,044 passing (97 files) | ✅ | 2026-08-19 rerun |
-| Agent (`cd agent && npm test`) | 943 passing (56 files) | ✅ | 2026-08-19 rerun |
+| Root/backend (`npm test`) | 3,205 passing (268 files) | ✅ | 2026-09-16 rerun |
+| Dashboard (`cd dashboard && npm test`) | 1,173 passing (107 files) | ✅ | 2026-09-16 rerun |
+| Agent (`cd agent && npm test`) | 1,061 passing (61 files) | ✅ | 2026-09-16 rerun |
 | Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
 
-Current verified total from the three suites re-run on 2026-08-19: **4,737 passing**. Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
+Current verified total from the three suites re-run on 2026-09-16: **5,439 passing**. Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
 
 > **On skipped e2e tests**: `calendar-sync.spec.ts` tests skip without `SYNC_TEST_RECORDER=1` (set it + restart the backend to run them). One test in `full-functional-audit.spec.ts` (Voice Calls) is deferred until Telnyx PSTN clears. Re-run the suite to refresh pass/skip counts.
 
@@ -113,14 +115,14 @@ the test still passes.
 
 ## Low-coverage hotspots worth attention
 
+_Hotspot percentages are from the 2026-08-19 coverage run. Rows for `src/services/reminders/reminderRepository.ts` / `reminderScheduler.ts` (deleted 2026-08-20 as a dead parallel implementation), `dashboard/components/shifts/ShiftScheduleView.tsx` and `dashboard/lib/callerActions.ts` (no longer exist) were removed 2026-09-18; the remaining rows have not been re-measured._
+
 ### Root / backend
 | File | Statements | Notes |
 |---|---|---|
 | `src/index.ts` | 0% | app bootstrap still uncovered by direct tests |
 | `src/routes/vocabulary.ts` | 0% | route file still unexercised |
 | `src/routes/calendar.ts` | 0.99% | calendar route remains mostly uncovered |
-| `src/services/reminders/reminderRepository.ts` | 0% | reminder persistence layer still untested |
-| `src/services/reminders/reminderScheduler.ts` | 0% | reminder scheduler still untested |
 | `src/workers/scheduleExtender.ts` | 0% | worker path still uncovered |
 
 ### Dashboard
@@ -128,9 +130,7 @@ the test still passes.
 |---|---|---|
 | `components/shifts/ShiftEditorModal.tsx` | 0% | whole shift editor path still dark |
 | `components/shifts/ShiftTimeline.tsx` | 0% | whole shift timeline path still dark |
-| `components/shifts/ShiftScheduleView.tsx` | 0% | whole shift schedule view still dark |
 | `components/scheduler/SchedulerToolbar.tsx` | 0% | toolbar path still unexercised |
-| `lib/callerActions.ts` | 0% | helper remains untested |
 | `components/knowledge/KnowledgeDocumentsTab.tsx` | 11.76% | document-tab path still thin |
 | `lib/api.ts` | 33.42% | many API helpers still unexercised |
 

@@ -25,9 +25,12 @@ When you log in you land on **Home**. The top navigation has two groups:
 
 **Owner tabs** (only owners/managers see these):
 
-- **My Business** — your services, prices, hours (set by staff shifts), and
-  business profile.
-- **My Team** — staff logins, roles, and the weekly schedule grid.
+- **Setup** — everything about how your business is configured, as sub-tabs:
+  Services, your resources, your staff, Working Days (the weekly schedule
+  grid), Who Can Do What, Team Access (staff logins and roles), Business
+  Settings (business profile, greeting details), Billing, Audit Log, and the
+  Answer Debugger. The **Setup Assistant** button here re-opens the guided
+  setup wizard.
 - **Phone Assistant** — how your AI sounds and behaves, including the
   **AI Persona** page (voice, speaking style, greeting, and "Forward Calls to a
   Person"). This is also where per-company preferences live.
@@ -93,7 +96,7 @@ cancellation policy?") from a **knowledge base** you control:
    automatically (Phone Assistant → onboarding).
 2. You can add or edit individual Q&A entries anytime.
 3. If the AI ever gives a wrong or "I don't know" answer, an owner can use the
-   built-in **answer debugger** to see exactly which knowledge entries the AI
+   built-in **Answer Debugger** (Setup → Answer Debugger) to see exactly which knowledge entries the AI
    considered for a question and how strongly each matched — so you know whether
    to add or reword content.
 
@@ -127,9 +130,12 @@ owner-proven. Operators: `docs/planning/TODO.md` live-validation step 4 and
 `docs/operations/RUNBOOK.md` §7c.
 
 **Do callers get reminders?**
-Yes — confirmation and reminder messages send by SMS/email, subject to the
-caller's consent. Customers can cancel or reschedule from a self-service link
-without calling back.
+Confirmation and reminder **emails** send, subject to the customer's consent.
+**Text messages are not reaching phones yet:** carriers require each business's
+texting number to be registered (10DLC) first, and until that is done they drop
+the texts — so the AI is set up not to promise a text. Reminders by SMS start
+working once registration is approved. Customers can also cancel or reschedule
+from a self-service link without calling back.
 
 **Is every caller saved, even if they don't book?**
 Yes. The assistant identifies callers and saves them to your Customers address

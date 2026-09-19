@@ -91,7 +91,7 @@ const ask = (question: string) =>
   });
 
 /** The route's own graceful "no answer" line — matched, not re-typed. */
-const CANNOT_ANSWER = /don't have specific information on that topic/i;
+const CANNOT_ANSWER = /don't have that on hand/i;
 
 beforeAll(async () => {
   try {

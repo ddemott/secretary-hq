@@ -399,7 +399,7 @@ export function attachOutputWatchdog(
  *    tools back. The question IS the recovery's exit.
  */
 export const NUDGE_INSTRUCTIONS =
-  'Reply to the caller RIGHT NOW in one or two short sentences, then stop. If you asked a question the caller has not answered yet, ask that question again, briefly — they never answered it, so you do not know their answer. Otherwise, ask for the one thing you need next. Always end by asking the caller a question, because your next turn begins only when they speak. This reply is words only — never say "one moment" or promise an action, and never mention tools, systems, steps, or errors.';
+  'Reply to the caller RIGHT NOW in one or two short sentences, then stop. If you asked a question the caller has not answered yet, ask that question again, briefly — they never answered it, so you do not know their answer. Otherwise, state the next step in a falling tone ("Tell me your name.", "I can take a message.", "Pick a time from the ones I offered."). Ask a question only when you truly need an answer you do not have. Never require every recovery turn to end with a question mark. This reply is words only — never say "one moment" or promise an action, and never mention tools, systems, steps, or errors.';
 
 /**
  * Silent-turn-death recovery — the backstop for a turn that ENDS without audio.

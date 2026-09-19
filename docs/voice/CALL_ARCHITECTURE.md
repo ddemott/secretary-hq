@@ -253,8 +253,10 @@ insertion is a deploy.**
    NOT have this limit — `question_tree_templates` is keyed `(vertical, tree_id)` with
    `vertical` as free text, and `copy_question_tree_templates_to_tenant()` already
    takes an ARRAY of verticals. The plumbing for sub-verticals is built; nothing has
-   used it. Today all five verticals hold identical content, because the seed script
-   writes the whole platform library under each one.
+   used it. Today every vertical (one per preset — 33 as of #388, this said "all five" when
+   written) holds identical content, because the seed script writes the whole platform
+   library under each one, and `bootstrap.ts` still passes a single
+   `verticalForBusinessType()` string.
 3. **Presets are TS + a DB CHECK enum.** That enum has already fallen a preset behind
    once. Moving the catalog to rows makes a new vertical an INSERT.
 4. **No question editor.** Nothing in the product writes `tenant_question_nodes` — only

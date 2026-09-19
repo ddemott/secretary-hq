@@ -3,6 +3,8 @@
 ## Status
 Active development — Tony driving, pending Dale direction
 
+> **Status check 2026-09-18 (docs audit):** this is a proposal only — nothing in it is built (no Stripe Payment Link / deposit code exists in `src/`, `agent/src/`, or `shared/`). Two premises are out of date: (1) SMS is sent via **Telnyx**, not Twilio (Twilio was removed; email is nodemailer/SMTP, not SendGrid), and production SMS is **OFF** (`ENABLE_SMS`) until per-tenant 10DLC registration, so a "send the link by SMS" step cannot reach a caller today; (2) `docs/product/STRATEGY.md` records a deliberate decision NOT to process the business's customers' service payments (PCI / Stripe Connect / payout liability) — this proposal keeps card data on Stripe's hosted page but would still need Dale to reconcile it with that decision.
+
 ## Problem
 The AI needs to collect deposits and cancellation fees for certain businesses (salons, restaurants, real estate). Taking credit card numbers over the phone or through the AI is a PCI compliance risk we should not own.
 

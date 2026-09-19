@@ -27,7 +27,7 @@ import { join } from 'node:path';
 const ROOT = join(__dirname, '..', '..', '..');
 
 /** Kept in sync by hand with agent/src/checklist/checklistTools.ts. */
-const AGENT_MARKER = "I don't have specific information on that topic";
+const AGENT_MARKER = "I don't have that on hand";
 
 describe('the RAG no-answer line the agent keys its take-a-message guarantee on', () => {
   it('the backend route still returns a fallback containing the exact agent marker', () => {
