@@ -165,7 +165,7 @@ Every policy you fill in here is one less call that needs you
 personally.
 
 Go to **Phone Assistant → Knowledge Base → Teach Your AI**. You'll see 9 categories with
-suggested questions (41 in the standard bank; you can add your own). Fill in the ones your customers actually ask:
+suggested questions (40 in the standard bank; you can add your own). Fill in the ones your customers actually ask:
 
 | Category | Questions to fill first |
 |---|---|
