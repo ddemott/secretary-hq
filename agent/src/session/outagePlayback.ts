@@ -27,7 +27,10 @@ export async function speakOutageLine(
   audio?: NonNullable<SayOptions>['audio']
 ): Promise<void> {
   try {
-    await session.interrupt({ force: true }).await;
+    // interrupt() returns LiveKit's Future<void, Error>, not a plain Promise —
+    // .await is its real getter (see @livekit/agents utils.d.ts), not a typo.
+    const interruption = session.interrupt({ force: true });
+    await interruption.await;
   } catch {
     // Nothing playing, or the session is already closing — say() below still works.
   }
