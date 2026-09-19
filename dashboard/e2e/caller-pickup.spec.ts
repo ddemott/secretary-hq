@@ -7,8 +7,11 @@
  *       "no answer". A page-visible first-audio mark is the thing CI/human
  *       can fail on.
  * WHERE: GET /call-simulator + in-page LiveKit join.
- * WHY: asserting GREETING_POST_PICKUP_WAIT_MS === 0 stayed green while
- *      the line was silent. This spec fails if no remote audio arrives.
+ * WHY: asserting a fixed GREETING_POST_PICKUP_WAIT_MS value stayed green
+ *      while the line was silent. This spec fails if no remote audio arrives.
+ *      (2026-09-16: value is a deliberate 300ms pre-roll after the greeting
+ *      is ready, not the old 0ms — see greetingPickup.ts's own comment for
+ *      why that isn't the same defect this spec's WHEN paragraph names.)
  */
 import { test, expect } from './helpers/test';
 import { BACKEND_URL } from './helpers/fixtures';
@@ -33,7 +36,7 @@ test.describe('inbound pickup — agent must make noise', () => {
   });
 
   test('pickup contract: cache if the frame exists', () => {
-    expect(GREETING_POST_PICKUP_WAIT_MS).toBe(0);
+    expect(GREETING_POST_PICKUP_WAIT_MS).toBe(300);
     expect(greetingSpeakPath(true)).toBe('play_cache');
     expect(canWarmGreetingBeforePickup('d5e3c6a1-7b9f-4e2a-bf30-8c11a5d8e9f0')).toBe(true);
   });

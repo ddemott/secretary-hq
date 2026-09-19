@@ -299,11 +299,17 @@ async function main() {
     fail('customer-context (returning)', `status ${ctx2.status}`);
   }
 
-  // ── S10. Reschedule that appointment to a slot 8 days out ──
+  // ── S10. Reschedule that appointment to a slot 8+ days out ──
   //         winTo+1d@14:00Z is clearly in the future and not inside the
-  //         original booking window, so no GiST overlap.
+  //         original booking window, so no GiST overlap. winTo is winFrom+7d,
+  //         so it shares winFrom's weekday — +1d lands on Saturday whenever
+  //         winFrom is a Friday, which the demo seed's Mon-Fri-only shifts
+  //         refuse (EMPLOYEE_NOT_SCHEDULED). Same weekend-bump as winFrom.
   const reschedStart = new Date(winTo.getTime() + 86400_000);
   reschedStart.setUTCHours(14, 0, 0, 0);
+  const reschedDow = reschedStart.getUTCDay();
+  if (reschedDow === 6) reschedStart.setUTCDate(reschedStart.getUTCDate() + 2);
+  else if (reschedDow === 0) reschedStart.setUTCDate(reschedStart.getUTCDate() + 1);
   const reschedEnd = new Date(reschedStart.getTime() + 3600_000);
   if (bookedApptId) {
     const resched = await api('/agent-tools/reschedule-appointment', {
