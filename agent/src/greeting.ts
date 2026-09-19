@@ -314,8 +314,27 @@ export function buildGreeting(config: TenantDisplayConfig): string {
   // The disclosure must still land BETWEEN them (it is the legal bit, and it must
   // not be the last thing before the caller starts talking), so we drop the
   // question from the OPENER and keep the closer — rather than the reverse.
-  const openerWithoutClosingQuestion = /how can i help you( today)?\s*[?!.]?\s*$/i.test(opener)
-    ? opener.replace(/how can i help you( today)?\s*[?!.]?\s*$/i, '').trim()
+  //
+  // 2026-09-18 falling-tone rewrite (found by Copilot review on #527): the
+  // CURRENT closer is CLOSER_NO_TRANSFER's own text ("Tell me how I can
+  // help."), and the templates migration (20260722000000) independently
+  // rewrote the default first_message to end with the identical phrase —
+  // this regex still only matched the OLD "How can I help you today?"
+  // wording, so the new phrase sailed through undeduped: "...answer
+  // questions about our services. Tell me how I can help. [disclosure]
+  // Tell me how I can help." Build the pattern from CLOSER_NO_TRANSFER
+  // itself so opener and closer can never drift apart like this again; the
+  // legacy phrase stays matched too, for any tenant's custom First Message
+  // still written in the old wording.
+  const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const closingQuestionPatterns = [
+    /how can i help you( today)?\s*[?!.]?\s*$/i,
+    new RegExp(`${escapeRegExp(CLOSER_NO_TRANSFER.replace(/[?!.]+$/, ''))}\\s*[?!.]?\\s*$`, 'i'),
+  ];
+  const openerWithoutClosingQuestion = closingQuestionPatterns.some((re) => re.test(opener))
+    ? closingQuestionPatterns
+        .reduce((text, re) => text.replace(re, ''), opener)
+        .trim()
     : opener;
 
   // Don't say the business name twice in six seconds.

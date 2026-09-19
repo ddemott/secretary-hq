@@ -1160,7 +1160,7 @@ export function registerSchedulingRoutes({
 
         if (slots.length === 0) {
           return ok(reply, {
-            spoken: `${svcInfo} I'm not finding anything open in the next week. I can take a message so someone can call you back.`,
+            spoken: `${svcInfo} I'm not finding anything open in the next week. I can take a message so someone can call you back — tell me what you'd like me to pass along.`,
             date: null,
             open_times: [],
             offer_times: [],
@@ -1414,7 +1414,7 @@ export function registerSchedulingRoutes({
         // Genuinely nothing open for a week — now "try another day" IS the honest
         // answer, and a message is the right fallback.
         return ok(reply, {
-          spoken: `${serviceInfo} Unfortunately, we don't have anyone scheduled to work on ${dayName}, and I'm not finding anything open in the next week. I can take a message so someone can call you back.`,
+          spoken: `${serviceInfo} Unfortunately, we don't have anyone scheduled to work on ${dayName}, and I'm not finding anything open in the next week. I can take a message so someone can call you back — tell me what you'd like me to pass along.`,
           date: args.date,
           open_times: [],
           note: 'Nothing is open. open_times is empty — do NOT offer any time. Offer to take a message.',

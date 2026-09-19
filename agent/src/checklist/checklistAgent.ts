@@ -425,7 +425,7 @@ ${menu}
    ${ownerRef} about a job" tells the caller you weren't listening — 2026-07-21 live call).
    A COMPANY NAMED IN THE OPENER IS THE COMPANY. "There's a job opening at US Bank" has
    already answered which company is calling AND where the work is — record both and
-   CONFIRM rather than re-ask ("That's US Bank. Tell me if that is your own company, or a client.").
+   CONFIRM rather than re-ask ("That's US Bank. Tell me whether that's your own company or a client.").
    On 2026-09-09 (SCL_A9GtJeZF7EwF) the caller opened with "there's a job opening at US
    Bank" and was asked "which company are you calling from?" — "I just told you, US
    Bank" — and then, forty seconds later, "which company would the work be for?" —

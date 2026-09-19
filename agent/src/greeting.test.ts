@@ -311,6 +311,27 @@ describe('REGRESSION: the greeting must not speak template syntax, or repeat its
     expect(questionAt).toBeGreaterThan(disclosureAt);
   });
 
+  // 2026-09-18 falling-tone rewrite (Copilot review on #527): the dedupe
+  // regex only matched the OLD "How can I help you today?" wording. The
+  // templates migration (20260722000000) and the closer (CLOSER_NO_TRANSFER)
+  // were independently rewritten to the SAME new phrase, "Tell me how I can
+  // help.", and the regex never learned it — so a fresh tenant's DEFAULT
+  // template opener collided with the DEFAULT closer, undeduped.
+  test('SAD: the NEW default template closing phrase is deduped too, not just the legacy one', () => {
+    const greeting = buildGreeting(
+      tenant({
+        name: 'Thinking Hammer LLC',
+        // The literal business_templates.first_message a fresh tenant
+        // inherits per migration 20260722000000.
+        firstMessage:
+          'Thanks for calling {{business_name}}! I can help you book an appointment, ' +
+          'leave a message, or answer questions about our services. Tell me how I can help.',
+      })
+    );
+
+    expect(greeting.match(/tell me how i can help/gi)).toHaveLength(1);
+  });
+
   test('SAD: an UNKNOWN placeholder is stripped, never spoken', () => {
     // WHY: a missing name is survivable; reading punctuation aloud is not. Fail
     //      silently — the caller hears a slightly plainer sentence, not a bug.
