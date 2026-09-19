@@ -22,7 +22,7 @@ the setup wizard asks for them in this order.
 |---|---|
 | **Business name** | Shown to callers in the AI's first greeting. |
 | **Time zone** | Drives every booking time, reminder schedule, and call-log timestamp. Get this right on Day 1 — changing it later requires re-converting historical timestamps. |
-| **Employee list** with names + phone numbers | The technicians/stylists/staff who will appear on the schedule and who will appear on the schedule (team path). Solo path creates you as the owner automatically. |
+| **Employee list** with names + phone numbers | The technicians/stylists/staff who will appear on the schedule (team path). Solo path creates you as the owner automatically. |
 | **Service list** with duration + price | The bookable offerings the AI proposes to callers. Picking a business type pre-seeds starter services you can edit.
 | **Resource list** (trucks/bays/chairs) | Whatever can host one appointment at a time. Team path seeds one default resource; solo creates one on finalize. The booking RPC blocks overlapping bookings on the same resource.
 | **Weekly business hours** | One opening time + closing time per day-of-week, used to populate the first 4 weeks of `employee_schedule`. |
@@ -308,9 +308,8 @@ dashboard's error boundary catches most React errors gracefully.
 
 For anything not covered here:
 - **Support email**: filled in per-tenant during setup
-- **Status page**: dashboard's footer link
-- **Urgent (voice down, can't book)**: see Back Office → Help → Urgent
-  contact
+- There is no in-app status page or urgent-contact flow yet — the dashboard
+  has no footer, and "Back Office" (the Setup tabs) has no Help section.
 
 Founder's direct line is available in the welcome email for the first
 30 days of beta.
