@@ -379,6 +379,148 @@ describe('Auth Routes — Handler-Level', () => {
         config: { rateLimit: { max: 5, timeWindow: '5 minutes' } },
       });
     });
+
+    // ── Admin-provisioned-tenant consent gate ─────────────────────────
+    // (supabase/migrations/20260916000000_tenant_admin_consent_gate.sql)
+    //
+    // THIS IS THE MOST IMPORTANT TEST IN THE WHOLE FEATURE: it protects
+    // Dale's own production login. consent_gate_required defaults false
+    // for every pre-existing tenant (seed data, self-serve /register
+    // tenants) — those must be completely unaffected by this gate.
+
+    it('WHO: owner of an admin-provisioned tenant who never confirmed | WHAT: password is correct but consent_gate_required=true and legal_consent_attested_at is NULL | WHERE: /login, after the bcrypt check | WHY: no JWT is issued until the emailed consent link is confirmed', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const realHash = await bcrypt.hash('pass123', 10);
+      queryResponses.push({
+        rows: [
+          {
+            user_id: USER_ID_MOCK,
+            tenant_id: TENANT_ID_MOCK,
+            email: 'gated@example.com',
+            password_hash: realHash,
+            full_name: 'Gated Owner',
+            role: 'owner',
+            consent_gate_required: true,
+            legal_consent_attested_at: null,
+          },
+        ],
+      });
+
+      const route = findRoute(routes, '/login');
+      const req = createMockRequest({ email: 'gated@example.com', password: 'pass123' });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(403);
+      expect(reply.body).toEqual({
+        success: false,
+        error: 'consent_required',
+        error_code: 'consent_required',
+      });
+      expect(generateToken).not.toHaveBeenCalled();
+    });
+
+    it('WHO: owner of an admin-provisioned tenant who already confirmed via /consent/confirm | WHAT: consent_gate_required=true but legal_consent_attested_at is set | WHERE: /login | WHY: a confirmed tenant logs in exactly like any other — the gate only blocks the unconfirmed window', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const realHash = await bcrypt.hash('pass123', 10);
+      queryResponses.push({
+        rows: [
+          {
+            user_id: USER_ID_MOCK,
+            tenant_id: TENANT_ID_MOCK,
+            email: 'confirmed@example.com',
+            password_hash: realHash,
+            full_name: 'Confirmed Owner',
+            role: 'owner',
+            consent_gate_required: true,
+            legal_consent_attested_at: new Date('2026-09-16T12:00:00Z'),
+          },
+        ],
+      });
+
+      const route = findRoute(routes, '/login');
+      const req = createMockRequest({ email: 'confirmed@example.com', password: 'pass123' });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.body.success).toBe(true);
+      expect(reply.body.token).toBe(TEST_TOKEN);
+      expect(generateToken).toHaveBeenCalled();
+    });
+
+    it("WHO: every pre-existing tenant — Dale's own production account (seeded directly in supabase/seed.sql, never through createTenantWithOwner), the Bella's Hair Studio demo tenant, and every self-serve /register signup | WHAT: consent_gate_required is false (the column's schema default) | WHERE: /login | WHY: this is the test that protects Dale's own prod login — a gate that fired on a false consent_gate_required would lock out the platform owner", async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const realHash = await bcrypt.hash('pass123', 10);
+      queryResponses.push({
+        rows: [
+          {
+            user_id: USER_ID_MOCK,
+            tenant_id: TENANT_ID_MOCK,
+            email: 'daledemott@gmail.com',
+            password_hash: realHash,
+            full_name: 'Dale DeMott',
+            role: 'owner',
+            consent_gate_required: false,
+            legal_consent_attested_at: null,
+          },
+        ],
+      });
+
+      const route = findRoute(routes, '/login');
+      const req = createMockRequest({ email: 'daledemott@gmail.com', password: 'pass123' });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.body.success).toBe(true);
+      expect(reply.body.token).toBe(TEST_TOKEN);
+      expect(generateToken).toHaveBeenCalled();
+    });
+
+    it('WHO: any row from a DB that predates this migration, where the join simply omits the two new columns | WHAT: consent_gate_required and legal_consent_attested_at come back undefined, not false/null | WHERE: /login | WHY: the gate check must not accidentally trip on undefined — it uses a strict === true check', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const realHash = await bcrypt.hash('pass123', 10);
+      queryResponses.push({
+        rows: [
+          {
+            user_id: USER_ID_MOCK,
+            tenant_id: TENANT_ID_MOCK,
+            email: 'legacy-row@example.com',
+            password_hash: realHash,
+            full_name: 'Legacy Row',
+            role: 'owner',
+            // consent_gate_required / legal_consent_attested_at deliberately omitted
+          },
+        ],
+      });
+
+      const route = findRoute(routes, '/login');
+      const req = createMockRequest({ email: 'legacy-row@example.com', password: 'pass123' });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.body.success).toBe(true);
+      expect(generateToken).toHaveBeenCalled();
+    });
   });
 
   // ── /register ───────────────────────────────────────────────────────
@@ -430,7 +572,15 @@ describe('Auth Routes — Handler-Level', () => {
     // WHY: root CLAUDE.md Build Principles — "HIPAA verticals are
     //   permanently excluded... anything that surfaces them gets deleted
     //   on sight." A direct API call previously bypassed that entirely.
-    it.each(['dental', 'Dental Office', 'veterinary-clinic', 'chiropractic', 'optometry', 'Family Medical Group', 'HIPAA Provider'])(
+    it.each([
+      'dental',
+      'Dental Office',
+      'veterinary-clinic',
+      'chiropractic',
+      'optometry',
+      'Family Medical Group',
+      'HIPAA Provider',
+    ])(
       'returns 400 for HIPAA-adjacent business_type %j (WHO: direct API caller | WHAT: no <select> constraint | WHERE: /register | WHY: HIPAA verticals are permanently excluded)',
       async (businessType) => {
         const { mockClient: client } = createMockClient();

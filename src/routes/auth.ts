@@ -77,7 +77,7 @@ function hashToken(token: string): string {
  * column must never cause. Returns null (never throws) on anything that
  * doesn't parse as a real IPv4/IPv6 address.
  */
-function extractRequestIp(req: AppRequest): string | null {
+export function extractRequestIp(req: AppRequest): string | null {
   const forwarded = req.headers['x-forwarded-for'];
   const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
   const candidate = first || req.ip || null;
@@ -85,7 +85,7 @@ function extractRequestIp(req: AppRequest): string | null {
 }
 
 /** Best-effort request User-Agent — same array-safety reasoning as above. */
-function extractUserAgent(req: AppRequest): string | null {
+export function extractUserAgent(req: AppRequest): string | null {
   const ua = req.headers['user-agent'];
   return (Array.isArray(ua) ? ua[0] : ua) || null;
 }
@@ -129,7 +129,8 @@ export function registerAuthRoutes(
         // avoid. Fail at the door, with the same generic 401 as a bad password, so the
         // response never reveals whether an account existed.
         const res = await client.query(
-          `SELECT u.* FROM users u
+          `SELECT u.*, t.consent_gate_required, t.legal_consent_attested_at
+             FROM users u
              JOIN tenants t ON t.tenant_id = u.tenant_id AND t.is_deleted = false
             WHERE u.email = $1
             ORDER BY u.created_at ASC NULLS LAST, u.user_id ASC`,
@@ -150,6 +151,22 @@ export function registerAuthRoutes(
       const match = await bcrypt.compare(password, user.password_hash);
       if (!match) {
         return reply.status(401).send({ success: false, error: 'Invalid email or password' });
+      }
+      // ADMIN-PROVISIONED-TENANT CONSENT GATE. Checked AFTER the password
+      // is proven correct — same reasoning as the soft-delete check above:
+      // never reveal account state before the credential is proven.
+      // consent_gate_required defaults false and is set true ONLY by
+      // createTenantWithOwner's admin path (POST /tenants/create); every
+      // pre-existing tenant (seed data, self-serve /register tenants,
+      // every tenant created before this gate existed) has it false and
+      // is completely unaffected — this is the check that must never lock
+      // Dale out of his own production account.
+      if (user.consent_gate_required === true && user.legal_consent_attested_at === null) {
+        return reply.status(403).send({
+          success: false,
+          error: 'consent_required',
+          error_code: 'consent_required',
+        });
       }
       const role: UserRole = user.role === 'front_desk' ? 'front_desk' : 'owner';
       const token = generateToken({

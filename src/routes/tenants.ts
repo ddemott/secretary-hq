@@ -7,10 +7,12 @@
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
+import { randomBytes, createHash } from 'crypto';
 import {
   withHandler,
   withPoolClient,
   logEvent,
+  logError,
   requireAuth,
   requireSuperAdmin,
   requireOwnerRole,
@@ -25,6 +27,18 @@ import {
   deriveChecklistRuntimeConfig,
 } from '../../shared/checklistPresetDerivation';
 import { applyChecklistOverrides } from '../../shared/checklistOverrides';
+import {
+  sendTenantConsentInviteEmail,
+  sendTenantConsentPendingAdminNotice,
+  PLATFORM_ADMIN_EMAIL,
+} from '../services/communications/systemEmail';
+import { errorsTotal } from '../services/metrics';
+
+const CONSENT_INVITE_TTL_DAYS = 14;
+
+function hashConsentToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 const CreateTenantSchema = z.object({
   tenant_name: z.string().min(1).max(200),
@@ -693,6 +707,65 @@ export function registerTenantRoutes(
       }
 
       logEvent(req, 'tenant_created', { tenantId: result.tenantId, name: tenantName });
+
+      // ADMIN-PROVISIONED TENANTS ARE CONSENT-GATED. createTenantWithOwner
+      // stamped consent_gate_required=true (no legalConsent was passed —
+      // an admin isn't the business owner attesting anything). Issue the
+      // invite and email it now, inside this handler rather than inside
+      // the bootstrap transaction, so a mail failure can never roll back a
+      // tenant that was otherwise created successfully.
+      if (result.consentGateRequired) {
+        const rawToken = randomBytes(32).toString('base64url');
+        const tokenHash = hashConsentToken(rawToken);
+        await withPoolClient(pool, async (client) => {
+          await client.query(
+            `INSERT INTO tenant_consent_invites (tenant_id, user_id, token_hash, expires_at)
+             VALUES ($1, $2, $3, NOW() + ($4 || ' days')::interval)`,
+            [result.tenantId, result.userId, tokenHash, CONSENT_INVITE_TTL_DAYS]
+          );
+        });
+
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        const consentLink = `${dashboardUrl}/consent?token=${rawToken}`;
+
+        // FIRE-AND-FORGET (same pattern + reasoning as /forgot-password,
+        // src/routes/auth.ts ~line 285: an awaited SMTP send hung prod
+        // once and left the caller staring at a spinner with no response.
+        // The invite row is already durable at this point, so the
+        // response owes the super-admin nothing further from the email
+        // sends below.
+        void sendTenantConsentInviteEmail(body.owner_email, consentLink, tenantName).catch(
+          (err: unknown) => {
+            errorsTotal.inc({ event: 'tenant_consent_invite_email_failed' });
+            logError(req, 'tenant_consent_invite_email_failed', err, {
+              tenantId: result.tenantId,
+            });
+          }
+        );
+        // Neither env var configured — skip rather than guess an address
+        // (same guard as the port-request flow just below in this file).
+        // The owner invite above already went out regardless.
+        if (!PLATFORM_ADMIN_EMAIL) {
+          logError(
+            req,
+            'tenant_consent_admin_notice_email_failed',
+            new Error('PLATFORM_ADMIN_EMAIL and EMAIL_USER both unset — nowhere to send'),
+            { tenantId: result.tenantId }
+          );
+        } else {
+          void sendTenantConsentPendingAdminNotice(PLATFORM_ADMIN_EMAIL, {
+            businessName: tenantName,
+            ownerEmail: body.owner_email,
+            createdAt: new Date(),
+          }).catch((err: unknown) => {
+            errorsTotal.inc({ event: 'tenant_consent_admin_notice_email_failed' });
+            logError(req, 'tenant_consent_admin_notice_email_failed', err, {
+              tenantId: result.tenantId,
+            });
+          });
+        }
+      }
+
       return reply.send({ success: true, tenant_id: result.tenantId });
     }, 'Failed to create tenant')
   );
