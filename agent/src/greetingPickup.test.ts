@@ -21,6 +21,7 @@ import {
   auraTtsStreamingEnabled,
   canWarmGreetingBeforePickup,
   greetingSpeakPath,
+  shouldPreRoll,
 } from './greetingPickup.js';
 
 describe('greeting pickup', () => {
@@ -31,6 +32,15 @@ describe('greeting pickup', () => {
   it('plays cache if the ring-time warm landed; otherwise speaks live NOW', () => {
     expect(greetingSpeakPath(true)).toBe('play_cache');
     expect(greetingSpeakPath(false)).toBe('speak_live');
+  });
+
+  // 2026-09-17 (Copilot review on #525): the pre-roll must be gated on
+  // play_cache. On speak_live, the caller already sat through a warm that
+  // timed out or failed with nothing to play — stacking a flat 300ms on
+  // top of that reintroduces the 2026-08-14 "waiting after pickup" defect.
+  it('pre-rolls only when a cached frame is ready to play, never on the live fallback', () => {
+    expect(shouldPreRoll('play_cache')).toBe(true);
+    expect(shouldPreRoll('speak_live')).toBe(false);
   });
 
   it('can start the greeting warm from dispatch tenant_id — before pickup', () => {

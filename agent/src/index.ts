@@ -55,6 +55,7 @@ import {
   greetingSpeakPath,
   canWarmGreetingBeforePickup,
   auraTtsStreamingEnabled,
+  shouldPreRoll,
   GREETING_POST_PICKUP_WAIT_MS,
 } from './greetingPickup.js';
 import {
@@ -2105,7 +2106,7 @@ export default defineAgent({
               // exact "waiting after pickup" defect this file's own history
               // warns about, with nothing yet to play. Only the frame-ready
               // path gets the pre-roll.
-              if (speak === 'play_cache' && GREETING_POST_PICKUP_WAIT_MS > 0) {
+              if (shouldPreRoll(speak) && GREETING_POST_PICKUP_WAIT_MS > 0) {
                 await new Promise((resolve) => setTimeout(resolve, GREETING_POST_PICKUP_WAIT_MS));
               }
               const opener =

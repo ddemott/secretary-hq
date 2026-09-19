@@ -30,6 +30,18 @@ export function greetingSpeakPath(frameReady: boolean): GreetingSpeakPath {
   return frameReady ? 'play_cache' : 'speak_live';
 }
 
+/**
+ * 2026-09-17 (Copilot review on #525): the pre-roll must NOT apply on
+ * speak_live. That path only happens after the warm attempt already timed
+ * out or failed — the caller has already waited with nothing to play.
+ * Stacking a flat 300ms on top of that is the "waiting after pickup"
+ * defect this file's history warns about. Only a ready cached frame earns
+ * the pre-roll.
+ */
+export function shouldPreRoll(speak: GreetingSpeakPath): boolean {
+  return speak === 'play_cache';
+}
+
 /** Session replies: WS stream is silent here. Opt out with AURA_TTS_STREAMING=false. */
 export function auraTtsStreamingEnabled(): boolean {
   return process.env.AURA_TTS_STREAMING !== 'false';
