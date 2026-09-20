@@ -1539,20 +1539,30 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
     }
     if (args.node_id === CALLER_NAME && args.value && !args.declined) {
       // 2026-07-21: name never reused until goodbye → felt like a form.
-      // 2026-09-19 (SCL_ibdmZ9imLFtV): opposite failure — every intake turn opened
-      // "Thanks, Bob." because this nudge templated "Thanks, {first}" and the style
-      // rule said "use it at natural moments." One brief nod when the name lands;
-      // booking confirm + goodbye only after that. First name only, never full name.
-      // Flatten before interpolation — same defense as identity volunteered names (#289).
+      // 2026-09-19 (SCL_ibdmZ9imLFtV): every intake turn opened "Thanks, Bob."
+      // 2026-09-20 Dale: no thanks after every answer — just the next question.
+      // Remember first name for booking confirm / goodbye only. Flatten first (#289).
       const safeName = sanitizeVolunteered(args.value, 80);
       const first = safeName?.split(/\s+/)[0];
       if (first) {
         directive +=
-          `\n\nTheir first name is ${first}. ONCE this turn you may nod with it ` +
-          `("Got it, ${first}." — or just move on). Do NOT say "Thanks, ${first}" and do ` +
-          `NOT open any later turn with thanks or by leading with their name. You may ` +
-          `speak the name again only when confirming a booking or saying goodbye.`;
+          `\n\nTheir first name is ${first}. Keep it for booking confirm and goodbye only. ` +
+          `Do NOT thank them, nod ("Got it"), or say their name this turn — go straight ` +
+          `to the next question.`;
       }
+    }
+    // Dale 2026-09-20: after an answer, speak the next question only — no thank-you
+    // machine. Phone read-back turns are exempt: that directive IS the whole spoken line.
+    const isPhoneReadbackTurn =
+      args.node_id === CALLER_PHONE &&
+      !!args.value &&
+      !args.declined &&
+      directive.includes('READ THE NUMBER BACK NOW');
+    if (!isPhoneReadbackTurn) {
+      directive +=
+        '\n\nYour next spoken line is the NEXT checklist question (or action) only. ' +
+        'No opener: no "Thanks", no "Thanks for that", no "Got it", no name, no "Okay". ' +
+        'Just ask.';
     }
     return stateBlock() + directive;
   }
