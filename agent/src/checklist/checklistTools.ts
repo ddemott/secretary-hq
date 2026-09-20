@@ -1543,12 +1543,16 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       // "Thanks, Bob." because this nudge templated "Thanks, {first}" and the style
       // rule said "use it at natural moments." One brief nod when the name lands;
       // booking confirm + goodbye only after that. First name only, never full name.
-      const first = args.value.trim().split(/\s+/)[0];
-      directive +=
-        `\n\nTheir first name is ${first}. ONCE this turn you may nod with it ` +
-        `("Got it, ${first}." — or just move on). Do NOT say "Thanks, ${first}" and do ` +
-        `NOT open any later turn with thanks or their name. Speak the name again only ` +
-        `when confirming a booking or saying goodbye.`;
+      // Flatten before interpolation — same defense as identity volunteered names (#289).
+      const safeName = sanitizeVolunteered(args.value, 80);
+      const first = safeName?.split(/\s+/)[0];
+      if (first) {
+        directive +=
+          `\n\nTheir first name is ${first}. ONCE this turn you may nod with it ` +
+          `("Got it, ${first}." — or just move on). Do NOT say "Thanks, ${first}" and do ` +
+          `NOT open any later turn with thanks or by leading with their name. You may ` +
+          `speak the name again only when confirming a booking or saying goodbye.`;
+      }
     }
     return stateBlock() + directive;
   }
