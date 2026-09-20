@@ -4,6 +4,14 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-20 — Overnight autonomous batch (Dale asleep): 10 no-Dale-needed fixes
+
+Each item one branch → PR → green CI → merge → purge. Items land below as they merge.
+
+- **`/reminders/process` + `/reminders/status` had no auth check** (their own comments said "admin only"). Any tenant login, front_desk included, could run the due-reminder batch that sends for EVERY tenant. Both now `requireSuperAdmin`; dashboard never called either. Test: `tests/routes/reminders.adminRoutes.test.ts` (red on old code, green on fix).
+
+---
+
 ## 2026-09-16 — Adversarial re-verify of #517/#522 found two more back-door gaps: `/setup/commit` and `/square/*` (PR #523)
 
 roady's adversarial re-verify of the two role-check PRs shipped earlier the same night (#517, #522) found the front-door routes were correctly gated but two back doors to the same tables were not:
