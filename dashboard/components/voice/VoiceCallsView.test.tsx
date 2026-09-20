@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import React from 'react';
 
@@ -337,6 +337,100 @@ describe('VoiceCallsView', () => {
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent(/could not load call history/i);
       expect(screen.queryByText('No call history yet')).not.toBeInTheDocument();
+    });
+
+    test('SAD: a failed "Load more" keeps the rows already loaded and says what failed (not "No call history yet")', async () => {
+      // WHO: an owner with 25 calls who clicks "Load more" on a flaky connection.
+      // WHAT: page 2 fails. fetchCallHistory used to run setCallHistory([]) for
+      //       ANY non-silent failure but only set an error for page 1 — so the
+      //       loaded rows vanished and the panel fell through to the
+      //       "No call history yet" empty state for a tenant WITH calls.
+      // WHERE: VoiceCallsView.fetchCallHistory catch + CallListPanel load-more area.
+      // WHY: an error and an honest empty state must never read alike.
+      mockCallHistory
+        .mockResolvedValueOnce({ calls: [mockCall], total: 25, has_more: true })
+        .mockRejectedValueOnce(new Error('page 2 failed'));
+      render(<VoiceCallsView />);
+      await waitFor(() => expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0));
+
+      fireEvent.click(screen.getByText(/Load more/));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/could not load more calls/i);
+      expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0);
+      expect(screen.queryByText('No call history yet')).not.toBeInTheDocument();
+      // The whole-list error (page-1 failure) must NOT be what shows here.
+      expect(screen.queryByText(/could not load call history/i)).not.toBeInTheDocument();
+      // ...and the owner can retry from the same button.
+      expect(screen.getByText(/Load more/)).toBeEnabled();
+    });
+
+    test('HAPPY: retrying a failed "Load more" clears the error and appends the page', async () => {
+      const secondCall = { ...mockCall, id: 'call-2', customer_name: 'Alice Brown' };
+      mockCallHistory
+        .mockResolvedValueOnce({ calls: [mockCall], total: 2, has_more: true })
+        .mockRejectedValueOnce(new Error('blip'))
+        .mockResolvedValueOnce({ calls: [secondCall], total: 2, has_more: false });
+      render(<VoiceCallsView />);
+      await waitFor(() => expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0));
+
+      fireEvent.click(screen.getByText(/Load more/));
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByText(/Load more/));
+
+      await waitFor(() => expect(screen.getAllByText('Alice Brown').length).toBeGreaterThan(0));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0);
+    });
+
+    test('SAD: a failed background poll stays quiet — no banner, loaded list untouched', async () => {
+      // WHY (from the commit's own design note): the silent 10s poll must not flash
+      // an error over an already-loaded list on a transient blip.
+      mockCallHistory
+        .mockResolvedValueOnce({ calls: [mockCall], total: 1, has_more: false })
+        .mockRejectedValue(new Error('poll blip'));
+      render(<VoiceCallsView />);
+      await waitFor(() => expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10500);
+      });
+
+      expect(mockCallHistory.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0);
+    });
+
+    test('HAPPY: Refresh after a failed first load clears the error and shows the calls', async () => {
+      mockCallHistory
+        .mockRejectedValueOnce(new Error('down'))
+        .mockResolvedValue({ calls: [mockCall], total: 1, has_more: false });
+      render(<VoiceCallsView />);
+      await screen.findByRole('alert');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      await waitFor(() => expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    test('a11y: the Refresh button carries an explicit aria-label (not just a title)', async () => {
+      // WHY: testing-library also derives an accessible name from `title`, so the
+      // getByRole('button', {name:'Refresh'}) test above passes even WITHOUT the
+      // aria-label. This asserts the attribute itself so the change is pinned.
+      render(<VoiceCallsView />);
+      expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+        'aria-label',
+        'Refresh'
+      );
+    });
+
+    test('HAPPY: the initial spinner is a live status region with readable text', async () => {
+      // WHY: an icon-only spinner has no text for a live region to announce.
+      mockCallHistory.mockReturnValue(new Promise(() => {}));
+      render(<VoiceCallsView />);
+      const status = await screen.findByRole('status', { name: 'Loading call history' });
+      expect(status).toHaveAttribute('aria-busy', 'true');
+      expect(status).toHaveTextContent('Loading call history…');
     });
 
     test('displays new caller message for unknown customers', async () => {

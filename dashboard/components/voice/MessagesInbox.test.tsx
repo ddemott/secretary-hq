@@ -166,6 +166,49 @@ describe('MessagesInbox — loading / empty states', () => {
     expect(screen.queryByText(/nothing here yet/i)).not.toBeInTheDocument();
   });
 
+  test('HAPPY: an honestly empty inbox says "nothing here yet" and raises NO error alert', async () => {
+    // WHY: the load-failure alert must appear only on a real failure — an empty
+    // inbox is a normal state, not something to announce as an error.
+    mockApi.voice.listMessages.mockResolvedValue([]);
+    mockApi.voice.listJobInquiries.mockResolvedValue([]);
+    render(<MessagesInbox tenantId="tenant-test" />);
+    expect(await screen.findByText(/nothing here yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('HAPPY: Refresh after a failed load clears the error and shows the messages', async () => {
+    mockApi.voice.listMessages
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValue(SAMPLE_MESSAGES);
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await screen.findByRole('alert');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('SAD: a job-inquiry list failure alone (messages fine) is still reported as a load error', async () => {
+    // Both lists load together; either failing means the inbox is incomplete,
+    // and an incomplete inbox must not present itself as the whole truth.
+    mockApi.voice.listMessages.mockResolvedValue(SAMPLE_MESSAGES);
+    mockApi.voice.listJobInquiries.mockRejectedValue(new Error('inquiries down'));
+    render(<MessagesInbox tenantId="tenant-test" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load messages/i);
+  });
+
+  test('a11y: the Refresh button carries an explicit aria-label (not just a title)', async () => {
+    // The by-name test below passes even without the attribute (title also
+    // supplies an accessible name in testing-library); pin the attribute itself.
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+      'aria-label',
+      'Refresh'
+    );
+  });
+
   test('HAPPY: loading state is announced via role=status/aria-live', () => {
     // WHO: a screen-reader user opening the tab | WHAT: the "Loading…" text
     //   carries role="status" + aria-live so it's actually announced | WHERE:
@@ -192,6 +235,28 @@ describe('MessagesInbox — filter tab a11y', () => {
     await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
     expect(screen.getByRole('button', { name: 'all' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'new' })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+describe('MessagesInbox — filter tab pressed state follows the selection', () => {
+  test('HAPPY: clicking a filter moves aria-pressed to it and off the previous one', async () => {
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'read' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'read' })).toHaveAttribute('aria-pressed', 'true')
+    );
+    expect(screen.getByRole('button', { name: 'all' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('HAPPY: the filter tabs are type="button" (never submit an enclosing form)', async () => {
+    render(<MessagesInbox tenantId="tenant-test" />);
+    await waitFor(() => expect(screen.getAllByText('Alice Smith').length).toBeGreaterThan(0));
+    for (const name of ['all', 'new', 'read', 'actioned']) {
+      expect(screen.getByRole('button', { name })).toHaveAttribute('type', 'button');
+    }
   });
 });
 

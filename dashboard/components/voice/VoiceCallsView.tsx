@@ -25,6 +25,9 @@ export default function VoiceCallsView() {
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // A failed "Load more" (page 2+) keeps the rows already on screen and reports
+  // the failure beside the button instead — see fetchCallHistory's catch.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
@@ -65,6 +68,7 @@ export default function VoiceCallsView() {
         setHistoryError(null);
       } else {
         setHistoryLoading(true);
+        setLoadMoreError(null);
       }
     }
 
@@ -99,12 +103,19 @@ export default function VoiceCallsView() {
       console.error('Failed to fetch call history:', err);
       // A load failure and an honestly-empty history are different facts for
       // the owner reading the list — don't let a failed request read as
-      // "no calls yet". Only surfaced for the first page of a user-visible
-      // (non-silent) fetch; the background poll stays quiet so a transient
-      // blip doesn't flash an error banner over an already-loaded list.
+      // "no calls yet". Only surfaced for a user-visible (non-silent) fetch;
+      // the background poll stays quiet so a transient blip doesn't flash an
+      // error banner over an already-loaded list.
       if (!opts.silent) {
-        setCallHistory([]);
-        if (offset === 0) setHistoryError('Could not load call history. Please try again.');
+        if (offset === 0) {
+          setCallHistory([]);
+          setHistoryError('Could not load call history. Please try again.');
+        } else {
+          // "Load more" failed: the first pages are still perfectly good. Wiping
+          // them here used to leave an empty list under the "No call history
+          // yet" copy for a tenant that has calls. Keep them, say what failed.
+          setLoadMoreError('Could not load more calls. Please try again.');
+        }
       }
     } finally {
       if (!opts.silent) {
@@ -231,6 +242,7 @@ export default function VoiceCallsView() {
             loading={loading}
             historyLoading={historyLoading}
             historyError={historyError}
+            loadMoreError={loadMoreError}
             total={total}
             hasMore={hasMore}
             outcomeFilter={outcomeFilter}

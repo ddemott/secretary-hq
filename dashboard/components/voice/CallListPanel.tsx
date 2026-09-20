@@ -14,6 +14,9 @@ interface CallListPanelProps {
   /** Set when the last non-silent history fetch failed — kept distinct from a
    *  genuinely empty history so a fetch failure never reads as "no calls yet". */
   historyError: string | null;
+  /** Set when a "Load more" (page 2+) failed. Rendered beside the button while
+   *  the rows already loaded stay on screen. */
+  loadMoreError: string | null;
   total: number;
   hasMore: boolean;
   outcomeFilter: string;
@@ -35,6 +38,7 @@ export function CallListPanel({
   loading,
   historyLoading,
   historyError,
+  loadMoreError,
   total,
   hasMore,
   outcomeFilter,
@@ -161,10 +165,15 @@ export function CallListPanel({
         {loading ? (
           <div
             className="flex items-center justify-center py-8"
+            role="status"
+            aria-live="polite"
             aria-label="Loading call history"
             aria-busy="true"
           >
             <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" aria-hidden="true" />
+            {/* A live region announces its TEXT changing; an icon-only spinner
+                has none, so give assistive tech something to read. */}
+            <span className="sr-only">Loading call history…</span>
           </div>
         ) : historyError ? (
           // A fetch failure and a genuinely empty history are different facts —
@@ -222,6 +231,15 @@ export function CallListPanel({
 
             {hasMore && (
               <div className="p-3">
+                {loadMoreError && (
+                  <p
+                    role="alert"
+                    className="text-xs text-center mb-2"
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    {loadMoreError}
+                  </p>
+                )}
                 <button
                   onClick={onLoadMore}
                   disabled={historyLoading}
