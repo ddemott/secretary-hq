@@ -131,6 +131,50 @@ describe('LandingPage mobile hamburger menu', () => {
   });
 });
 
+describe('LandingPage inline handlers (dead under dangerouslySetInnerHTML)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  it('SAD: the injected markup carries NO inline on* handler attributes', async () => {
+    // WHY: LANDING_HTML's four mobile-menu links had onclick="closeMobileMenu()",
+    // but closeMobileMenu only ever existed inside the never-executed inline
+    // <script>, so it was not a global — every mobile-menu link click threw
+    // "ReferenceError: closeMobileMenu is not defined" (also the jsdom warning
+    // that showed up in dashboard test runs). The useEffect already wires
+    // link clicks to close(); inline handlers here can only be dead or broken.
+    await renderLanding();
+    const offenders = Array.from(document.querySelectorAll('*')).filter((el) =>
+      el.getAttributeNames().some((name) => name.toLowerCase().startsWith('on'))
+    );
+    expect(offenders.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
+  });
+
+  it('SAD: clicking a mobile-menu link raises no uncaught error and still closes the menu', async () => {
+    await renderLanding();
+    const errors: string[] = [];
+    const onError = (e: ErrorEvent) => {
+      errors.push(e.message);
+      e.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    try {
+      fireEvent.click(document.getElementById('hamburger-btn')!);
+      const menu = document.getElementById('mobile-menu')!;
+      expect(menu).toHaveClass('open');
+      for (const link of Array.from(document.querySelectorAll('.nav-mobile-menu a'))) {
+        fireEvent.click(document.getElementById('hamburger-btn')!);
+        fireEvent.click(link);
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+  });
+});
+
 describe('LandingPage auth redirect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
