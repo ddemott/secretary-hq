@@ -1,6 +1,8 @@
 # Test Coverage
 
-**Latest verification rerun (suite totals):** 2026-09-16 (recorded in `CLAUDE.md` Project Status and the TODO.md doc-hygiene pass). `npm test` at repo root finished **3,205 passing (268 files)**; `cd dashboard && npm test` finished **1,173 passing (107 files)**; `cd agent && npm test` finished **1,061 passing (61 files)**.
+**Latest verification rerun (suite totals):** 2026-09-20 (recorded in `CLAUDE.md` Project Status). `npm test` at repo root finished **3,365 passing (281 files)**; `cd dashboard && npm test` finished **1,242 passing (113 files)**; `cd agent && npm test` finished **1,085 passing (63 files)**; `tsc --noEmit` clean in all three packages. Measured on the PR #540 branch (= `main` through #539 + #540), so the dashboard figure assumes #540 merges. Playwright e2e was NOT re-run locally (it wipes and rebuilds the local database); CI runs it green on every PR.
+
+**Prior verification rerun (suite totals):** 2026-09-16. Root **3,205 passing (268 files)**; dashboard **1,173 passing (107 files)**; agent **1,061 passing (61 files)**.
 
 **Prior verification rerun:** 2026-08-19. `npm test` at repo root finished 2,750 passing (226 files); dashboard 1,044 passing (97 files); agent 943 passing (56 files); `cd agent && npm run build` exited **0**. Production freshness also moved the same day: `GET https://secretary-hq-production.up.railway.app/health` returned `{"status":"ok","started_at":"2026-08-19T08:22:19.112Z"}` and `POST /demo/start` returned `{"success":true,...}`.
 
@@ -31,12 +33,12 @@ Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pa
 
 | Suite | Tests | Status | Runtime |
 |---|---|---|---|
-| Root/backend (`npm test`) | 3,205 passing (268 files) | ✅ | 2026-09-16 rerun |
-| Dashboard (`cd dashboard && npm test`) | 1,173 passing (107 files) | ✅ | 2026-09-16 rerun |
-| Agent (`cd agent && npm test`) | 1,061 passing (61 files) | ✅ | 2026-09-16 rerun |
+| Root/backend (`npm test`) | 3,365 passing (281 files) | ✅ | 2026-09-20 rerun |
+| Dashboard (`cd dashboard && npm test`) | 1,242 passing (113 files) | ✅ | 2026-09-20 rerun (with #540) |
+| Agent (`cd agent && npm test`) | 1,085 passing (63 files) | ✅ | 2026-09-20 rerun |
 | Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
 
-Current verified total from the three suites re-run on 2026-09-16: **5,439 passing**. Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
+Current verified total from the three suites re-run on 2026-09-20: **5,692 passing** (3,365 + 1,242 + 1,085). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
 
 > **On skipped e2e tests**: `calendar-sync.spec.ts` tests skip without `SYNC_TEST_RECORDER=1` (set it + restart the backend to run them). One test in `full-functional-audit.spec.ts` (Voice Calls) is deferred until Telnyx PSTN clears. Re-run the suite to refresh pass/skip counts.
 
@@ -146,6 +148,8 @@ cd dashboard && npx vitest run --coverage
 # Playwright e2e count (requires servers running on :4000 + :4001 + Postgres)
 cd dashboard && npx playwright test
 ```
+
+**Running the suites from a git worktree:** a worktree has no `dashboard/node_modules` or `agent/node_modules`. Link them from the main checkout (`ln -s <main>/dashboard/node_modules dashboard/node_modules`, same for `agent/`) or the dashboard suite cannot start and `tests/tenantLiveCallJourneys.test.ts` fails to load (`Cannot find package '@livekit/agents'`) — an environment artifact, not a regression (measured 2026-09-20: 3,359 passing + that one file failing without the link; 3,365 passing, all 281 files, with it). `git status` shows the `agent/` symlink as untracked, so delete it before `git add -A`. Do not run two suites at once: they share the one local `test_db`.
 
 After running, paste the new totals into the tables above and bump the
 "Last refreshed" date. Per-file breakdowns are in the HTML reports — only

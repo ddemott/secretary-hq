@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { type VoiceSession, type VoiceSessionDisplay } from '@/lib/types';
-import { Phone, PhoneOff, RefreshCw, Filter, Trash2 } from 'lucide-react';
+import { Phone, PhoneOff, RefreshCw, Filter, Trash2, AlertCircle } from 'lucide-react';
 import { ActiveCallRow, HistoryCallRow } from './CallRows';
 
 interface CallListPanelProps {
@@ -11,6 +11,12 @@ interface CallListPanelProps {
   selectedCall: VoiceSession | null;
   loading: boolean;
   historyLoading: boolean;
+  /** Set when the last non-silent history fetch failed — kept distinct from a
+   *  genuinely empty history so a fetch failure never reads as "no calls yet". */
+  historyError: string | null;
+  /** Set when a "Load more" (page 2+) failed. Rendered beside the button while
+   *  the rows already loaded stay on screen. */
+  loadMoreError: string | null;
   total: number;
   hasMore: boolean;
   outcomeFilter: string;
@@ -31,6 +37,8 @@ export function CallListPanel({
   selectedCall,
   loading,
   historyLoading,
+  historyError,
+  loadMoreError,
   total,
   hasMore,
   outcomeFilter,
@@ -60,6 +68,7 @@ export function CallListPanel({
             className="p-2 rounded-lg transition-colors"
             style={{ color: 'var(--text-secondary)' }}
             title="Refresh"
+            aria-label="Refresh"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -154,8 +163,29 @@ export function CallListPanel({
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
+          <div
+            className="flex items-center justify-center py-8"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading call history"
+            aria-busy="true"
+          >
+            <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" aria-hidden="true" />
+            {/* A live region announces its TEXT changing; an icon-only spinner
+                has none, so give assistive tech something to read. */}
+            <span className="sr-only">Loading call history…</span>
+          </div>
+        ) : historyError ? (
+          // A fetch failure and a genuinely empty history are different facts —
+          // rendering them the same tells the owner "no calls ever" when the
+          // real story is "the request failed". role="alert" so it's announced.
+          <div
+            role="alert"
+            className="flex flex-col items-center justify-center py-8 text-center px-4"
+            style={{ color: 'var(--danger)' }}
+          >
+            <AlertCircle className="w-7 h-7 mb-2" aria-hidden="true" />
+            <p className="text-sm font-medium">{historyError}</p>
           </div>
         ) : callHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-gray-500">
@@ -201,6 +231,15 @@ export function CallListPanel({
 
             {hasMore && (
               <div className="p-3">
+                {loadMoreError && (
+                  <p
+                    role="alert"
+                    className="text-xs text-center mb-2"
+                    style={{ color: 'var(--danger)' }}
+                  >
+                    {loadMoreError}
+                  </p>
+                )}
                 <button
                   onClick={onLoadMore}
                   disabled={historyLoading}

@@ -36,11 +36,16 @@ function jobPreview(j: JobInquiry): string {
 export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Set when the last fetch failed — kept distinct from a genuinely empty
+  // inbox so a request failure never reads as "nothing here yet" once the
+  // toast that reported it has faded.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<InboxItem | null>(null);
   const [filter, setFilter] = useState<'all' | 'new' | 'read' | 'actioned'>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       // Both lists, in parallel. A job inquiry has no read/unread state, so it
       // only appears under "all" — filtering by message status and then showing
@@ -61,6 +66,7 @@ export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
       // rejection + console spam, and leave the list in a known (empty) state.
       showToast('Could not load messages. Please try again.', 'error');
       setItems([]);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -131,6 +137,7 @@ export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
               className="p-2 rounded-lg"
               style={{ color: 'var(--text-secondary)' }}
               title="Refresh"
+              aria-label="Refresh"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -139,6 +146,8 @@ export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
             {(['all', 'new', 'read', 'actioned'] as const).map((f) => (
               <button
                 key={f}
+                type="button"
+                aria-pressed={filter === f}
                 onClick={() => setFilter(f)}
                 className="text-xs px-2 py-1 rounded capitalize"
                 style={
@@ -154,11 +163,25 @@ export function MessagesInbox({ tenantId }: { tenantId: string | null }) {
         </div>
         <div className="flex-1 overflow-y-auto divide-y divide-[var(--border-soft)]">
           {loading && (
-            <div className="p-4 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <div
+              className="p-4 text-center text-sm"
+              style={{ color: 'var(--text-secondary)' }}
+              role="status"
+              aria-live="polite"
+            >
               Loading…
             </div>
           )}
-          {!loading && items.length === 0 && (
+          {!loading && items.length === 0 && loadFailed && (
+            <div
+              className="p-8 text-center text-sm"
+              role="alert"
+              style={{ color: 'var(--danger)' }}
+            >
+              Could not load messages. Please try again.
+            </div>
+          )}
+          {!loading && items.length === 0 && !loadFailed && (
             <div className="p-8 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
               Nothing here yet. Messages and job leads from calls appear here.
             </div>

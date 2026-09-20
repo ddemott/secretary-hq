@@ -47,7 +47,7 @@ Inbound Call
 | Backend       | `src/`       | Fastify 5, TypeScript, Zod, JWT                         |
 | Agent (voice) | `agent/`     | LiveKit Agents (Node), Deepgram, OpenAI                 |
 | Dashboard     | `dashboard/` | Next.js 16 (App Router), React 19, Tailwind             |
-| Database      | `supabase/`  | PostgreSQL + pgvector, 205 migrations, RLS              |
+| Database      | `supabase/`  | PostgreSQL + pgvector, 206 migrations, RLS              |
 | Shared        | `shared/`    | Cross-runtime code (derivation, scheduling, embeddings) |
 
 ### 0.3 How the call flow works (CRITICAL — most tasks touch this)

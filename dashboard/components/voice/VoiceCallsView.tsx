@@ -24,6 +24,10 @@ export default function VoiceCallsView() {
   const [selectedCall, setSelectedCall] = useState<VoiceSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // A failed "Load more" (page 2+) keeps the rows already on screen and reports
+  // the failure beside the button instead — see fetchCallHistory's catch.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
@@ -59,13 +63,27 @@ export default function VoiceCallsView() {
 
   async function fetchCallHistory(offset = 0, opts: { silent?: boolean } = {}) {
     if (!opts.silent) {
-      if (offset === 0) setLoading(true);
-      else setHistoryLoading(true);
+      if (offset === 0) {
+        setLoading(true);
+        setHistoryError(null);
+        // A fresh first page supersedes any earlier failed "Load more" — leaving
+        // its banner up over a list that just reloaded would report a problem
+        // that no longer exists.
+        setLoadMoreError(null);
+      } else {
+        setHistoryLoading(true);
+        setLoadMoreError(null);
+      }
     }
 
     try {
       const data = await Api.voice.getHistory(tenantId, { limit: 20, offset });
       if (offset === 0) {
+        // ANY successful first-page response — including the silent background
+        // poll — proves the earlier failure is over. Without this the panel
+        // stayed on the error branch (which renders before the list) even after
+        // the poll delivered fresh calls.
+        setHistoryError(null);
         const fresh = data.calls || [];
         if (opts.silent && fresh.length === 0) return;
         if (opts.silent) {
@@ -92,7 +110,22 @@ export default function VoiceCallsView() {
       setHasMore(data.has_more || false);
     } catch (err) {
       console.error('Failed to fetch call history:', err);
-      if (!opts.silent) setCallHistory([]);
+      // A load failure and an honestly-empty history are different facts for
+      // the owner reading the list — don't let a failed request read as
+      // "no calls yet". Only surfaced for a user-visible (non-silent) fetch;
+      // the background poll stays quiet so a transient blip doesn't flash an
+      // error banner over an already-loaded list.
+      if (!opts.silent) {
+        if (offset === 0) {
+          setCallHistory([]);
+          setHistoryError('Could not load call history. Please try again.');
+        } else {
+          // "Load more" failed: the first pages are still perfectly good. Wiping
+          // them here used to leave an empty list under the "No call history
+          // yet" copy for a tenant that has calls. Keep them, say what failed.
+          setLoadMoreError('Could not load more calls. Please try again.');
+        }
+      }
     } finally {
       if (!opts.silent) {
         setLoading(false);
@@ -217,6 +250,8 @@ export default function VoiceCallsView() {
             selectedCall={selectedCall}
             loading={loading}
             historyLoading={historyLoading}
+            historyError={historyError}
+            loadMoreError={loadMoreError}
             total={total}
             hasMore={hasMore}
             outcomeFilter={outcomeFilter}
