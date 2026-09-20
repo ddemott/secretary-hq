@@ -285,7 +285,7 @@ export function registerReminderRoutes(
   );
 
   /**
-   * GET /reminders/status - Get scheduler status (admin only)
+   * GET /reminders/status - Get scheduler status (super-admin only — platform operator, not a tenant admin)
    */
   app.get(
     '/reminders/status',
@@ -301,7 +301,7 @@ export function registerReminderRoutes(
   );
 
   /**
-   * POST /reminders/process - Manually process due reminders (admin only)
+   * POST /reminders/process - Manually process due reminders (super-admin only — platform operator, not a tenant admin)
    */
   app.post(
     '/reminders/process',
