@@ -157,6 +157,23 @@ describe('ChecklistPresetSection', () => {
     expect(screen.getByRole('button', { name: 'Save checklist' })).toBeDisabled();
   });
 
+  test('SAD: on a failed load the header says "Checklist unavailable" (not a derived preset name) and every toggle is disabled (review thread)', async () => {
+    // WHY: with config null the component falls back to a locally derived
+    // preset, so without this the header still showed a real-looking preset
+    // name ("Local service front desk") beside the error, and the block /
+    // optional / required chips were live even though nothing could be saved.
+    mockGetConfig.mockRejectedValue(new Error('network error'));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    await screen.findByRole('alert');
+    const name = screen.getByTestId('checklist-preset-name');
+    expect(name).toHaveTextContent('Checklist unavailable');
+    expect(name).not.toHaveTextContent(/front desk/i);
+    expect(screen.queryByText(/Derived from business type/)).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot be edited until it loads/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Book a time' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Callback number' })).toBeDisabled();
+  });
+
   test('HAPPY: while loading, the preset name is a polite live-region status', async () => {
     // WHY: the UX pass made the in-flight "Loading…" a role="status" region so a
     // screen-reader user is told something is loading; once loaded the name is

@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import React from 'react';
 
@@ -157,6 +157,63 @@ describe('BusinessSettingsView', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('Tenant switching (review thread)', () => {
+    // WHO: a super-admin flipping between managed tenants.
+    // WHY: configLoaded was set true once and never reset, so after a switch
+    //      the page kept rendering the PREVIOUS tenant's settings while the new
+    //      tenant's config was still in flight, and a slow response from the old
+    //      tenant could land after the switch and overwrite the new one.
+    function deferred<T>() {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => (resolve = r));
+      return { promise, resolve };
+    }
+
+    test('SAD: switching tenants re-engages the loading gate until the new config arrives', async () => {
+      const t2 = deferred<{ team_size: number }>();
+      mockGetConfig.mockImplementation((tid: string) =>
+        tid === 'tenant-two' ? t2.promise : Promise.resolve({ team_size: 3 })
+      );
+      mockTenantId = 'tenant-one';
+      const { rerender } = render(<BusinessSettingsView />);
+      await screen.findByText('Business Settings');
+
+      mockTenantId = 'tenant-two';
+      rerender(<BusinessSettingsView />);
+
+      // Not the previous tenant's page — the gate is back up.
+      expect(await screen.findByText('Loading settings...')).toBeInTheDocument();
+      expect(screen.queryByText('Business Settings')).not.toBeInTheDocument();
+
+      t2.resolve({ team_size: 3 });
+      expect(await screen.findByText('Business Settings')).toBeInTheDocument();
+    });
+
+    test('SAD: a slow response from the tenant we left cannot overwrite the current tenant', async () => {
+      const t1 = deferred<{ team_size: number }>();
+      mockGetConfig.mockImplementation((tid: string) =>
+        tid === 'tenant-one' ? t1.promise : Promise.resolve({ team_size: 3 })
+      );
+      mockTenantId = 'tenant-one';
+      const { rerender } = render(<BusinessSettingsView />);
+
+      mockTenantId = 'tenant-two';
+      rerender(<BusinessSettingsView />);
+      // tenant-two (team of 3) settles first and renders team mode.
+      expect(await screen.findByText('Calendar Synchronization')).toBeInTheDocument();
+
+      // tenant-one's late answer says solo (team_size 1). It must be ignored.
+      // act() flushes the resolved promise AND the React state update it would
+      // trigger; without it this assertion can pass before the bug is visible.
+      await act(async () => {
+        t1.resolve({ team_size: 1 });
+        await t1.promise;
+      });
+      expect(screen.getByText('Calendar Synchronization')).toBeInTheDocument();
+      expect(screen.queryByText('My Calendar')).not.toBeInTheDocument();
+    });
   });
 
   describe('Happy Paths - Team Mode', () => {
