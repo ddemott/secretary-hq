@@ -99,4 +99,10 @@ describe('POST /communications/sms ENABLE_SMS gate', () => {
     expect(res.statusCode).toBe(400);
     expect(sendSMS).not.toHaveBeenCalled();
   });
+
+  it('SAD: flag OFF + malformed body → 400, not 503 (validation runs before the gate)', async () => {
+    const res = await post({ to: '123', body: '' });
+    expect(res.statusCode).toBe(400);
+    expect(sendSMS).not.toHaveBeenCalled();
+  });
 });

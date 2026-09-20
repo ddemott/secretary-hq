@@ -179,6 +179,19 @@ export function registerCommunicationRoutes(
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
 
+      const parsed = SendSMSSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Validation failed',
+          details: parsed.error.issues,
+        });
+      }
+
+      const { to, body, template, templateData } = parsed.data;
+
+      // Checked AFTER validation so a malformed request still gets its 400
+      // (a retrying client should not be told 'disabled' about a bad payload).
       // SMS is globally OFF pending 10DLC registration (root CLAUDE.md
       // Architecture). Telnyx accepts the send and reports success anyway
       // (error 40010 at the carrier), so without this gate this route would
@@ -191,17 +204,6 @@ export function registerCommunicationRoutes(
             'SMS is not enabled for this platform yet (pending 10DLC registration) — no text was sent. Use email or another channel.',
         });
       }
-
-      const parsed = SendSMSSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          success: false,
-          error: 'Validation failed',
-          details: parsed.error.issues,
-        });
-      }
-
-      const { to, body, template, templateData } = parsed.data;
 
       const result = await communicationService.sendSMS(tenantId, {
         to,
