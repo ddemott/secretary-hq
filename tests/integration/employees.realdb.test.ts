@@ -61,7 +61,8 @@ beforeAll(async () => {
       const tid = request.headers['x-tenant-id'] as string | undefined;
       if (tid) {
         request.tenantId = tid;
-        request.auth = { tenant_id: tid, user_id: 'test', email: 'o@e.test', role: 'owner' };
+        const role = (request.headers['x-test-role'] as 'owner' | 'front_desk' | undefined) ?? 'owner';
+        request.auth = { tenant_id: tid, user_id: 'test', email: 'o@e.test', role };
       }
     });
     const withTenantClient = createWithTenantClient(pool);
@@ -94,11 +95,11 @@ beforeEach((ctx) => {
   skipIfDbDown(ctx, () => dbAvailable);
 });
 
-function create(payload: Record<string, unknown>) {
+function create(payload: Record<string, unknown>, role: 'owner' | 'front_desk' = 'owner') {
   return app.inject({
     method: 'POST',
     url: '/employees/create',
-    headers: { 'x-tenant-id': tenantId },
+    headers: { 'x-tenant-id': tenantId, 'x-test-role': role },
     payload: { tenant_id: tenantId, ...payload },
   });
 }
@@ -141,5 +142,17 @@ describe('POST /employees/create → duplicate-active guard (real DB)', () => {
       [tenantId]
     );
     expect(active.rows).toHaveLength(1);
+  });
+
+  it('SECURITY: a front-desk user is rejected 403 before any row is created', async () => {
+    const res = await create({ first_name: 'Blocked', last_name: 'FrontDesk' }, 'front_desk');
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+
+    const rows = await setup.query(
+      `SELECT 1 FROM employees WHERE tenant_id = $1 AND LOWER(TRIM(name)) = 'blocked frontdesk'`,
+      [tenantId]
+    );
+    expect(rows.rows).toHaveLength(0);
   });
 });

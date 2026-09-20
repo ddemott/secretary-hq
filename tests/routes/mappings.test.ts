@@ -365,3 +365,37 @@ describe('mappings — auth/tenant-context guards', () => {
     expect(dataQueries).toHaveLength(0);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// ────────────────────────────────────────────────────────────────────
+
+describe('mappings — owner-role gate', () => {
+  const mutatingRoutes: Array<[string, string]> = [
+    ['assign employee', `/services/${SERVICE_ID}/employees/${EMPLOYEE_ID}/assign`],
+    ['unassign employee', `/services/${SERVICE_ID}/employees/${EMPLOYEE_ID}/unassign`],
+    ['assign resource', `/services/${SERVICE_ID}/resources/${RESOURCE_ID}/assign`],
+    ['unassign resource', `/services/${SERVICE_ID}/resources/${RESOURCE_ID}/unassign`],
+  ];
+
+  it.each(mutatingRoutes)(
+    'SECURITY: %s is rejected 403 for a front-desk user before any query runs',
+    async (_name, path) => {
+      handle.auth.current = {
+        user_id: '00000000-0000-0000-0000-000000000002',
+        tenant_id: TENANT_ID,
+        email: 'frontdesk@test.local',
+        role: 'front_desk',
+      };
+
+      const res = await app.inject({ method: 'POST', url: path });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().success).toBe(false);
+      const dataQueries = handle.queries.filter(
+        (q) => !q.text.startsWith('SET LOCAL') && !q.text.startsWith('RESET')
+      );
+      expect(dataQueries).toHaveLength(0);
+    }
+  );
+});

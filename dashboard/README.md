@@ -16,7 +16,7 @@ The dashboard is built with **Next.js (App Router)** and **Tailwind CSS**. It ca
 ## Prerequisites
 
 - Node.js and npm.
-- A running Supabase project with this repo's migrations applied.
+- A Postgres database (Supabase project, or the local Docker DB on port 5433) with this repo's migrations applied, and the backend running (`npm start` from the repo root brings up both the backend and the dashboard).
 - Environment variables configured in `.env.local`:
   - `NEXT_PUBLIC_API_BASE_URL` (defaults to `https://localhost:4001`)
 
@@ -32,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Then open [http://localhost:4000](http://localhost:4000) to access the dashboard.
+`npm run dev` runs `server.js`, a custom HTTPS dev server that uses the shared self-signed certs in `../certs/`. Open [https://localhost:4000](https://localhost:4000) to access the dashboard (accept the self-signed cert warning).
 
 You should see:
 
@@ -46,7 +46,7 @@ You should see:
 
 ## Deployment
 
-The dashboard (and full stack) is deployed on **Railway** in production (see `docs/planning/` and `railway.json` in root for current setup; nixpacks config covers backend, agent, and dashboard).
+The dashboard (and full stack) is deployed on **Railway** in production (each service has its own config: `railway.json` + `nixpacks.toml` in the repo root for the backend, `dashboard/railway.json` for the dashboard, `agent/railway.json` for the voice agent).
 
 For local/self-host development:
 

@@ -6,7 +6,7 @@
 
 > **Role of this file (vs. `UI_UX_DESIGN.md`):** this is the **frozen** snapshot of decisions reached on 2026-03-24. Treat it as historical record-of-decision: do not edit content unless Dale explicitly reopens a decision. For the **living design brief** that evolves over time, see [`UI_UX_DESIGN.md`](UI_UX_DESIGN.md).
 
-> **Outdated references (the design decisions still hold; the named tech/tenant don't):** **DynaTire** appears throughout as the reference tenant — it was a PoC, removed 2026-06-03 (Bella's Hair Studio is the surviving demo tenant; Dale's real business is Thinking Hammer LLC). **Vapi** (§7 analytics "requires Vapi") was replaced by the LiveKit agent + `voice_sessions` in commit `661d21d` (2026-04-27); the call-data metrics shipped 2026-06-12. The §3 two-tab nav decision was itself superseded 2026-05-06 (see the §3 note). Frozen text left intact below.
+> **Outdated references (the design decisions still hold; the named tech/tenant don't):** **DynaTire** appears throughout as the reference tenant — it was a PoC, removed 2026-06-03 (Bella's Hair Studio is the surviving demo tenant; Dale's real business is Thinking Hammer LLC). **Vapi** (§7 analytics "requires Vapi") was replaced by the LiveKit agent + `voice_sessions` in commit `661d21d` (2026-04-27); the call-data metrics shipped 2026-06-12. The §3 two-tab nav decision was itself superseded 2026-05-06 (see the §3 note). The §3 "My Business / My Team" destinations were later merged into one **Setup** tab (2026-06-03), and the default theme is now `navy` (`see `dashboard/lib/ThemeContext.tsx``). Frozen text left intact below.
 
 ---
 

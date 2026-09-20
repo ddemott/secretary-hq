@@ -58,8 +58,10 @@ question-tree tables + `copy_question_tree_templates_to_tenant()`).
 npx tsx scripts/seed-question-tree-templates.ts --db "$PROD_DATABASE_URL" --force
 ```
 
-Projects the TypeScript library into `question_tree_templates` — 5 verticals ×
-10 trees. Rewrites template rows only; **never touches a tenant's copy**, so a
+Projects the TypeScript library into `question_tree_templates` — one vertical
+per preset in `PRESET_LIBRARY` (33 as of #388; this said "5 verticals × 10 trees"
+before that), each carrying the FULL `PLATFORM_TREE_LIBRARY` (40 trees) — see
+`treesForVertical()` in the seed script. Rewrites template rows only; **never touches a tenant's copy**, so a
 client who has customized their intake cannot be reverted by a re-seed.
 
 `--force` is required for any non-local URL. That is the guard against pointing

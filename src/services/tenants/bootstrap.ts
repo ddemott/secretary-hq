@@ -27,6 +27,7 @@
 
 import type { Pool } from 'pg';
 import { verticalForBusinessType } from '../../../shared/checklistPresetDerivation';
+import { isHipaaVertical } from '../../../shared/hipaaVerticalDenylist';
 
 export interface CreateTenantWithOwnerParams {
   tenantName: string;
@@ -64,12 +65,25 @@ export interface CreateTenantWithOwnerParams {
 }
 
 export type CreateTenantWithOwnerResult =
-  { ok: true; tenantId: string; userId: string } | { ok: false; conflictMessage: string };
+  | { ok: true; tenantId: string; userId: string; consentGateRequired: boolean }
+  | { ok: false; conflictMessage: string };
 
 export async function createTenantWithOwner(
   pool: Pool,
   params: CreateTenantWithOwnerParams
 ): Promise<CreateTenantWithOwnerResult> {
+  // HIPAA verticals are permanently excluded (root CLAUDE.md Build
+  // Principles). RegisterSchema checks this too for the self-serve
+  // path, but the admin create flow (POST /tenants/create) has no
+  // equivalent Zod schema, so this is the one check both paths share —
+  // "independent of the dashboard picker" per docs/planning/TODO.md.
+  if (isHipaaVertical(params.businessType)) {
+    return {
+      ok: false,
+      conflictMessage: 'This business type is not supported on this platform.',
+    };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -99,9 +113,25 @@ export async function createTenantWithOwner(
       }
     }
 
+    // ADMIN-PROVISIONED TENANTS GET A CONSENT GATE, SELF-SERVE TENANTS DON'T.
+    //
+    // legalConsent present (self-serve /register, already attested via the
+    // page's checkbox + RegisterSchema's consent_attested: true) -> false,
+    // never gated. legalConsent absent (admin POST /tenants/create, nobody
+    // has attested anything yet) -> true, gated until the owner clicks
+    // through the emailed consent-invite link (POST /consent/confirm).
+    //
+    // This column defaults false at the schema level, so it is written here
+    // as an explicit third INSERT column rather than a follow-up UPDATE —
+    // every row this function ever creates states its own gate requirement
+    // up front, inside the same transaction. Pre-existing rows (seed data,
+    // tenants created before this migration) are untouched and stay false
+    // forever — see tests/regression/tenantConsentGateRetroactivity.realdb.test.ts.
+    const consentGateRequired = !params.legalConsent;
+
     const tenantRes = await client.query(
-      'INSERT INTO tenants (name, business_type) VALUES ($1, $2) RETURNING tenant_id',
-      [params.tenantName, params.businessType]
+      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
+      [params.tenantName, params.businessType, consentGateRequired]
     );
     const tenantId = tenantRes.rows[0].tenant_id;
 
@@ -175,7 +205,7 @@ export async function createTenantWithOwner(
     }
 
     await client.query('COMMIT');
-    return { ok: true, tenantId, userId };
+    return { ok: true, tenantId, userId, consentGateRequired };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

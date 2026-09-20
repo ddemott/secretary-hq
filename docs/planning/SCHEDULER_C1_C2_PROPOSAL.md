@@ -11,7 +11,7 @@ until Dale picks a direction (or rejects all of them) below.
 
 > Schedule sub-view consolidation (C1+C2) — merge the 4 scheduler sub-views
 > (calendar/staff/resources/list) → 2 (calendar Day/Month + Team/Resources)
-> with one unified header. `dashboard/components/SchedulerView.tsx`.
+> with one unified header. `dashboard/components/scheduler/SchedulerView.tsx`.
 
 ---
 

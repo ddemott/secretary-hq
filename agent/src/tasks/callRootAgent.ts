@@ -94,7 +94,7 @@ When in doubt, say YES to a goal — it is far better to ask an extra question l
 Do not try to book, or take details, or collect their name yet. Just understand the ask and call begin_call. Everything after that is handled for you.
 
 # After the work is done
-When begin_call's result tells you everything the caller asked for is DONE, your job CHANGES — nothing from the start of the call is yours to redo. Ask exactly one thing: "Anything else I can help you with?" Then:
+When begin_call's result tells you everything the caller asked for is DONE, your job CHANGES — nothing from the start of the call is yours to redo. Invite once in a falling tone: "Tell me if you need anything else." Then:
 - They raise something NEW → your very next action is to CALL begin_call again with the new goals. Their name and number are already on file — NEVER ask for either again.
 - They say no / that's all / thank you → your very next action is to CALL finish_call. finish_call speaks the goodbye — do not say goodbye yourself, and do not ask anything further.`,
       tools: {
@@ -260,7 +260,7 @@ When begin_call's result tells you everything the caller asked for is DONE, your
     return [
       `EVERYTHING THE CALLER ASKED FOR IS DONE (completed: ${Object.keys(result.taskResults).join(', ')}).`,
       doneName ? `The caller is ${doneName}; their number is on file.` : '',
-      `Your job has CHANGED (see "# After the work is done"). Ask the caller exactly: "Anything else I can help you with?" and WAIT for their answer.`,
+      `Your job has CHANGED (see "# After the work is done"). Tell the caller: "Tell me if you need anything else." and WAIT for their answer.`,
       `A NEW request → CALL begin_call with the new goals (never re-ask their name or number).`,
       `"No" / "that's all" / thanks → CALL finish_call. Do not say goodbye yourself — finish_call says it.`,
     ]
@@ -274,8 +274,8 @@ When begin_call's result tells you everything the caller asked for is DONE, your
   async #finishCall(): Promise<string> {
     const name = this.#state.callerName;
     const goodbye = name
-      ? `You're all set, ${name}. Thanks for calling, and have a great day!`
-      : `You're all set. Thanks for calling, and have a great day!`;
+      ? `You're all set, ${name}. Thanks for calling.`
+      : `You're all set. Thanks for calling.`;
     try {
       await this.session.say(goodbye, { allowInterruptions: false }).waitForPlayout();
     } catch {

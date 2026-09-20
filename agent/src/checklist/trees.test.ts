@@ -169,7 +169,7 @@ describe('the job call (identity + job on the real trees)', () => {
     const offer = JOB_TREE.nodes.find((n) => n.node_id === 'meeting_offer');
     const timezoneAsk = timezone && 'ask' in timezone ? timezone.ask : '';
     const offerAsk = offer && 'ask' in offer ? offer.ask : '';
-    expect(timezoneAsk).toContain('what time zone is the job in?');
+    expect(timezoneAsk).toContain('tell me what time zone the job is in.');
     expect(timezoneAsk).not.toMatch(/team/i);
     expect(offerAsk).toContain('meeting');
     expect(offerAsk).toContain('calendar');

@@ -65,12 +65,12 @@ npm run create-branch feat/your-descriptive-name
    ```bash
    cp docs/workflow/BRANCH_CHECKLIST.md .
    ```
-   Edit `.BRANCH_CHECKLIST.md` (or the copied file) in your branch root and keep it updated.
+   Edit the copied `BRANCH_CHECKLIST.md` in your branch root and keep it updated (it is untracked scratch — don't commit it).
 5. Start tracking what needs to be done (tests, docs, etc.). Consider adding an entry in `docs/planning/TODO.md`.
 
 ## 3. Development Standards (While Coding)
 
-See `CODING_STANDARDS.md` for general standards (tooling gates, testing conventions, naming, structure, commits, review). Project specifics (hooks, middleware, tenant patterns, migration recipes) stay in this file, ARCHITECTURE.md.
+See `CODING_STANDARDS.md` for general standards (tooling gates, testing conventions, naming, structure, commits, review). Project specifics (hooks, middleware, tenant patterns, migration recipes) stay in this file and `docs/architecture/ARCHITECTURE.md`.
 
 ## 4. Pre-Commit / Pre-PR Checklist
 
@@ -130,7 +130,7 @@ This command automatically runs:
 
 After it finishes, review the output, fix anything it found, then proceed with the `commit-code` process.
 
-See the skill at `.claude/skills/commit-code/SKILL.md` for the exact expectations.
+(The skill file is not checked into this repo — there is no `.claude/skills/` directory here; it lives in the agent's own environment.)
 
 **Build / CI status visibility**: At any moment you can ask "where is the build / tests / CI at?" with:
 
@@ -185,8 +185,8 @@ Local Git hooks provide **early, fast feedback** before you even finish typing a
 
 We provide two example hooks:
 
-- `pre-commit`: Runs on staged files only (Prettier, ESLint, TypeScript). Fast and relevant.
-- `pre-push`: Runs before pushing (full quality checks + unit tests). Stronger gate.
+- `pre-commit` (`scripts/example-pre-commit-hook.sh`, called from `.husky/pre-commit`): skips entirely when nothing relevant is staged; otherwise runs the `formatCheck` + `lint` commands from `workflow.config.json`.
+- `pre-push` (`scripts/example-pre-push-hook.sh`, called from `.husky/pre-push`): runs the config's `checks` + `unitTests` (typically ~7 min). A docs-only push skips the unit tests, and a branch-deletion push skips everything.
 
 ### How Hooks Are Installed (Automatic)
 
@@ -220,7 +220,7 @@ This process is designed to be **lightweight but non-negotiable** for a solo dev
 - The `commit-code` skill
 - CI gates
 - The `verify:claude-md` drift detector
-- Your own discipline (aided by the optional local Git hooks via `npm run setup-hooks`)
+- Your own discipline (aided by the local Git hooks Husky installs on `npm install`)
 
 Skipping steps (especially docs or relevant E2E) is the fastest way to accumulate technical debt and painful future debugging sessions.
 

@@ -442,6 +442,103 @@ describe('attachOutputWatchdog', () => {
   });
 });
 
+describe('outage stand-down — the hold lines must not speak once the call is being ended', () => {
+  beforeEach(() => {
+    _resetFillerCacheForTest();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('SAD: outage tripped → NO hold line and NO "I can take a message" offer, even past both deadlines', async () => {
+    // WHO: the 2026-09-18 1:28 PM CT caller (SCL_MFD3o5QRKQJB), whose OpenAI balance was empty.
+    // WHAT: the recovery line — "I can take a message and have someone get right back to
+    //       you" — played AFTER the outage guard had tripped. A message cannot be taken
+    //       when the LLM is down; the caller was offered something that did not exist.
+    // WHY: red on the old code (no `outageTripped` option existed, so both lines played).
+    _resetToolActivityForTest();
+    const f = makeFakeSession();
+    let tripped = false;
+    attachOutputWatchdog(f.session, {
+      voice: 'eve',
+      thinkingText: 'Just a moment.',
+      fillerText: FILLER,
+      recoveryText: RECOVERY,
+      log: noopLog,
+      outageTripped: () => tripped,
+    });
+    f.emit('thinking');
+    tripped = true; // the guard trips between 'thinking' and the first deadline
+    await vi.advanceTimersByTimeAsync(2500 + 4000 + 500);
+    expect(f.sayCalls).toHaveLength(0);
+  });
+
+  it('HAPPY: with the guard NOT tripped, the same silence still gets its hold line + recovery', async () => {
+    // WHY: the stand-down must be scoped to the outage, not a general muzzle.
+    _resetToolActivityForTest();
+    const f = makeFakeSession();
+    attachOutputWatchdog(f.session, {
+      voice: 'eve',
+      thinkingText: 'Just a moment.',
+      fillerText: FILLER,
+      recoveryText: RECOVERY,
+      log: noopLog,
+      outageTripped: () => false,
+    });
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2500 + 4000 + 500);
+    expect(f.sayCalls.map((c) => c.text)).toEqual(['Just a moment.', RECOVERY]);
+  });
+
+  it('SAD: trips AFTER the filler played → the recovery (the message offer) is still suppressed', async () => {
+    _resetToolActivityForTest();
+    const f = makeFakeSession();
+    let tripped = false;
+    attachOutputWatchdog(f.session, {
+      voice: 'eve',
+      thinkingText: 'Just a moment.',
+      fillerText: FILLER,
+      recoveryText: RECOVERY,
+      log: noopLog,
+      outageTripped: () => tripped,
+    });
+    f.emit('thinking');
+    await vi.advanceTimersByTimeAsync(2600);
+    expect(f.sayCalls.map((c) => c.text)).toEqual(['Just a moment.']);
+    tripped = true;
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(f.sayCalls.map((c) => c.text)).toEqual(['Just a moment.']);
+  });
+
+  it('SAD: the silent-turn recovery does not force a reply (that would 429 too) once the guard tripped', () => {
+    const f = makeFakeSession();
+    let tripped = false;
+    attachSilentTurnRecovery(f.session, {
+      voice: 'eve',
+      recoveryText: RECOVERY,
+      log: noopLog,
+      outageTripped: () => tripped,
+    });
+    f.emit('thinking');
+    tripped = true;
+    f.emit('listening'); // turn ended with no audio
+    expect(f.generateReplyCalls).toHaveLength(0);
+    expect(f.sayCalls).toHaveLength(0);
+  });
+
+  it('HAPPY: the same silent turn WITHOUT a tripped guard still gets the forced reply', () => {
+    const f = makeFakeSession();
+    attachSilentTurnRecovery(f.session, {
+      voice: 'eve',
+      recoveryText: RECOVERY,
+      log: noopLog,
+      outageTripped: () => false,
+    });
+    f.emit('thinking');
+    f.emit('listening');
+    expect(f.generateReplyCalls).toHaveLength(1);
+  });
+});
+
 describe('turn latency reporting (T-006)', () => {
   beforeEach(() => _resetFillerCacheForTest());
 
@@ -692,17 +789,20 @@ describe('attachSilentTurnRecovery', () => {
     expect(f.sayCalls).toHaveLength(0);
   });
 
-  it('the nudge wording carries the two live-firing lessons (re-ask; end with a question)', () => {
+  it('the nudge wording carries the live-firing lessons (re-ask; falling-tone next step)', () => {
     // WHO: the 2026-07-17 16:02 UTC caller, on the recovery's FIRST live firing.
     // WHAT: v1 said "use what you already know" → the model answered its OWN
     //       pending read-back question ("Thank you! That's correct") — the
     //       caller never confirmed the number. And it promised "one moment"
     //       from a turn that holds no tools, then sat quiet for 20s.
-    // WHY: pin the two load-bearing phrases so a future rewording can't
-    //       silently drop either lesson.
+    // WHY: pin the load-bearing phrases so a future rewording can't
+    //       silently drop either lesson. Do NOT require every recovery to end
+    //       with a question mark — prefer falling-tone next step.
     expect(NUDGE_INSTRUCTIONS).toMatch(/ask that question again/i);
     expect(NUDGE_INSTRUCTIONS).toMatch(/you do not know their answer/i);
-    expect(NUDGE_INSTRUCTIONS).toMatch(/end by asking the caller a question/i);
+    expect(NUDGE_INSTRUCTIONS).toMatch(/falling tone/i);
+    expect(NUDGE_INSTRUCTIONS).toMatch(/Ask a question only when you truly need/i);
+    expect(NUDGE_INSTRUCTIONS).not.toMatch(/Always end by asking the caller a question/i);
     expect(NUDGE_INSTRUCTIONS).not.toMatch(/what you already know/i);
   });
 });

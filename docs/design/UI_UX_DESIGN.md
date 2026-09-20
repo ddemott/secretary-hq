@@ -1,5 +1,5 @@
 # SecretaryHQ Dashboard — UI/UX Design Brief
-**Last updated:** 2026-05-27 (pointers & cross-references refreshed during documentation unification; core content from March 2026 design session)
+**Last updated:** 2026-09-18 (nav tabs, business-type count and implementation-scope rows re-verified against `dashboard/`; core content from March 2026 design session)
 
 > **Role of this file (vs. `DESIGN_HANDOFF.md`):** this is the **living** design brief — update it as design philosophy evolves, new components ship, or interaction patterns get established. For the **frozen** record of the original 2026-03-24 design session decisions, see [`DESIGN_HANDOFF.md`](DESIGN_HANDOFF.md).
 
@@ -70,13 +70,13 @@ Each theme defines:
 --green, --red, --yellow     /* semantic colors */
 ```
 
-**Soft/feminine theme:** A rose/plum dark theme is planned for salon/spa verticals. Same Bebas Neue + DM Sans fonts, different color palette. The color palette is what changes the feel — not the font.
+**Soft/feminine theme:** A rose/plum dark theme (`rose`, "Warm plum") has since shipped — the theme set today is navy [default], rose, forest, midnight, nord, sunset, high-contrast, solarized (`dashboard/lib/ThemeContext.tsx`). Same Bebas Neue + DM Sans fonts, different color palette. The color palette is what changes the feel — not the font.
 
 ---
 
 ## Navigation Structure — Single Primary Bar (superseded the two-tab layout)
 
-> **SUPERSEDED 2026-05-06.** The Front Desk / Back Office two-tab layout below was retired for a **single primary tab bar**: Primary tabs (Home, Schedule, Customers, Calls) always visible; Advanced tabs (My Business, My Team, Phone Assistant) shown to owners/admins only; front-desk logins see Primary only and snap back to Home on a restricted tab. The dark-sidebar visual spec still applies. See `docs/architecture/ARCHITECTURE.md` §16.2 + `docs/design/DESIGN_HANDOFF.md` §3. The original two-tab text is kept below as the design-session record.
+> **SUPERSEDED 2026-05-06.** The Front Desk / Back Office two-tab layout below was retired for a **single primary tab bar**: Primary tabs (Home, Schedule, Customers, Calls) always visible; Advanced tabs (originally My Business, My Team, Phone Assistant — since 2026-06-03 the first two plus Business Settings are sub-tabs of one **Setup** tab, so today: Setup, Phone Assistant) shown to owners/admins only; front-desk logins see Primary only and snap back to Home on a restricted tab. The dark-sidebar visual spec still applies. See `docs/architecture/ARCHITECTURE.md` §16.2 + `docs/design/DESIGN_HANDOFF.md` §3. The original two-tab text is kept below as the design-session record.
 
 **Original decision (superseded):** Keep the existing Front Desk / Back Office two-tab layout with all current sub-views intact. Apply the new dark sidebar visual style on top.
 
@@ -104,7 +104,9 @@ The sidebar bottom shows today's appointment count and staff count as a summary.
 - **Theme**: 8 themes via CSS custom properties
 - **Responsive**: Desktop sidebar collapses to mobile bottom nav
 
-### Navigation Structure (Front Desk / Back Office)
+### Navigation Structure (Front Desk / Back Office) — SUPERSEDED, see the Single Primary Bar section above
+
+> Kept as the design-session record. Live tabs: Home, Schedule, Customers, Calls + Setup, Phone Assistant (`dashboard/components/layout/OutlookLayout.tsx`).
 
 ```
 Desktop: Two primary tabs at top level
@@ -321,7 +323,7 @@ UI labels adapt per business type via 3-tier fallback:
 2. Template default (auto-shop template says "Bay")
 3. Hardcoded fallback ("Resource")
 
-29 business types across 6 categories. Vocabulary changes: Bays/Technicians for tire shops, Chairs/Stylists for salons, Bays/Mechanics for auto shops, etc.
+31 business types across 6 categories (`supabase/seed.sql`). Vocabulary changes: Bays/Technicians for tire shops, Chairs/Stylists for salons, Bays/Mechanics for auto shops, etc.
 
 **Implementation status:** Complete. Vocabulary columns on both `business_templates` and `tenants` tables, `useVocabulary` hook + React Context, and all 21 business-facing components wired to use vocabulary labels.
 
@@ -333,19 +335,19 @@ UI labels adapt per business type via 3-tier fallback:
 |---|------|------|--------|-------|
 | 1 | Restructure sidebar from 12 → 5 grouped sections | UI/UX | **Done** | |
 | 2 | Update tab routing logic | Coding | **Done** | |
-| 3 | MyTeamView composite (Employees + Shifts + Skills) | Both | **Done** | |
-| 4 | MyBusinessView composite (Services + Resources + Knowledge) | Both | **Done** | |
+| 3 | MyTeamView composite (Employees + Shifts + Skills) | Both | **Done** | later merged into the `Setup` tab (2026-06-03) |
+| 4 | MyBusinessView composite (Services + Resources + Knowledge) | Both | **Done** | later merged into the `Setup` tab (2026-06-03) |
 | 5 | AIInsightsView composite (AI Persona + Analytics) | Both | **Done** | |
 | 6 | Mobile bottom nav (5 items) | UI/UX | **Done** | |
-| 7 | Public sign-up page | Both | Missing | |
+| 7 | Public sign-up page | Both | **Done** | `dashboard/app/register/` (with a required legal-consent checkbox) |
 | 8 | Public registration API | Coding | **Done** | |
-| 9 | Business type picker (card grid) | UI/UX | Missing | |
-| 10 | Onboarding wizard (6-step) | Both | Missing | |
+| 9 | Business type picker (card grid) | UI/UX | **Done** | `SetupWizard/BusinessTypePicker.tsx` |
+| 10 | Onboarding wizard (6-step) | Both | **Done** | `SetupWizard/` (grew to 7 steps + solo/team mode chooser) |
 | 11 | `useVocabulary` hook + React Context | Coding | **Done** | 3-tier fallback |
 | 12 | Replace hardcoded labels with vocabulary | Both | **Done** | 21 components wired |
 | — | Google Calendar OAuth + sync | Both | **Done** | Real OAuth, auto-sync on mutations |
 | 13 | Settings: "Customize Labels" section | Both | Missing | |
-| 14 | Dashboard home / quick actions landing | UI/UX | Missing | |
+| 14 | Dashboard home / quick actions landing | UI/UX | **Done** | `home/DashboardHome.tsx` |
 | 15 | Contextual navigation (CRM → Calendar links) | Both | Missing | |
 | 16 | Empty states with helpful guidance | UI/UX | Missing | |
 | **17** | **Apply dark sidebar visual style to real app** | **UI/UX** | **Done** | All components use CSS vars, all themes dark |
@@ -356,7 +358,7 @@ UI labels adapt per business type via 3-tier fallback:
 | **22** | **Drag to reorder staff rows** | **Both** | **Done** | Grip handles, save/discard, persists to localStorage |
 | **23** | **Rebuild analytics — 6 real metrics** | **Both** | **Done** | now driven by `voice_sessions` (LiveKit agent records); call-based panels shipped 2026-06-12 |
 | **24** | **Remove Coverage Map from navigation** | **Both** | **Done** | ServiceCoverageView.tsx deleted, zero references |
-| **25** | **Theme switcher → dropdown** | **UI/UX** | **Done** | `<select>` dropdown in OutlookLayout topbar |
+| **25** | **Theme switcher → dropdown** | **UI/UX** | **Done** | dropdown (`layout/ThemeSelectorDropdown.tsx`) |
 
 **Bold rows** = new work items from March 24, 2026 design session.
 

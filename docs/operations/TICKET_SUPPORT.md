@@ -2,6 +2,10 @@
 
 **Number**: `+1 630-822-9086` (live, Thinking Hammer LLC). Previous `+1 630-866-1960` dead. Test verification `+1 630-822-9086`. (Ticket history below covers the prior numbers.)
 
+> ## ✅ STATUS NOTE 2026-09-18 — the inbound outage below is over; this file is history
+>
+> PSTN inbound to `+1 630-822-9086` was confirmed reaching the agent by a real call on **2026-06-30** (see root `CLAUDE.md`, Project Status). Everything below describes the June 2026 investigation and is kept as a record, not as current state. Whether the Telnyx-side ticket itself was formally closed is not recorded anywhere in the repo.
+
 > ## 📩 UPDATE 2026-06-05 — Telnyx escalated to their internal team
 >
 > Support agent **Mark Morse** replied (2026-06-05 13:55 UTC, via Pylon →

@@ -55,9 +55,9 @@ const VOICES = [
 // plain .mjs (no TS import), so drift is possible — and drift here is silence.
 const HOLD_LINE = 'One moment while I check that for you.';
 const RECOVERY_LINE =
-  "Sorry, this is taking me a moment. If you'd like, I can take a message and have someone get right back to you.";
+  "Sorry this is taking a moment. I can take a message and have someone call you back.";
 const TOOL_FALLBACK_LINE =
-  "Sorry, I'm having a little trouble with that right now. Would you like me to take a message and have someone get back to you?";
+  "I'm having trouble with that. I can take a message and have someone call you back.";
 
 const LINES = [
   ['greeting', 'Thank you for calling. How can I help you today?'],

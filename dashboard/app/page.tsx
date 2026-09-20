@@ -607,10 +607,10 @@ const LANDING_HTML = `
 </nav>
 <div class="nav-mobile-backdrop" id="mobile-backdrop" aria-hidden="true"></div>
 <div class="nav-mobile-menu" id="mobile-menu" role="navigation" aria-label="Mobile navigation">
-  <a href="#how" onclick="closeMobileMenu()">How It Works</a>
-  <a href="#features" onclick="closeMobileMenu()">Features</a>
-  <a href="#pricing" onclick="closeMobileMenu()">Pricing</a>
-  <a href="#industries" onclick="closeMobileMenu()">Industries</a>
+  <a href="#how">How It Works</a>
+  <a href="#features">Features</a>
+  <a href="#pricing">Pricing</a>
+  <a href="#industries">Industries</a>
   <div class="nav-mobile-cta">
     <a href="tel:${DEMO_PHONE_E164}" style="font-family:var(--ff-mono);font-size:14px;color:var(--blue-lt);text-decoration:none;text-align:center;padding:10px 0;">${DEMO_PHONE_DISPLAY} — try it live</a>
     <a href="/dashboard" class="btn-login">Log in</a>

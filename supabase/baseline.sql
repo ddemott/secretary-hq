@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ehBX8juEUsTxts7KcpX8ywCSHQrhcuTykDwid6s5gme7dcM7xCrVVdYVekox2ML
+\restrict 8iYAy5LJsz4MYr90g8KY3KGRz2n6LdJchmwnBETShWr3u6lEyzPJkck4TnAI8Y2
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4306,6 +4306,44 @@ ALTER TABLE ONLY public.tenant_calendar_settings FORCE ROW LEVEL SECURITY;
 
 
 --
+-- Name: tenant_consent_invites; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tenant_consent_invites (
+    tenant_consent_invite_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.tenant_consent_invites FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: TABLE tenant_consent_invites; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.tenant_consent_invites IS 'Single-use, hashed-token invites emailed to the owner of an admin-provisioned tenant, asking them to click through and attest to the ToS/Privacy/DPA before they can log in. 14-day expiry; POST /consent/resend issues a fresh one on request. No further escalation beyond resend — an owner who never confirms stays gated indefinitely.';
+
+
+--
+-- Name: COLUMN tenant_consent_invites.user_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenant_consent_invites.user_id IS 'The owner this invite is for — the same user_id that will log in once attested.';
+
+
+--
+-- Name: COLUMN tenant_consent_invites.token_hash; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenant_consent_invites.token_hash IS 'SHA-256 of the raw token mailed to the owner; the raw token is never persisted (same convention as password_resets.token_hash).';
+
+
+--
 -- Name: tenant_docs; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4489,6 +4527,7 @@ CREATE TABLE public.tenants (
     legal_consent_attested_by uuid,
     legal_consent_ip inet,
     legal_consent_user_agent text,
+    consent_gate_required boolean DEFAULT false NOT NULL,
     CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text]))))
 );
 
@@ -4722,6 +4761,13 @@ COMMENT ON COLUMN public.tenants.legal_consent_ip IS 'Best-effort request IP cap
 --
 
 COMMENT ON COLUMN public.tenants.legal_consent_user_agent IS 'Best-effort request User-Agent header captured at registration. Nullable — never blocks registration if unavailable.';
+
+
+--
+-- Name: COLUMN tenants.consent_gate_required; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.tenants.consent_gate_required IS 'True only for admin-provisioned tenants (POST /tenants/create) created after 2026-09-16, pending the owner confirming the emailed consent-invite link. Defaults false — every pre-existing row (seed data, self-serve tenants) is never gated. See tests/regression/tenantConsentGateRetroactivity.realdb.test.ts.';
 
 
 --
@@ -5205,6 +5251,22 @@ ALTER TABLE ONLY public.soft_reservations
 
 ALTER TABLE ONLY public.tenant_calendar_settings
     ADD CONSTRAINT tenant_calendar_settings_pkey PRIMARY KEY (tenant_id);
+
+
+--
+-- Name: tenant_consent_invites tenant_consent_invites_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_consent_invites
+    ADD CONSTRAINT tenant_consent_invites_pkey PRIMARY KEY (tenant_consent_invite_id);
+
+
+--
+-- Name: tenant_consent_invites tenant_consent_invites_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_consent_invites
+    ADD CONSTRAINT tenant_consent_invites_token_hash_key UNIQUE (token_hash);
 
 
 --
@@ -5723,6 +5785,20 @@ CREATE INDEX idx_services_tenant_id ON public.services USING btree (tenant_id);
 --
 
 CREATE INDEX idx_soft_reservations_expires_at ON public.soft_reservations USING btree (expires_at);
+
+
+--
+-- Name: idx_tenant_consent_invites_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_tenant_consent_invites_expires_at ON public.tenant_consent_invites USING btree (expires_at);
+
+
+--
+-- Name: idx_tenant_consent_invites_tenant_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_tenant_consent_invites_tenant_id ON public.tenant_consent_invites USING btree (tenant_id);
 
 
 --
@@ -6546,6 +6622,22 @@ ALTER TABLE ONLY public.tenant_calendar_settings
 
 
 --
+-- Name: tenant_consent_invites tenant_consent_invites_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_consent_invites
+    ADD CONSTRAINT tenant_consent_invites_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(tenant_id) ON DELETE CASCADE;
+
+
+--
+-- Name: tenant_consent_invites tenant_consent_invites_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_consent_invites
+    ADD CONSTRAINT tenant_consent_invites_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+
+--
 -- Name: tenant_docs tenant_docs_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7214,6 +7306,26 @@ ALTER TABLE public.soft_reservations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_calendar_settings ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: tenant_consent_invites; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.tenant_consent_invites ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: tenant_consent_invites tenant_consent_invites_admin_bypass; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_consent_invites_admin_bypass ON public.tenant_consent_invites USING ((public.tenant_ctx() = ''::text)) WITH CHECK ((public.tenant_ctx() = ''::text));
+
+
+--
+-- Name: tenant_consent_invites tenant_consent_invites_tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY tenant_consent_invites_tenant_isolation ON public.tenant_consent_invites USING ((tenant_id = public.tenant_ctx_uuid())) WITH CHECK ((tenant_id = public.tenant_ctx_uuid()));
+
+
+--
 -- Name: tenant_docs; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -7382,5 +7494,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ehBX8juEUsTxts7KcpX8ywCSHQrhcuTykDwid6s5gme7dcM7xCrVVdYVekox2ML
+\unrestrict 8iYAy5LJsz4MYr90g8KY3KGRz2n6LdJchmwnBETShWr3u6lEyzPJkck4TnAI8Y2
 

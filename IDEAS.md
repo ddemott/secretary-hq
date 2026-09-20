@@ -780,7 +780,7 @@ Fitness medical clearance, HVAC refrigerant handling, auto towing liability — 
 
 # SECTION 3: Deposit Collection via Stripe
 
-_Status: Being developed — moves to docs/product/ when direction is set_
+_Status: proposal only — nothing built (no Payment Link / deposit code in `src/`, `agent/src/` or `shared/`, verified 2026-09-18). Already moved to `docs/product/DEPOSIT_COLLECTION.md`, which carries the current status notes._
 
 ## Problem
 
@@ -823,7 +823,7 @@ Card data lives on Stripe's servers. We only see:
 2. Payment Link generation (one API call per booking)
 3. Customer creation and storage (Stripe Customer ID only)
 4. Webhook handler (payment success/failure)
-5. SMS sending (Twilio or Stripe's built-in)
+5. SMS sending (Twilio or Stripe's built-in) — _note 2026-09-18: SMS is Telnyx-only in this codebase, and is OFF (`ENABLE_SMS=false`) until 10DLC registration lands_
 6. Business rules config per tenant:
    - Which services require deposits
    - Deposit amount (% or fixed)
@@ -842,7 +842,7 @@ Card data lives on Stripe's servers. We only see:
 
 - Which demo tenant gets this first? (Salon is natural)
 - Charge cancellation fees automatically or flag for human review?
-- SMS via Twilio or Stripe's own messaging?
+- SMS via Twilio or Stripe's own messaging? _(2026-09-18: Telnyx is the sole SMS provider; a link text cannot reach a handset until 10DLC is registered.)_
 
 ---
 

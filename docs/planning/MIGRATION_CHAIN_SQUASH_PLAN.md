@@ -5,6 +5,8 @@
 **Source:** `docs/planning/TODO.md` P2 — Migration chain squash (~202 files).  
 **Decision this pass:** **UNSAFE to squash now.** Document procedure; leave the 202-file chain intact.
 
+> **Count note 2026-09-18:** the "202" figures below are the measurement as of 2026-09-14 and are left as written; `supabase/migrations/` now holds **205** files (+ `20260914000000`, `20260915000000`, `20260918014212`). The verdict is unchanged.
+
 ---
 
 ## 1. Current state (measured)

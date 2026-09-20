@@ -87,7 +87,7 @@ describe('summarizeCall (failsafe post-call summary)', () => {
  * network so "did it call the model?" is directly observable.
  */
 const GREETING =
-  "Thanks for calling! I'm Piper, Dale's AI Assistant. This call is transcribed for quality and service. What do you need help with: hiring Dale, getting a computer fixed, or maybe just leaving a message?";
+  "Thanks for calling! I'm Piper, Dale's AI Assistant. This call is transcribed for quality and service. I can help with hiring Dale, getting a computer fixed, or leaving a message. Tell me which.";
 
 function mockOpenAI(content: string) {
   return vi.fn().mockResolvedValue({

@@ -17,21 +17,21 @@ VALUES
 (
     'car-detailing', 'Car Detailing', 'Auto & Vehicle', 1,
     'You are a professional receptionist for a car detailing shop called {{business_name}}. Help customers book detailing packages. Collect their name, vehicle make/model, and desired service level.',
-    'Thanks for calling! Would you like to schedule a detail?',
+    'Thanks for calling! I can schedule a detail for you. Tell me how I can help.',
     'pNInz6ovDWjNkhCspfAY', 'Detail Bay 1', 'Main detailing bay',
     'Detail Bay', 'Detail Bays', 'Detailer', 'Detailers', 'Appointment'
 ),
 (
     'body-shop', 'Body & Paint Shop', 'Auto & Vehicle', 1,
     'You are a professional receptionist for an auto body shop called {{business_name}}. Help customers schedule estimates and repairs for body damage, paint, and collision work. Collect their name, vehicle info, and damage description.',
-    'Thanks for calling! Do you need an estimate or schedule a repair?',
+    'Thanks for calling! I can help with an estimate, or schedule a repair. Tell me which.',
     'pNInz6ovDWjNkhCspfAY', 'Paint Booth 1', 'Main paint and body bay',
     'Booth', 'Booths', 'Body Tech', 'Body Techs', 'Appointment'
 ),
 (
     'oil-change', 'Quick Lube / Oil Change', 'Auto & Vehicle', 1,
     'You are a professional receptionist for a quick lube shop called {{business_name}}. Help customers schedule oil changes and fluid services. Collect their name, vehicle make/model, and preferred oil type.',
-    'Thanks for calling! Ready to schedule an oil change?',
+    'Thanks for calling! I can schedule an oil change. Tell me how I can help.',
     'pNInz6ovDWjNkhCspfAY', 'Lane 1', 'Quick service lane',
     'Lane', 'Lanes', 'Lube Tech', 'Lube Techs', 'Appointment'
 ),
@@ -61,14 +61,14 @@ VALUES
 (
     'garage-door', 'Garage Door Service', 'Home Services', 3,
     'You are a professional dispatcher for a garage door company called {{business_name}}. Help customers schedule repairs, installations, and maintenance. Collect their name, address, and issue description.',
-    'Thanks for calling! Is your garage door stuck, or do you need a new installation?',
+    'Thanks for calling! I can help if your garage door is stuck, or with a new installation. Tell me which.',
     'pNInz6ovDWjNkhCspfAY', 'Van 1', 'Main service van',
     'Van', 'Vans', 'Installer', 'Installers', 'Service Call'
 ),
 (
     'locksmith', 'Locksmith', 'Home Services', 3,
     'You are a professional dispatcher for a locksmith called {{business_name}}. Help customers schedule lockouts, rekeying, and lock installations. Collect their name, address, and urgency.',
-    'Thanks for calling! Are you locked out or need a lock service scheduled?',
+    'Thanks for calling! I can help if you are locked out, or schedule a lock service. Tell me which.',
     'pNInz6ovDWjNkhCspfAY', 'Van 1', 'Mobile locksmith van',
     'Van', 'Vans', 'Locksmith', 'Locksmiths', 'Service Call'
 ),
@@ -83,7 +83,7 @@ VALUES
 (
     'insurance', 'Insurance Agency', 'Professional Services', 5,
     'You are a professional receptionist for an insurance agency called {{business_name}}. Help callers schedule consultations for auto, home, life, and business insurance. Collect their name and what type of coverage they need.',
-    'Thanks for calling! What type of insurance can we help you with?',
+    'Thanks for calling! Tell me what type of insurance we can help you with.',
     'ErXwSzhRj4IW3zYCt9a2', 'Office 1', 'Consultation office',
     'Office', 'Offices', 'Agent', 'Agents', 'Consultation'
 ),
@@ -98,7 +98,7 @@ VALUES
 (
     'catering', 'Catering Service', 'Food & Beverage', 6,
     'You are a professional receptionist for a catering company called {{business_name}}. Help customers plan events, get quotes, and schedule tastings. Collect their name, event date, guest count, and preferences.',
-    'Thanks for calling! Are you planning an event?',
+    'Thanks for calling! Tell me if you are planning an event.',
     '21m00Tcm4llvDq8ikWAM', 'Kitchen 1', 'Main prep kitchen',
     'Kitchen', 'Kitchens', 'Chef', 'Chefs', 'Event'
 )

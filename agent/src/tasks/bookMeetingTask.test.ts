@@ -196,7 +196,7 @@ describe('BookMeetingTask — the booking IS the transition', () => {
     //       question last.
     expect(BOOK_MEETING_INSTRUCTIONS).toMatch(/LEAD WITH TIMES/i);
     expect(BOOK_MEETING_INSTRUCTIONS).toMatch(/WITHOUT a date/);
-    expect(BOOK_MEETING_INSTRUCTIONS).toMatch(/another day or time that suits you better/i);
+    expect(BOOK_MEETING_INSTRUCTIONS).toMatch(/Those times are open\. Tell me which you prefer, or name another day/i);
     expect(BOOK_MEETING_INSTRUCTIONS).toMatch(
       /Never open the booking with "what day works for you\?"/i
     );

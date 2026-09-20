@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type {Pool} from 'pg';
+import type { Pool } from 'pg';
 import { createMockClient, createMockPool, createMockWithTenantClient } from '../mock';
 
 // --- Mock squareClient and squareSync modules before importing routes ---
@@ -35,8 +35,12 @@ let mockClient: ReturnType<typeof createMockClient>['mockClient'];
 let queryResponses: ReturnType<typeof createMockClient>['queryResponses'];
 let mockPool: Pool;
 
-// Test-only request shape: the preHandler injects tenantId for the route to read.
-type TenantRequest = FastifyRequest & { tenantId?: string };
+// Test-only request shape: the preHandler injects tenantId + auth for the
+// route to read.
+type TenantRequest = FastifyRequest & {
+  tenantId?: string;
+  auth?: { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+};
 
 function buildApp() {
   const created = createMockClient();
@@ -64,21 +68,27 @@ function buildApp() {
     }
   );
 
-  // Simulate tenant middleware: inject tenantId from query param or header
+  // Simulate tenant middleware: inject tenantId from query param or header.
+  // Owner by default — GET /square/auth, POST /square/settings/disconnect,
+  // and POST /square/sync are all owner-gated (requireOwnerRole, 2026-09-16
+  // role-check audit); the dedicated role-gate coverage lives in
+  // square-role-gate.test.ts, this file stays focused on route behavior.
   fastify.addHook('preHandler', async (request: TenantRequest) => {
     const tenantId =
       (request.query as Record<string, string>)?.tenant_id ||
       (request.headers['x-tenant-id'] as string);
     if (tenantId) {
       request.tenantId = tenantId;
+      request.auth = {
+        tenant_id: tenantId,
+        user_id: '00000000-0000-0000-0000-000000000001',
+        email: 'owner@test.local',
+        role: 'owner',
+      };
     }
   });
 
-  registerSquareRoutes(
-    fastify,
-    mockPool,
-    mockWithTenantClient
-  );
+  registerSquareRoutes(fastify, mockPool, mockWithTenantClient);
 
   return fastify;
 }

@@ -182,6 +182,35 @@ export function collectExpectedUnreachable(content: string): Set<string> {
 // ─── Production wiring ─────────────────────────────────────────────────────
 
 /**
+ * Strip every `GIT_*` env var before shelling out. When this script itself
+ * runs as a descendant of a real git hook (`git push` → husky's pre-push →
+ * `npm test`/`npm run verify:claude-md`), git has already set `GIT_DIR` /
+ * `GIT_WORK_TREE` / `GIT_INDEX_FILE` in the ambient environment so hooks
+ * know which repo invoked them. `execSync` inherits that env wholesale by
+ * default, so a `cwd` override alone does NOT protect against it — an
+ * explicit `GIT_DIR` wins over cwd-based repo discovery every time.
+ *
+ * Found 2026-09-14: `resolveBranchRef`'s own `execSync` had this exact gap —
+ * `verify-claude-md.test.ts`'s throwaway-repo tests clean their OWN setup
+ * calls (`git init`, `git commit`, ...) but `resolveBranchRef` itself, the
+ * function under test, still shelled out with the raw ambient env. Running
+ * the suite from inside this repo's own pre-push hook (i.e. exactly the
+ * scenario this whole class of bug is about) made a throwaway repo with no
+ * local `main` incorrectly resolve `main` anyway, because the ambient
+ * `GIT_DIR` pointed at the real secretary-hq checkout, which does have one.
+ * Same root cause as `cleanGitEnv()` in `scripts/git-hooks/pre-push.test.ts`
+ * and in this file's own test suite — three independent copies of the same
+ * fix before this one was finally applied to the actual production path.
+ */
+export function cleanGitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+}
+
+/**
  * Resolve `branch` to a ref that actually exists in this checkout. A
  * pull_request CI run (`actions/checkout` with `fetch-depth: 0`) fetches
  * every branch's history but only checks out the PR's own ref as a local
@@ -193,7 +222,7 @@ export function collectExpectedUnreachable(content: string): Set<string> {
  */
 export function resolveBranchRef(branch: string): string {
   try {
-    execSync(`git rev-parse --verify ${branch}`, { stdio: 'ignore' });
+    execSync(`git rev-parse --verify ${branch}`, { stdio: 'ignore', env: cleanGitEnv() });
     return branch;
   } catch {
     return `origin/${branch}`;
@@ -204,7 +233,10 @@ export function resolveBranchRef(branch: string): string {
 function gitIsCommitReachable(sha: string, branch: string = 'main'): boolean {
   const ref = resolveBranchRef(branch);
   try {
-    execSync(`git merge-base --is-ancestor ${sha} ${ref}`, { stdio: 'ignore' });
+    execSync(`git merge-base --is-ancestor ${sha} ${ref}`, {
+      stdio: 'ignore',
+      env: cleanGitEnv(),
+    });
     return true;
   } catch {
     return false;

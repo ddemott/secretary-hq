@@ -160,6 +160,7 @@ written for the purpose selector (including the intent-boundary examples ported 
   Per-tenant tree delivery (via `/agent-tools/tenant-config`) and owner-editable
   trees are BOTH deferred until a real tenant needs a tree the platform doesn't
   have (build-for-real-customers rule).
+  _Superseded 2026-08-14: per-tenant tree delivery shipped after all — `tenant_question_trees` / `tenant_question_nodes` (migration `20260814130000`), delivered as `question_trees` on `/agent-tools/tenant-config`; `trees.ts` is now the template content + runtime fallback. See `docs/voice/RUNBOOK_QUESTION_TREES.md`._
 
 ### 3.2 ChecklistTracker (host code, pure, the heart)
 

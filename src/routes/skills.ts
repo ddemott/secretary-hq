@@ -11,6 +11,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { slugify } from '../../shared/name';
@@ -44,6 +45,8 @@ export function registerSkillRoutes(
   app.post(
     '/skills/create',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing/skill setup.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CreateSkillSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -71,6 +74,8 @@ export function registerSkillRoutes(
   app.delete(
     '/skills/:name',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing/skill setup.
+      if (!requireOwnerRole(req, reply)) return;
       const { name } = req.params as { name: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;

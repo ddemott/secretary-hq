@@ -29,6 +29,14 @@ let app: FastifyInstance;
 let queries: MockQuery[];
 let queryResponses: Array<{ rows: unknown[]; rowCount?: number }>;
 
+type TestAuth = { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+/**
+ * `undefined` = use the default owner stub (every route in this file is
+ * owner-gated via requireOwnerRole); set explicitly per-test to exercise
+ * the gate itself (front_desk → 403, null → 401).
+ */
+let authOverride: TestAuth | null | undefined;
+
 function buildApp() {
   queries = [];
   queryResponses = [];
@@ -64,13 +72,21 @@ function buildApp() {
 
   const fastify = Fastify({ logger: false });
 
-  // Test-only request shape: the preHandler injects tenantId so the route can read it.
-  type TenantRequest = FastifyRequest & { tenantId?: string };
+  // Test-only request shape: the preHandler injects tenantId + auth so the
+  // route can read them. All routes in this file are owner-gated
+  // (requireOwnerRole) — default to an owner so existing tests keep
+  // exercising the handler body; the SECURITY block below sets
+  // `authOverride` to prove the gate itself.
+  type TenantRequest = FastifyRequest & { tenantId?: string; auth?: TestAuth | null };
   fastify.addHook('preHandler', async (request: TenantRequest) => {
     const tenantId =
       (request.query as Record<string, string>)?.tenant_id ||
       (request.headers['x-tenant-id'] as string);
     if (tenantId) request.tenantId = tenantId;
+    request.auth =
+      authOverride !== undefined
+        ? authOverride
+        : { tenant_id: tenantId || TENANT_ID, user_id: 'owner-user', email: 'owner@test.local', role: 'owner' };
   });
 
   registerShiftRoutes(fastify, mockPool, withTenantClient);
@@ -90,6 +106,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   queries.length = 0;
   queryResponses.length = 0;
+  authOverride = undefined;
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -324,5 +341,51 @@ describe('POST /shifts/expand-weekly — replace also retires the declared RULE'
 
     expect(res.statusCode).toBe(200);
     expect(queries.filter((q) => q.text.includes('employee_schedule_pattern'))).toHaveLength(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// ════════════════════════════════════════════════════════════════════
+
+describe('POST /shifts/expand-weekly — owner-role gate', () => {
+  it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
+    authOverride = {
+      tenant_id: TENANT_ID,
+      user_id: 'fd-user',
+      email: 'frontdesk@test.local',
+      role: 'front_desk',
+    };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shifts/expand-weekly',
+      payload: {
+        tenant_id: TENANT_ID,
+        employee_id: EMPLOYEE_ID,
+        pattern: [{ day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('SECURITY: an unauthenticated request is rejected 401', async () => {
+    authOverride = null;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/shifts/expand-weekly',
+      payload: {
+        tenant_id: TENANT_ID,
+        employee_id: EMPLOYEE_ID,
+        pattern: [{ day_of_week: 1, start_time: '09:00:00', end_time: '17:00:00' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(queries).toHaveLength(0);
   });
 });

@@ -4,6 +4,56 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-09-20 — Overnight autonomous batch (Dale asleep): 10 no-Dale-needed fixes
+
+Each item one branch → PR → green CI → merge → purge. Items land below as they merge.
+
+- **`/reminders/process` + `/reminders/status` had no auth check** (their own comments said "admin only"). Any tenant login, front_desk included, could run the due-reminder batch that sends for EVERY tenant. Both now `requireSuperAdmin`; dashboard never called either. Test: `tests/routes/reminders.adminRoutes.test.ts` (red on old code, green on fix).
+- **Root `tsx` was undeclared → CI flake (PR #535's first backend run).** ~15 root npm scripts and 3 test files (`scripts/purge-soft-deleted.test.ts`, `scripts/find-abandoned-test-numbers.test.ts`, `tests/starterServices.test.ts`) run `npx tsx`, but only `agent/` declared tsx. On CI npx fetched it from the registry mid-test; npm's "will be installed" warning landed where the tests expected the script's own error text → 9 failures, green on re-run. Fixed by adding `tsx` as a root devDependency (+ lockfile) and correcting the stale comment in `.github/workflows/pre-merge-checks.yml`. Test: `tests/scripts/tsxDependency.test.ts` (3 of 4 red without the dependency, green with it). Follow-up (PR #526): the "binary exists" assertion checked a fixed `ROOT/node_modules/.bin/tsx` path, which failed inside a git worktree (partial `node_modules`, Node resolves through the parent checkout) and would have blocked any worktree push; it now asserts `require.resolve('tsx/package.json')` from the repo root.
+- **Landing page mobile-menu links threw `ReferenceError: closeMobileMenu is not defined` on every click.** The four `<a onclick="closeMobileMenu()">` in `dashboard/app/page.tsx`'s `LANDING_HTML` called a function that only ever existed in the never-executed inline `<script>` (`dangerouslySetInnerHTML` does not run scripts), so it was never a global. The menu still closed only because the `useEffect` wiring separately attaches close() to those links; the visible cost was a console error per tap and the jsdom warning in dashboard test runs. Removed the four dead inline handlers. Tests in `dashboard/app/page.test.tsx`: no `on*` attribute anywhere in the injected markup, and clicking every mobile-menu link raises no uncaught error (both red before, green after).
+- **`POST /communications/sms` had no `ENABLE_SMS` gate.** With SMS globally off pending 10DLC, Telnyx accepts the send and reports success anyway (error 40010 at the carrier), so this route answered `{ success: true, messageId }` for a text that never arrives. Now 503 (nothing sent) unless `ENABLE_SMS` is the literal `'true'`; auth (401) and body validation (400) unchanged. The dashboard never calls the route. Test: `tests/routes/communications.smsGate.test.ts` (6 red on old code, all green after). **Known residual (defense in depth only):** `grep ENABLE_SMS src/` shows this route and `/appointments/:id/send-self-service-links` are the only two backend paths that check the flag. The reminder worker and confirmation sends go through `SMSService.sendSMS` with no flag check, but that path is currently blocked in practice by its per-number SMS consent check — SMS consent rows are written only by the agent's `record_sms_consent` (gated off with SMS), the unused `POST /communications/consent`, and a customer's inbound `START` text — so no consent row means `sendSMS` returns "not consented" instead of sending. Putting the flag check inside `SMSService.sendSMS` would remove the reliance on that accident, but it changes how the reminder worker records a refused send (failed vs skipped), so it is left for a deliberate change rather than bundled here.
+
+- **PR #526 — admin-provisioned tenants are consent-gated (feature + review hardening).** `POST /tenants/create` used to produce a live owner login with zero consent record (self-serve `/register` was closed in #496). Dale's decision: a first-login gate backed by an emailed click-to-consent link. `tenants.consent_gate_required` (default `false` — every existing tenant incl. Dale's own and the Bella demo is never gated retroactively; pinned by `tests/regression/tenantConsentGateRetroactivity.realdb.test.ts`) + `tenant_consent_invites` (single-use, hashed token, 14-day expiry, RLS). `/login` answers 403 `consent_required` only AFTER the password checks out; public token-gated `POST /consent/confirm` stamps `legal_consent_*` and mails receipts; password-gated, rate-limited `POST /consent/resend`; dashboard `/consent` page + `LoginView` interstitial. Migration `20260916000000_tenant_admin_consent_gate.sql`. **Merge order matters:** `/login` now SELECTs `tenants.consent_gate_required`, so the migration must be applied to prod BEFORE the deploy or every login 500s. Review hardening taken over 2026-09-20: `/consent/resend` always spends one bcrypt compare (dummy hash when the email is unknown) so latency does not reveal which emails have accounts; the post-COMMIT invite INSERT is best-effort (200 + `consent_invite_issued:false`, no dead-link email, admin still notified) instead of a 500 that invites a conflicting retry; `LoginView` resets its resend state per login attempt and no longer says "just emailed" on a 429 or network failure. Its e2e/sim-tools commits were dropped in the `main` merge — the same fixes had already landed on `main`.
+
+---
+
+## 2026-09-16 — Adversarial re-verify of #517/#522 found two more back-door gaps: `/setup/commit` and `/square/*` (PR #523)
+
+roady's adversarial re-verify of the two role-check PRs shipped earlier the same night (#517, #522) found the front-door routes were correctly gated but two back doors to the same tables were not:
+
+- **`src/routes/setup.ts`** had `requireOwnerRole` in NO route at all. `POST /setup/commit` is the onboarding wizard's bulk write — `insertDraftGraph` (`src/services/setupGraph.ts`) inserts/updates services, resources, employees, shifts, and skill mappings from a client-supplied draft graph, and in `mode: 'sync'` soft-deletes/prunes every service, resource, and employee the draft omits (plus hard-deleting `employee_schedule`/`employee_schedule_pattern`/`service_employee`/`service_resource` rows for anything not in the draft). This is the exact same write surface `services.ts`/`employees.ts`/`resources.ts`/`shifts.ts`/`mappings.ts` were each individually gated for in #522 — reached through a different code path that bypassed all five. Added `requireOwnerRole` to `/setup/commit`, `/setup/default-service` (changes which service every unmatched call books), and `/setup/impact` (the dry-run preview over the same draft — no writes, but same business-structure exposure, gated for consistency). `GET /setup/graph` untouched — the wizard's own precondition read, not part of this finding.
+- **`src/routes/crmRouteScaffold.ts`** (the shared CRM-OAuth scaffold, registered for Square in `src/routes/square.ts`) gated `GET /square/auth`, `POST /square/settings/disconnect`, `POST /square/sync` on `requireTenantId` only — same class of action as `billing.ts`'s checkout/portal and `provisioning.ts`'s activate/deactivate (both correctly owner-gated in #522). Added `requireOwnerRole` to all three; the two reads (`GET /square/settings`, `GET /square/sync/status`) left ungated, matching `calendar.ts`'s pattern.
+- Same PR, low-severity cleanup: `customers.ts`'s `/customers/import` and `knowledge.ts`'s `/knowledge/explain` each reimplemented `requireOwnerRole`'s exact logic inline instead of calling the shared function — functionally correct but the kind of duplicated-logic drift that let the original systemic gap go unnoticed as long as it did. Consolidated both onto the shared guard.
+
+New test coverage (none of these three route files had ANY role-check tests before this): `tests/routes/setup-role-gate.test.ts`, `tests/routes/square-role-gate.test.ts` (both new, mock-based, asserting 403/front-desk + 401/unauthenticated + zero queries run before the gate fires), plus `tests/routes/square-routes.test.ts` and `tests/integration/setupCommit.realdb.test.ts` patched to stamp a default owner `req.auth` (their harnesses predate any of these routes checking role, same shape as the 2adac56d fix in #522).
+
+Deliberately NOT fixed here, per Dale: `POST /coverage/dry-run` (`src/routes/analytics.ts`) has the identical latent shape — it also calls `insertDraftGraph` via `previewCoverageForDraft`, but wraps it in an unconditional `finally { ROLLBACK }`, so nothing ever persists. Low severity, no live risk, dismissed rather than fixed.
+
+## 2026-09-16 — Systemic no-server-side-role-check audit: fixed in one batch (PR #522, closing the findings tracked as PRs #512/#508/the consolidated sweep)
+
+Closes out the full "no server-side role check is systemic" finding (roady's 2026-09-16 audit sweep, `docs/planning/TODO.md`): every route below trusted `OutlookLayout.tsx`'s client-side `isFrontDeskOnly` tab-hiding as its only access control, so a front-desk JWT (devtools, saved request replay) could call any of them directly and it succeeded. Fix is the same shape everywhere — a new shared `requireOwnerRole(req, reply)` guard (`src/middleware/fastify-middleware.ts`, alongside `requireAuth`/`requireSuperAdmin`: 401 if unauthenticated, 403 if authenticated but not `role === 'owner'`, bypassed for the platform super-admin tenant) — added as the first line of every listed handler, matching the pre-existing pattern at `/customers/import`.
+
+Routes fixed, one PR:
+
+- `src/routes/tenants.ts` — `GET /tenants/:id/config`, `POST /tenants/:id/update-config` (the HIGH-severity call-transfer-hijack / legal-disclosure-overwrite finding), `POST /tenants/:id/finalize-setup`.
+- `src/routes/services.ts` — create/update/delete.
+- `src/routes/skills.ts` — create/delete.
+- `src/routes/mappings.ts` — all 4 service-employee/service-resource assign/unassign routes.
+- `src/routes/employees.ts`, `src/routes/shifts.ts`, `src/routes/resources.ts` — every mutating route (the PR #508-tracked staffing-CRUD gap).
+- `src/routes/customers.ts` — `DELETE /customers/:id`.
+- `src/routes/provisioning.ts` — `POST /provisioning/activate`, `POST /provisioning/deactivate` (previously had ZERO checks of any kind beyond the global `tenantMiddleware`).
+- `src/routes/billing.ts` — `POST /billing/checkout`, `POST /billing/portal` (`/billing/webhook` correctly left alone — signature-verified, not user-facing).
+- `src/routes/knowledge.ts` — the 8 mutating routes (`DELETE /knowledge/:id`, `POST /knowledge/ingest`, `POST /knowledge/add`, `PUT /knowledge/:id`, `PATCH /knowledge/unanswered/:id/resolve`, `POST /knowledge/import-website`, `POST /knowledge/import-document`, `PATCH /knowledge/suggestions/:id`); `POST /knowledge/explain` was already correct and untouched.
+- `src/routes/calendar.ts` — `POST /calendar/settings`, `POST /calendar/settings/disconnect`, `POST /calendar/sync`.
+- `src/routes/versionHistory.ts` — `restore-fields`/`soft-delete`/`restore`/`copy-fields`.
+
+Two more findings from the same audit, unrelated to the role-check pattern, closed in the same PR:
+
+- **`POST /register` had no rate limit** (`src/routes/auth.ts`) — unauthenticated, does real work per call (2 INSERTs, bcrypt hash, consent UPDATE, template-copy RPC), and the `409` "account already exists" response was an unthrottled email-enumeration oracle. Now `{ max: 5, timeWindow: '5 minutes' }`, matching `/login`.
+- **`business_type` had no HIPAA-vertical denylist**, independent of the dashboard `<select>` picker (which falls back to free text on a `GET /templates` failure). New `shared/hipaaVerticalDenylist.ts` (`isHipaaVertical()`, case-insensitive substring match on `hipaa|dental|veterinary|chiropractic|optometry|medical`) is checked in BOTH entry points that create a tenant — `RegisterSchema`'s `.refine()` (self-serve `/register`, 400) and `createTenantWithOwner` itself (`src/services/tenants/bootstrap.ts`, before the transaction even opens — so `POST /tenants/create`, the admin path with no Zod schema of its own, is covered too).
+
+Test coverage: every changed route got a happy-path-as-owner + front-desk-403 (+ unauthenticated-401 where not already covered) pair — existing route test harnesses that never stamped `req.auth` at all (`versionHistory.test.ts`, `shifts-routes.test.ts`) needed a default-owner auth stub added first, since they predate any of these routes checking role. New files: `tests/routes/services.test.ts`, `tests/routes/resources.test.ts`, `tests/routes/knowledge-role-gate.test.ts`, `tests/routes/calendar-role-gate.test.ts`, `shared/hipaaVerticalDenylist.test.ts`.
+
 ## 2026-09-16 — 5 super-admin PII/cost exposures from roady's audit, fixed (PR #517)
 
 `GET /tenants`, phone provisioning, `GET /customers`, `GET /appointments`, and the
@@ -112,9 +162,9 @@ registration, unlike the deliberately best-effort question-tree template copy ri
 Migration `20260915000000_tenant_registration_consent.sql`. **By design, `POST /tenants/create`
 (admin/super-admin tenant provisioning) does not pass consent and stays NULL** — an admin
 creating a tenant on someone else's behalf isn't the business owner attesting anything; this
-was a deliberate scope decision in #496 itself, not an oversight, though whether the
-admin-provisioned case needs its *own* attestation is still an open product/compliance call
-(`docs/planning/TODO.md`, flagged separately during roady's review of PR #501).
+was a deliberate scope decision in #496 itself, not an oversight. (The admin-provisioned case
+was resolved separately on 2026-09-16 with its own emailed-link first-login gate — see the
+2026-09-20 entry on PR #526 above.)
 
 **PR #495 — legal-hold reimplementation CI backstop, design only.** Roady's audit found that
 PR #68/#69's kill switches (`ENABLE_CUSTOMER_PURGE`, `ENABLE_RETENTION_WORKER`) protect only

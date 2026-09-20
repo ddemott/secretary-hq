@@ -48,7 +48,7 @@ export function registerKnowledgeRoutes({
       // Graceful "I can't answer that" line, reused for BOTH zero RAG hits and
       // an embedding/lookup failure. A caller must never hear a raw 500/JSON.
       const policyFallback =
-        "I don't have specific information on that topic right now. I'd be happy to take a message so the owner can get back to you, or if there's anything else I can help with — like booking an appointment or answering questions about our services — I'm here for you.";
+        "I don't have that on hand. I can take a message, or help with a booking.";
 
       // getEmbedding hits OpenAI — if it's down/slow/over-quota it THROWS, which
       // (unguarded) becomes an HTTP 500 the agent relays as technical JSON
