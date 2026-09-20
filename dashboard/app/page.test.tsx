@@ -161,12 +161,18 @@ describe('LandingPage inline handlers (dead under dangerouslySetInnerHTML)', () 
     };
     window.addEventListener('error', onError);
     try {
-      fireEvent.click(document.getElementById('hamburger-btn')!);
+      const btn = document.getElementById('hamburger-btn')!;
       const menu = document.getElementById('mobile-menu')!;
-      expect(menu).toHaveClass('open');
-      for (const link of Array.from(document.querySelectorAll('.nav-mobile-menu a'))) {
-        fireEvent.click(document.getElementById('hamburger-btn')!);
+      const links = Array.from(document.querySelectorAll('.nav-mobile-menu a'));
+      expect(links.length).toBeGreaterThanOrEqual(4);
+      for (const link of links) {
+        // Each link is exercised with the menu genuinely open, and must close it.
+        expect(menu).not.toHaveClass('open');
+        fireEvent.click(btn);
+        expect(menu).toHaveClass('open');
         fireEvent.click(link);
+        expect(menu).not.toHaveClass('open');
+        expect(btn).toHaveAttribute('aria-expanded', 'false');
       }
       expect(errors).toEqual([]);
     } finally {
