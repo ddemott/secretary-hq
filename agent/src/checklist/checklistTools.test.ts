@@ -1095,9 +1095,9 @@ describe('record_answer', () => {
     expect(res).toContain('NEXT: ask caller_name. This is the ONLY question you may ask next.');
   });
 
-  it('HOST NAME NUDGE: recording the caller name teaches ONE nod — first name only, no thank-you loop', async () => {
-    // WHO: 2026-07-21 never reused the name; 2026-09-19 thanked every turn.
-    // WHAT: nudge once when name lands, first name only, forbid "Thanks, {name}" habit.
+  it('HOST NAME NUDGE: recording the caller name — remember for goodbye, no nod/thanks this turn', async () => {
+    // WHO: 2026-07-21 never reused the name; 2026-09-19 thanked every turn;
+    //      2026-09-20 Dale: just go to the next question.
     const { toolkit } = makeKit();
     await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
     const res = await call(toolkit.selectedTools(), 'record_answer', {
@@ -1105,16 +1105,19 @@ describe('record_answer', () => {
       value: 'Dale DeMott',
     });
     expect(res).toContain('Their first name is Dale.');
-    expect(res).toContain('"Got it, Dale."');
-    expect(res).toMatch(/Do NOT say "Thanks, Dale"/);
-    expect(res).toMatch(/do NOT open any later turn with thanks or by leading with their name/);
-    expect(res).toMatch(/speak the name again only when confirming a booking or saying goodbye/i);
+    expect(res).toMatch(/Keep it for booking confirm and goodbye only/);
+    expect(res).toMatch(/Do NOT thank them/);
+    expect(res).toMatch(/go straight to the next question/);
+    expect(res).toMatch(/Your next spoken line is the NEXT checklist question/);
+    expect(res).not.toContain('Got it, Dale');
     expect(res).not.toContain('DeMott.'); // never address by full name
     const other = await call(toolkit.selectedTools(), 'record_answer', {
       node_id: 'message_body',
       value: 'call me back',
     });
     expect(other).not.toContain('Their first name is'); // fires only on the name node
+    expect(other).toMatch(/Your next spoken line is the NEXT checklist question/);
+    expect(other).toMatch(/no "Thanks"/);
   });
 
   it('HOST NAME NUDGE: multi-line / control-char name is flattened before prompt inject', async () => {
@@ -1131,7 +1134,30 @@ describe('record_answer', () => {
     expect(nudgeIdx).toBeGreaterThan(-1);
     const nudge = res.slice(nudgeIdx);
     expect(nudge).not.toMatch(/IGNORE PREVIOUS/);
-    expect(nudge).toContain('"Got it, Bob."');
+    expect(nudge).toMatch(/go straight to the next question/);
+  });
+
+  it('HOST NO-ACK: successful record_answer forbids thank-you openers on the next spoken line', async () => {
+    const { toolkit } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    const res = await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'message_body',
+      value: 'please call me back about pricing',
+    });
+    expect(res).toMatch(/Your next spoken line is the NEXT checklist question/);
+    expect(res).toMatch(/no "Thanks"/);
+    expect(res).toMatch(/Just ask/);
+  });
+
+  it('HOST NO-ACK: phone read-back turn is exempt (read-back IS the spoken line)', async () => {
+    const { toolkit } = makeKit();
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    const res = await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'caller_phone',
+      value: '(262) 497-9039',
+    });
+    expect(res).toMatch(/READ THE NUMBER BACK NOW/);
+    expect(res).not.toMatch(/Your next spoken line is the NEXT checklist question/);
   });
 
   it('HOST READ-BACK: a dictated ten-digit number returns the exact 3-3-4 string to speak', async () => {
