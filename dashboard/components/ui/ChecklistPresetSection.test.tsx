@@ -157,6 +157,27 @@ describe('ChecklistPresetSection', () => {
     expect(screen.getByRole('button', { name: 'Save checklist' })).toBeDisabled();
   });
 
+  test('HAPPY: while loading, the preset name is a polite live-region status', async () => {
+    // WHY: the UX pass made the in-flight "Loading…" a role="status" region so a
+    // screen-reader user is told something is loading; once loaded the name is
+    // plain content, not a live region.
+    mockGetConfig.mockReturnValue(new Promise(() => {}));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    const name = screen.getByTestId('checklist-preset-name');
+    expect(name).toHaveTextContent('Loading…');
+    expect(name).toHaveAttribute('role', 'status');
+    expect(name).toHaveAttribute('aria-live', 'polite');
+  });
+
+  test('HAPPY: a successful load shows no error alert and drops the live-region role', async () => {
+    // WHY: the load-error alert must appear ONLY on a real failure.
+    render(<ChecklistPresetSection tenantId="t1" />);
+    const name = await screen.findByTestId('checklist-preset-name');
+    await waitFor(() => expect(name).toHaveTextContent('Salon front desk'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(name).not.toHaveAttribute('role');
+  });
+
   test('HAPPY: marking callback number required posts required_node_ids', async () => {
     render(<ChecklistPresetSection tenantId="t1" />);
     await screen.findByText('Salon front desk');
