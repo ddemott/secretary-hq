@@ -21,8 +21,9 @@ export const envSchema = z.object({
 
   OPENAI_API_KEY: z.string().min(1),
   DEEPGRAM_API_KEY: z.string().min(1),
-  // TTS is OpenAI. Voice + speed are per-tenant (dashboard → tenants.tts_voice/
-  // tts_speed), not env. The old xAI/Grok TTS vars (XAI_API_KEY, XAI_TTS_VOICE/
+  // TTS is Deepgram Aura (DEEPGRAM_API_KEY above). Voice is per-tenant (dashboard →
+  // tenants.tts_voice, mapped to an Aura model by toAuraVoice()), not env; tts_speed
+  // is saved but inert under Aura. The old xAI/Grok TTS vars (XAI_API_KEY, XAI_TTS_VOICE/
   // SPEED/SOFT) were removed 2026-06-25 when the agent went fully OpenAI — they
   // are no longer required for the worker to boot (no XAI_API_KEY needed).
 
