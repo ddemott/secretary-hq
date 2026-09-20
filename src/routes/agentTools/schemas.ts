@@ -553,6 +553,26 @@ export const VoiceSessionEndSchema = z.object({
     .max(100)
     .nullable()
     .optional(),
+  // Present only when the agent's outage guard ended the call because the LLM
+  // (or another provider) was failing — 2026-09-18, SCL_MFD3o5QRKQJB: OpenAI
+  // balance empty, the call died 39s in, and the stored row was byte-for-byte
+  // what a clean short hang-up looks like. Persisted to
+  // voice_sessions.metadata.llm_outage and counted in errors_total so an empty
+  // wallet is an alert, not something Dale learns by making a call.
+  llm_outage: z
+    .object({
+      cause: z.enum([
+        'quota_exhausted',
+        'auth_rejected',
+        'rate_limited',
+        'provider_error',
+        'unknown',
+      ]),
+      status_code: z.number().int().nullable().optional(),
+      message: z.string().max(500).optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 // Incremental transcript save — the agent posts the transcript-so-far after each

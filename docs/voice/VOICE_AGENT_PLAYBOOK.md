@@ -2,7 +2,7 @@
 
 **Purpose:** a living rulebook so a new customer voice agent can be built **without days of troubleshooting.** Every rule here is something we verified the hard way (mostly the 2026-06-24→26 go-live + Realtime work). Append new rules as we learn — date them.
 
-**Stack this covers (CURRENT as of 2026-08-14):** LiveKit Agents (Node/TS, `@livekit/agents` 1.4.x) + Deepgram Nova-3 STT + **OpenAI GPT-4.1-mini** (voice LLM; 4o-mini still runs summaries/classify/fallback) + **Deepgram Aura TTS** (`aura-asteria-en`, native WebSocket streaming) + Telnyx/SIP. Agent code in `/agent`; per-tenant config in `tenants` (DB). Deploys from `main` to Railway service `secretary-hq-agent`.
+**Stack this covers (CURRENT; re-verified 2026-09-18):** LiveKit Agents (Node/TS, `@livekit/agents` ^1.6.4) + Deepgram Nova-3 STT + **OpenAI GPT-4.1-mini** (voice LLM; 4o-mini still runs summaries/classify/fallback) + **Deepgram Aura TTS** (`aura-asteria-en`, native WebSocket streaming) + Telnyx/SIP. Agent code in `/agent`; per-tenant config in `tenants` (DB). Deploys from `main` to Railway service `secretary-hq-agent`.
 
 > **CALL FLOW — read this before any rule below.** The rules here are about the
 > voice PIPELINE (STT/LLM/TTS, turn-taking, latency), which is shared by every call.
@@ -110,7 +110,7 @@ type: tokens, code: rate_limit_exceeded
 
 **RULE 5.1** — Every tool is built through `wrapToolExecute` (`agent/src/tools/wrapTool.ts`): **timeout (25s) + catch→string + never-empty.** So no tool — including a new one — can hang the turn, throw, or hand the model nothing. Build new capabilities through it; it's the contract.
 
-**RULE 5.2** — `buildTools(ctx, client, transfer, outcome, speakFiller, { capabilities })` composes a subset. Capability groups: `knowledge | messaging | identity | scheduling | verification | transfer`. A customer script picks only what it needs (fewer tools = fewer tokens in Realtime).
+**RULE 5.2** — `buildTools(ctx, client, transfer, outcome, speakFiller, { capabilities })` composes a subset. Capability groups: `knowledge | messaging | identity | scheduling | verification | transfer | sms` (`sms` is its own group so it can stay off until 10DLC lands). A customer script picks only what it needs (fewer tools = fewer tokens in Realtime).
 
 **RULE 5.3** — `ToolsClient.call()` does NOT throw on 5xx — it RESOLVES `{ ok:false, status }`. Inspect `res.ok`; a bare `.catch()` won't catch a backend failure. It IS timeout-bounded (8s write / 16s read). Non-HTTP tool paths (e.g. SIP `transferSipParticipant`) have NO built-in timeout — wrap them (`Promise.race`).
 
@@ -122,7 +122,7 @@ type: tokens, code: rate_limit_exceeded
 
 ## 6. Persona / prompt rules (per-tenant `tenants.system_prompt`)
 
-**RULE 6.1** — The persona lives ONLY in the prod DB (`tenants.system_prompt`), not the repo. Back it up before editing (`SELECT system_prompt ...` → file). Restore-points matter — we keep `docs/aiassistant-persona-rich-backup-*.txt`.
+**RULE 6.1** — The persona lives ONLY in the prod DB (`tenants.system_prompt`), not the repo. Back it up before editing (`SELECT system_prompt ...` → file). Restore-points matter — we used to keep `docs/aiassistant-persona-rich-backup-*.txt` (no such files exist in the repo today).
 
 **RULE 6.2** — `customPrompt` replaces only the identity line; the platform prompt (conversation style, tools, OTP, booking discipline) is appended below it by `agent/src/prompt.ts`. So per-tenant personas inherit the platform rules.
 
@@ -134,7 +134,7 @@ type: tokens, code: rate_limit_exceeded
 
 ## 7. Interruption / turn-taking
 
-**RULE 7.1 (pipeline `turnHandling.interruption`):** `mode:'adaptive'` (CNN barge-in, filters backchannels), `minWords:2` (the EFFECTIVE lever when STT is on — `minDuration` is INERT on the STT path per a LiveKit maintainer), `falseInterruptionTimeout:2000` + `resumeFalseInterruption:true` (resume if a detected interruption has no transcript). Endpointing `minDelay`/`maxDelay` is a latency-vs-completeness tradeoff (we use 1300/4000 to aggregate multi-part answers like spoken phone numbers).
+**RULE 7.1 (pipeline `turnHandling.interruption`):** `mode:'adaptive'` (CNN barge-in, filters backchannels), `minWords:2` (the EFFECTIVE lever when STT is on — `minDuration` is INERT on the STT path per a LiveKit maintainer), `falseInterruptionTimeout:2000` + `resumeFalseInterruption:true` (resume if a detected interruption has no transcript). Endpointing `minDelay`/`maxDelay` is a latency-vs-completeness tradeoff (flat 1300/4000 to aggregate multi-part answers like spoken phone numbers; when the checklist-aware turn detector `agent/src/session/turnDetector.ts` is active it is 900/4500 and the detector picks per utterance).
 
 **RULE 7.2 (Realtime):** turn-taking is server-side — don't pass pipeline turn options; let server VAD own it.
 
@@ -145,7 +145,7 @@ type: tokens, code: rate_limit_exceeded
 ## 8. Dead air / never-silent (layered)
 
 Sources of silence + the layer that covers each:
-- TTS synthesis gap (pipeline) → streaming TTS (ElevenLabs) or cached filler
+- TTS synthesis gap (pipeline) → streaming TTS (Deepgram Aura since 2026-07-14; ElevenLabs was never wired) or cached filler
 - Reply cancelled by "hello?" → adaptive interruption + resume (RULE 7.1)
 - Tool hang → `wrapTool` timeout (RULE 5.1)
 - Tool empty/throw → `wrapTool` never-empty/catch
@@ -221,7 +221,7 @@ The `agent_session_error` log's `error_body` carries the provider's exact error 
 - 2026-06-26 — `gpt-4o-mini-realtime-preview` invalid id → dead call; real id `gpt-realtime-mini`.
 - 2026-06-26 — Realtime greeting: `say(text)` throws (no TTS) → use `generateReply`; `allowInterruptions:false` on generateReply leaves it not-listening → silence after greeting.
 - 2026-06-26 — Realtime TPM 40k (Tier 1) → mid-call dead space + failed appointment read-back (`rate_limit_exceeded`). Lean flow + mini model under Tier 1; Tier 2 ($50+7d) to widen.
-- 2026-06-25 — output watchdog fires every turn if its deadline < reply latency; harmful under pipeline TTS; OK under Realtime. Keep it OFF until reworked.
+- 2026-06-25 — output watchdog fires every turn if its deadline < reply latency; harmful under pipeline TTS; OK under Realtime. Keep it OFF until reworked. _(Superseded: now default ON — see RULE 8.1.)_
 - 2026-06-25 — browser sim echo creates false interruptions; use headphones.
 - 2026-06-29 — thinking-sound bed shipped (`ENABLE_THINKING_SOUND`, OFF) via LiveKit `BackgroundAudioPlayer` + bundled `KEYBOARD_TYPING` clip (no asset to source — ships in `@livekit/agents/resources`). `thinkingSound` has no per-turn deadline → plays before every reply in pipeline; fine as ambient, unlike a spoken filler. Independent of the watchdog; not layered. Volume = `THINKING_SOUND_VOLUME` env. Real-call validate PSTN mix + volume.
 - 2026-06-24 — `caller_phone NOT NULL` blocked forwarded-line calls from logging; finalize on session `Close` (not job shutdown); transcript per-turn; dashboard auto-refresh.

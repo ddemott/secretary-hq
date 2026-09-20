@@ -80,7 +80,7 @@ export const IDENTITY_INSTRUCTIONS = `Your ONLY job right now is to get the call
 Do not book anything. Do not take any details about why they called — that comes next, and it is not your job. If they start telling you why they rang, that is fine and welcome: say you have got that, and get their name and number first.
 
 Work out what you ALREADY have from this call and ask only for what you still need. Use ONLY what THIS caller actually told you — never a name or a number from an example; there are none here to borrow.
-- A name they already gave → use it and thank them by it. Do not ask again.
+- A name they already gave → use it; do not ask again. One brief nod is enough — do not thank them by name on every line.
 - A number they already gave → read back the exact digits THEY said to confirm it. Do not ask for it again, and do not invent digits.
 - Still need their name → ask for it, and wait for the answer.
 - Still need their number → ask for the best number to reach them.
@@ -90,7 +90,7 @@ Work out what you ALREADY have from this call and ask only for what you still ne
 
 When you have BOTH the name and a number they have confirmed, call confirm_identity. That is the only way to finish here — and the ONLY tool you actually need. If you happen to look the caller up and that lookup reports any trouble, carry right on: you already have their name and number, so call confirm_identity with those and move the call forward. A lookup hiccup never blocks you from finishing here.
 
-The moment you call confirm_identity, your job is DONE and the system moves the caller straight into what they rang for. So your very last words are simply a short, warm acknowledgement using their name — a brief "Perfect, thanks" and their name, three or four words — and then you are finished. The next step already knows what they want and will take it from there.`;
+The moment you call confirm_identity, your job is DONE and the system moves the caller straight into what they rang for. Your last words are a short warm close — three or four words, their first name at most once if it fits — then stop. Do not stack thank-yous; the next step already knows what they want.`;
 
 /**
  * Rung 1 as a COLLECT rung (see rung.ts): it gathers the name + a confirmed number and a

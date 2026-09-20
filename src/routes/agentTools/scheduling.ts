@@ -1160,7 +1160,7 @@ export function registerSchedulingRoutes({
 
         if (slots.length === 0) {
           return ok(reply, {
-            spoken: `${svcInfo} I'm not finding anything open in the next week. Would you like me to take a message so someone can call you back?`,
+            spoken: `${svcInfo} I'm not finding anything open in the next week. I can take a message so someone can call you back — tell me what you'd like me to pass along.`,
             date: null,
             open_times: [],
             offer_times: [],
@@ -1213,7 +1213,7 @@ export function registerSchedulingRoutes({
         const spokenOffers = groups.join(', or ');
 
         return ok(reply, {
-          spoken: `${svcInfo} The soonest I can get you in is ${spokenOffers}. Would any of those work, or is there another day or time that suits you better?`,
+          spoken: `${svcInfo} The soonest I can get you in is ${spokenOffers}. Those times are open. Tell me which you prefer, or name another day.`,
           date: null,
           // Day-scoped membership does not exist in a cross-day answer — the
           // note routes a caller-named day or time to a dated call.
@@ -1414,7 +1414,7 @@ export function registerSchedulingRoutes({
         // Genuinely nothing open for a week — now "try another day" IS the honest
         // answer, and a message is the right fallback.
         return ok(reply, {
-          spoken: `${serviceInfo} Unfortunately, we don't have anyone scheduled to work on ${dayName}, and I'm not finding anything open in the next week. Would you like me to take a message so someone can call you back?`,
+          spoken: `${serviceInfo} Unfortunately, we don't have anyone scheduled to work on ${dayName}, and I'm not finding anything open in the next week. I can take a message so someone can call you back — tell me what you'd like me to pass along.`,
           date: args.date,
           open_times: [],
           note: 'Nothing is open. open_times is empty — do NOT offer any time. Offer to take a message.',
@@ -1667,11 +1667,11 @@ export function registerSchedulingRoutes({
         offer_times: offerTimes,
         date: args.date,
         latest_open_time: openTimes[openTimes.length - 1] ?? null,
-        note: 'open_times is the COMPLETE and ONLY list of bookable start times. offer_times is a SAMPLE of the soonest few — it is NOT the day. Refusing a time that appears in open_times because it is missing from offer_times is the 2026-09-09 defect (a caller was told 4 PM was unavailable while it sat in open_times). A time in this list IS available — book it, do not second-guess it. A time NOT in this list is not available. Never state a time that is not in this list, and never refuse one that is. Do NOT reason about opening hours or ranges — they do not tell you what is free. When OFFERING times, offer exactly offer_times, speaking them as ONE natural sentence with commas ("I have 1:00, 1:30, or 2:00 — which works for you?") — never a bulleted or numbered list, and never more than these; a caller who names a different time from open_times gets a yes.',
+        note: 'open_times is the COMPLETE and ONLY list of bookable start times. offer_times is a SAMPLE of the soonest few — it is NOT the day. Refusing a time that appears in open_times because it is missing from offer_times is the 2026-09-09 defect (a caller was told 4 PM was unavailable while it sat in open_times). A time in this list IS available — book it, do not second-guess it. A time NOT in this list is not available. Never state a time that is not in this list, and never refuse one that is. Do NOT reason about opening hours or ranges — they do not tell you what is free. When OFFERING times, offer exactly offer_times, speaking them as ONE natural sentence with commas ("I have 1:00, 1:30, or 2:00. Tell me which you prefer.") — never a bulleted or numbered list, and never more than these; a caller who names a different time from open_times gets a yes.',
         spoken: requestedSpoken
           ? // Their time first, with the true reason, THEN the alternatives.
-            `${requestedSpoken} On ${dayName} I have ${spokenTimes}.${tailClause} Would any of those work?`
-          : `${serviceInfo} On ${dayName} I have ${spokenTimes}.${tailClause} Would any of those work, or did you have another time in mind?`,
+            `${requestedSpoken} On ${dayName} I have ${spokenTimes}.${tailClause} Those times are open. Tell me which you prefer.`
+          : `${serviceInfo} On ${dayName} I have ${spokenTimes}.${tailClause} Those times are open. Tell me which you prefer, or name another day.`,
       });
     },
     'Failed to compute available slots'

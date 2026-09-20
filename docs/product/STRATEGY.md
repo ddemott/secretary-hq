@@ -87,7 +87,7 @@ Sell the **receptionist first**, expand later. It's easier to sell, for structur
 
 ## Pricing model — value-aligned volume (captured 2026-06-12; FINALIZE + BUILD AFTER THE BASE)
 
-**Direction locked, implementation deferred** — finish the core product first; build pricing/metering infra later, once real usage data exists to set the bands. (Dale 2026-06-12: capture it, but base product comes first.)
+**Direction locked.** _Status 2026-09-18: the metering infrastructure has since been built (`src/services/billingUsage.ts` — monthly answered-call counter, configurable `PLAN_CAP_*` caps, soft-cap refusal, `GET /billing/usage`); final band sizes and Stripe price ids are still Dale's open decision (`docs/planning/TODO.md` P0 §2)._ Original stance: finish the core product first; build pricing/metering infra later, once real usage data exists to set the bands. (Dale 2026-06-12: capture it, but base product comes first.)
 
 **Meter on VALUE delivered — calls handled / appointments booked — NEVER on seats, NEVER on minutes.** "We scale as they scale; it goes up, but it should." This is the *good* kind of usage pricing (Stripe/Square per-transaction model — the aligned side of the money-model heuristic), and it structurally beats the most-hated thing across *every* competitor:
 
@@ -110,7 +110,7 @@ Sell the **receptionist first**, expand later. It's easier to sell, for structur
   - **Cheap-ish:** LLM infra already runs for the receptionist.
   - **Build trigger:** when onboarding-friction / setup-drop-off data shows it's the bottleneck, or as a deliberate onboarding accelerant. Not before. (Origin: Dale liked Railway's in-app LLM assistant, 2026-06-12.)
 
-- **Website-scan onboarding** — instead of the owner answering setup questions, scan their existing website to auto-populate the knowledge base / RAG (services, hours, prices, policies, FAQ) → LLM-extract → structured KB + embeddings (reuses `knowledgeIngestion` + `getEmbedding` + `search_tenant_docs`). The ultimate "tiny yes": the owner does almost nothing; the system bootstraps from what they already published. Differentiator — incumbents make you fill forms.
+- **Website-scan onboarding** — instead of the owner answering setup questions, scan their existing website to auto-populate the knowledge base / RAG (services, hours, prices, policies, FAQ) → LLM-extract → structured KB + embeddings (reuses `knowledgeIngestion` + `getEmbedding` + `search_tenant_docs`). The ultimate "tiny yes": the owner does almost nothing; the system bootstraps from what they already published. Differentiator — incumbents make you fill forms. _Status 2026-09-18: shipped (`src/services/knowledge/websiteImport.ts`, wizard website-scan step, daily re-scan worker `websiteRescanScheduler`); suggestions are staged for owner review, never auto-published. The accuracy eval it depends on exists as `./scripts/simulate.sh rag`._
   - **Post-scan gap-fill:** the scan fills what it can; the owner then reviews, corrects, and adds anything missing. Human-in-the-loop so a partial/wrong scrape never silently produces a bad KB.
   - **Hard dependency:** RAG-accuracy testing (below) — auto-populating from a scrape raises garbage-in risk, so accuracy measurement is a *guard* on this feature, not optional. The chain is scan → KB → RAG → accuracy. (Origin: Dale, 2026-06-12.)
 

@@ -63,7 +63,7 @@ describe('script composition — the invariants a copy-pasted script would lose'
     //      with the caller's own request undone. It sounds like service. It is an exit.
     for (const intake of [['intake_job_inquiry']]) {
       const script = composeScript({ persona: PERSONA, intake });
-      expect(script).toMatch(/is there anything else/i);
+      expect(script).toMatch(/Tell me if you need anything else/i);
       // Positive framing (gotcha G): the do-X form keeps "anything else?" for the caller's
       // own extras, rather than forbidding it as "not a way out".
       expect(script).toMatch(/for THEIR extras/i);

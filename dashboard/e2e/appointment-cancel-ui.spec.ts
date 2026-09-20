@@ -176,6 +176,22 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
 
   try {
     tenant = await registerFreshTenant(request);
+    // 2026-09-19: a freshly registered tenant's timezone is the column default
+    // 'UTC', but everything below is computed in the RUNNER's local timezone
+    // (CI: America/Chicago). The rebook at the bottom goes through the booking
+    // RPC, which reads the shift by the appointment's date IN THE TENANT'S
+    // timezone. From 6 PM Central onward, now+60min is already the next UTC
+    // day, so the RPC looked for a shift on a date we never seeded and refused
+    // with a 400 — every CI run between ~6 PM and midnight Central failed here
+    // (reproduced locally at 18:39 CDT; every green run was at or before 14:58
+    // CDT). Pin the tenant to the runner's timezone so "the appointment's date
+    // in the tenant's tz" and "the shift date we seed" are the same by
+    // construction, whatever zone the runner is in.
+    const runnerTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await pool.query(`UPDATE tenants SET timezone = $1 WHERE tenant_id = $2`, [
+      runnerTz,
+      tenant.tenantId,
+    ]);
     // Use *today* (local — CI runs with TZ=America/Chicago, see
     // .github/workflows/ci.yml) so the List view (which queries the
     // scheduler's default selectedDate = `new Date()` AT PAGE LOAD, close to

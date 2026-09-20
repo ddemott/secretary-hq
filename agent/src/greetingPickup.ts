@@ -7,8 +7,17 @@
  * hung up. Waiting after pickup IS the defect. Warm during ring
  * (tenant_id known, before waitForParticipant). At pickup: speak now —
  * cached frame if ready, live otherwise.
+ *
+ * 2026-09-16 (Dale, live calls): a DIFFERENT problem than the 12s one above —
+ * the opener audio starts so close to the instant pickup is detected that the
+ * caller's own handset/carrier audio path isn't fully open yet, and the first
+ * word or two get clipped ("...hank you for calling" instead of "Thank you
+ * for calling"). This is a fixed 300ms pre-roll AFTER the greeting is already
+ * warmed and ready to play, not a wait FOR the greeting to be ready — it does
+ * not reintroduce the dead-air defect above, which was caused by waiting on a
+ * slow cache fill with nothing to play yet.
  */
-export const GREETING_POST_PICKUP_WAIT_MS = 0;
+export const GREETING_POST_PICKUP_WAIT_MS = 300;
 
 export type GreetingSpeakPath = 'play_cache' | 'speak_live';
 
@@ -19,6 +28,18 @@ export type GreetingSpeakPath = 'play_cache' | 'speak_live';
  */
 export function greetingSpeakPath(frameReady: boolean): GreetingSpeakPath {
   return frameReady ? 'play_cache' : 'speak_live';
+}
+
+/**
+ * 2026-09-17 (Copilot review on #525): the pre-roll must NOT apply on
+ * speak_live. That path only happens after the warm attempt already timed
+ * out or failed — the caller has already waited with nothing to play.
+ * Stacking a flat 300ms on top of that is the "waiting after pickup"
+ * defect this file's history warns about. Only a ready cached frame earns
+ * the pre-roll.
+ */
+export function shouldPreRoll(speak: GreetingSpeakPath): boolean {
+  return speak === 'play_cache';
 }
 
 /** Session replies: WS stream is silent here. Opt out with AURA_TTS_STREAMING=false. */

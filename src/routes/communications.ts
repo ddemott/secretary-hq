@@ -169,6 +169,9 @@ export function registerCommunicationRoutes(
 
   /**
    * POST /communications/sms - Send an SMS
+   *
+   * Gated on ENABLE_SMS (default OFF, only the literal 'true' enables) — same
+   * convention as the agent worker and POST /appointments/:id/send-self-service-links.
    */
   app.post(
     '/communications/sms',
@@ -186,6 +189,21 @@ export function registerCommunicationRoutes(
       }
 
       const { to, body, template, templateData } = parsed.data;
+
+      // Checked AFTER validation so a malformed request still gets its 400
+      // (a retrying client should not be told 'disabled' about a bad payload).
+      // SMS is globally OFF pending 10DLC registration (root CLAUDE.md
+      // Architecture). Telnyx accepts the send and reports success anyway
+      // (error 40010 at the carrier), so without this gate this route would
+      // answer { success: true, messageId } for a text that never arrives —
+      // the false-promise class ENABLE_SMS exists to prevent everywhere else.
+      if (process.env.ENABLE_SMS !== 'true') {
+        return reply.status(503).send({
+          success: false,
+          error:
+            'SMS is not enabled for this platform yet (pending 10DLC registration) — no text was sent. Use email or another channel.',
+        });
+      }
 
       const result = await communicationService.sendSMS(tenantId, {
         to,

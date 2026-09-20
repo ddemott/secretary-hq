@@ -2,7 +2,7 @@
 
 > Organized outline of SecretaryHQ's capabilities. Status legend:
 > **✅ built** (works today) · **🔨 in progress** · **💡 planned** (captured in
-> `docs/product/STRATEGY.md`, demand-gated). Last updated 2026-08-14.
+> `docs/product/STRATEGY.md`, demand-gated). Last updated 2026-08-14; accuracy-corrected 2026-09-18.
 >
 > One line: **an AI receptionist that answers the phone, books the work,
 > remembers the customer — and gives the owner just enough of a back office to
@@ -17,13 +17,13 @@
 - ✅ Knows the business — answers hours / prices / services / policies from a per-tenant knowledge base (RAG / vector search)
 - ✅ Books appointments live during the call
 - ✅ Recognizes returning callers + recalls their history and preferences
-- ✅ Saves customer preferences mid-call ("prefers Maria", "last service: oil change")
-- ✅ Phone verification (OTP via SMS) when caller-ID is blocked, before booking
+- 🔨 Saves customer preferences mid-call ("prefers Maria", "last service: oil change") — the `save_customer_preference` tool is defined in `agent/src/tools/identity.ts` but is NOT presented to the model on the live question-tree path (CLAUDE.md, tool inventory re-verified 2026-09-14); recall of stored preferences works
+- 🔨 Phone verification (OTP via SMS) when caller-ID is blocked, before booking — code shipped, but the tools are only offered when `ENABLE_PHONE_VERIFICATION` AND `ENABLE_SMS` are both on (`agent/src/index.ts`), so it is off until 10DLC registration lands
 - 🔨 Live human transfer is **wired** on the question-tree path when a forward number is set (`transfer_call` always-on passthrough, #462). Without a forward number, production calls take a message for escalation. Live PSTN proof + residual hardening still open (see TODO live-validation / RUNBOOK §7c).
-- ✅ Per-tenant persona — custom voice, greeting, style flags, and system prompt (set on the AI Persona page; `tts_speed` is currently inert under Aura)
+- ✅ Per-tenant persona — custom voice, greeting, and style flags (set on the AI Persona page; `tts_speed` is currently inert under Aura). The free-text system prompt ("Personality & Instructions") is only read on the legacy prompt-ladder path — under the live question-tree call architecture it is not passed to the model
 - ✅ Graceful error recovery — never speaks raw errors; recovers in-character
 - ✅ Customer-led booking — asks the caller's preferred time, widens the window if none fit, never imposes a slot
-- ✅ **Owner-chosen call checklist (2026-08-13)** — a per-tenant preset decides what the assistant can handle: `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk`, or `owner_for_hire_front_desk` (the last adds job/role intake for solo professionals whose line takes work offers). Editable on Business Settings → Call checklist, with a next-call dry-run showing what will be ASKED, listened for, and required. Owners can turn parts off, make a field optional or required, and change the wording of approved questions — but the preset is the ceiling: what it does not include, no setting can add.
+- ✅ **Owner-chosen call checklist (2026-08-13)** — a per-tenant preset decides what the assistant can handle. There are now 33 presets (`CHECKLIST_PRESET_IDS` in `shared/checklistPresetDerivation.ts`): five hand-written front-desk presets — `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk`, `owner_for_hire_front_desk` (adds job/role intake for solo professionals whose line takes work offers), `law_firm_front_desk` (adds case intake) — plus 28 per-vertical presets (plumber, barbershop, catering, …) shipped in #388. Editable on Business Settings → Call checklist, with a next-call dry-run showing what will be ASKED, listened for, and required. Owners can turn parts off, make a field optional or required, and change the wording of approved questions — but the preset is the ceiling: what it does not include, no setting can add.
 
 ## 2. Scheduling & Booking Engine
 
@@ -62,7 +62,7 @@
 - 🔨 SMS reminder/confirmation code exists, but production SMS stays off until per-tenant 10DLC registration lands
 - ✅ Reminder scheduler (polls + delivers on a tick)
 - ✅ SMS rate-limiting + delivery retry policy in code once SMS is enabled
-- 💡 Delivery-receipt tracking (sent ≠ delivered) and a reminder-monitoring view
+- 🔨 Delivery-receipt tracking (sent ≠ delivered) — SMS delivery-status callbacks are recorded (`message_delivery_status`, `src/routes/communications.ts`); a fuller reminder-monitoring view is still 💡
 
 ## 7. Integrations
 
@@ -78,7 +78,7 @@
 - ✅ AI Persona config — voice, greeting, system prompt, preference capture, forward number
 - ✅ Guided setup wizard (+ solo-business mode)
 - ✅ Knowledge-base management (the receptionist's answers)
-- ✅ Role-based access — owner / admin / front-desk
+- ✅ Role-based access — owner / front-desk (`users_role_check`), plus platform super-admin. Server-side owner gating on staffing/catalog/billing/knowledge/calendar/provisioning routes shipped 2026-09-16 (#522, #523)
 - ✅ Demo mode — instant, isolated, self-expiring demo tenant with sample data
 
 ## 9. Multi-Tenancy, Auth & Security
@@ -110,8 +110,8 @@
 From `docs/product/STRATEGY.md`:
 
 - **Owner AI copilot** — in-dashboard assistant: "set my Saturday hours", "why did I miss calls Tuesday?" (the natural surface for WHY-reporting + onboarding)
-- **Website-scan onboarding** — auto-fill the knowledge base from the owner's existing site + post-scan gap-fill (the ultimate "tiny yes")
-- **RAG-accuracy testing** — measure how accurately the receptionist answers; gates the website-scan feature
+- ~~**Website-scan onboarding**~~ — **shipped**: `src/services/knowledge/websiteImport.ts` stages knowledge suggestions from the owner's site for review, and a daily re-scan worker (`websiteRescanScheduler`, #482) keeps them fresh; never auto-publishes.
+- ~~**RAG-accuracy testing**~~ — **shipped as an on-demand eval**: `./scripts/simulate.sh rag`
 - **Restaurant vertical add-on** — table / server / reservation vocabulary + party-size flow
 - **Expansion add-ons** (post-base, per demand) — light invoicing / reporting (build); payments → Square, payroll → Gusto (partner)
 

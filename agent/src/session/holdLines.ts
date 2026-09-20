@@ -46,7 +46,7 @@ export const THINKING_LINE = 'Just a moment.';
 
 /** Deadline 2 (~4s, still nothing): stop pretending, offer a way out. */
 export const RECOVERY_LINE =
-  "Sorry, this is taking me a moment. If you'd like, I can take a message and have someone get right back to you.";
+  "Sorry this is taking a moment. I can take a message and have someone call you back.";
 
 /**
  * Deadline 2, but a message HAS already been taken on this call.
@@ -71,7 +71,7 @@ export const RECOVERY_LINE_AFTER_MESSAGE =
  * it is pre-synthesized too, and a drifted copy would miss the cache.
  */
 export const TOOL_FALLBACK_LINE =
-  "Sorry, I'm having a little trouble with that right now. Would you like me to take a message and have someone get back to you?";
+  "I'm having trouble with that. I can take a message and have someone call you back.";
 
 /**
  * Spoken when the CALLER has gone quiet — not the agent (2026-08-01).
@@ -85,11 +85,11 @@ export const TOOL_FALLBACK_LINE =
  * nothing to grab. It promises no transfer, since there is none.
  */
 export const CALLER_CHECK_IN_LINE =
-  'Are you still there? I can take a message or set up a time — whichever is easier.';
+  "I'm still here. I can take a message, or we can set up a time.";
 
 /** Spoken as the call ends after the caller never answered the check-in. */
 export const CALLER_SILENCE_GOODBYE =
-  "I'll let you go for now — do call back any time and I'll be glad to help.";
+  "I'll let you go for now. Call back any time.";
 
 /**
  * Spoken when the call itself is broken — the LLM provider is erroring and no
@@ -110,7 +110,7 @@ export const CALLER_SILENCE_GOODBYE =
  * caller to try again shortly is the only thing this code can actually honour.
  */
 export const OUTAGE_LINE =
-  "I'm having some technical trouble on my end. Please try calling back in a few minutes — I'm sorry about that.";
+  "I'm having technical trouble. Please call back in a few minutes. Sorry about that.";
 
 /**
  * Every fixed line worth pre-synthesizing per tenant voice, minus the greeting

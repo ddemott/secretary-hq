@@ -12,13 +12,19 @@
  *   GET  /reminders           - List scheduled reminders for tenant
  *   POST /reminders/:id/trigger - Manually trigger a reminder
  *   DELETE /reminders/:id     - Cancel a reminder
- *   GET  /reminders/status    - Get scheduler status
+ *   GET  /reminders/status    - Get scheduler status (super-admin only)
+ *   POST /reminders/process   - Run the due-reminder batch now (super-admin only)
  */
 
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { withHandler, requireTenantId, type AppRequest } from '../middleware/fastify-middleware';
+import {
+  withHandler,
+  requireTenantId,
+  requireSuperAdmin,
+  type AppRequest,
+} from '../middleware/fastify-middleware';
 import { createDatabaseService } from '../database/index.js';
 import { ReminderService } from '../services/reminders/index.js';
 import { createTenantConfigService } from '../services/tenants/index.js';
@@ -279,11 +285,12 @@ export function registerReminderRoutes(
   );
 
   /**
-   * GET /reminders/status - Get scheduler status (admin only)
+   * GET /reminders/status - Get scheduler status (super-admin only — platform operator, not a tenant admin)
    */
   app.get(
     '/reminders/status',
     withHandler(async (req: AppRequest, reply) => {
+      if (!requireSuperAdmin(req, reply)) return;
       const status = getSchedulerStatus();
 
       return reply.send({
@@ -294,11 +301,13 @@ export function registerReminderRoutes(
   );
 
   /**
-   * POST /reminders/process - Manually process due reminders (admin only)
+   * POST /reminders/process - Manually process due reminders (super-admin only — platform operator, not a tenant admin)
    */
   app.post(
     '/reminders/process',
     withHandler(async (req: AppRequest, reply) => {
+      // Runs the due-reminder batch across EVERY tenant, not just the caller's.
+      if (!requireSuperAdmin(req, reply)) return;
       const processed = await processRemindersNow();
 
       return reply.send({

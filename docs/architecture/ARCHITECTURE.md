@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-16 for filesystem/package facts (29 top-level route modules, 204 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5 — all unchanged from 2026-09-15) and live suite totals (backend 3,205 / 268 files — up from 3,194/267; dashboard 1,173 / 107 files — up from 1,138/104; agent 1,061 / 61 files — unchanged; both increases mostly from PR #517 merging mid-pass — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
+**Last verified:** 2026-09-16 for filesystem/package facts (29 top-level route modules, 205 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5 — all unchanged from 2026-09-15) and live suite totals (backend 3,205 / 268 files — up from 3,194/267; dashboard 1,173 / 107 files — up from 1,138/104; agent 1,061 / 61 files — unchanged; both increases mostly from PR #517 merging mid-pass — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -46,7 +46,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 27 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (13 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
 - **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 204 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
+- **DB**: Postgres + pgvector on Supabase, 205 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -56,7 +56,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 ```
 /
 ├── src/                          Fastify backend (Node)
-│   ├── index.ts                  Entry — registers 29 top-level route modules + `agentTools/` dir (~420 lines)
+│   ├── index.ts                  Entry — registers 29 top-level route modules + `agentTools/` dir (~450 lines)
 │   ├── middleware/                fastify-middleware.ts — withHandler, tenantMiddleware, registerJwtAuthHook, generateToken, AppError, logEvent
 │   ├── routes/                   29 route modules + routeHelpers.ts
 │   ├── services/                 flat files (calendar sync, OAuth, name/token/SMS utilities) + communications/ (Telnyx-only SMS + delivery webhooks), reminders/, tenants/, usage/ subdirs
@@ -68,9 +68,9 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── lib/                      api.ts, SessionContext, ThemeContext, VocabularyContext, hooks, types
 │   ├── e2e/                      40 Playwright spec files
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
-│   └── 104 Vitest test files     React Testing Library + utility tests
+│   └── 107 Vitest test files     React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               204 SQL migrations
+│   ├── migrations/               205 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts
@@ -153,7 +153,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 
 **Graceful shutdown:** Backend handles `SIGTERM`/`SIGINT` (Railway sends these during deploys) — closes Fastify and drains the DB pool.
 
-**Single DB pool:** Backend uses one pool via `DATABASE_URL`. No separate `api_user` pool — `FORCE ROW LEVEL SECURITY` on all 20 RLS-enabled tables enforces tenant isolation even as the `postgres` superuser (required for Supabase-managed Postgres).
+**Single DB pool:** Backend uses one pool via `DATABASE_URL`. Production connects as the non-superuser, non-`BYPASSRLS` role `app_user` (verified 2026-08-02; `GET /ready` reports `rls_enforced` + `db_role`), so RLS is a real second layer behind `tenantMiddleware`. `FORCE ROW LEVEL SECURITY` is declared on every tenant-data table (38 of 38 RLS-enabled tables in prod at that probe; the "20" this doc used to carry was the March 2026 count). A superuser or `BYPASSRLS` role skips RLS even with FORCE — that is why the role matters. Details: CLAUDE.md → Database Key Details.
 
 ---
 
@@ -191,7 +191,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
        │
        │         ┌──────────────┐       ┌─────────────────┐
        ├────────►│   services   │───────│ service_employee│
-       │         │ (duration,   │       │ (skill req)     │
+       │         │ (duration,   │       │ (staff links)   │
        │         │  price)      │       └─────────────────┘
        │         └──────┬───────┘       ┌─────────────────┐
        │                │───────────────│ service_resource│
@@ -222,9 +222,9 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
                  └─────────────────────┘  └──────────────────┘
 ```
 
-### 4.2 Tables (20 RLS-enabled + 6 global)
+### 4.2 Tables (original 20 RLS-enabled + 6 global — a March 2026 snapshot; the schema has since grown to ~40 RLS-enabled tables, see `supabase/baseline.sql`)
 
-**Tenant-scoped (RLS + FORCE RLS):**
+**Tenant-scoped (RLS + FORCE RLS) — the original set; later tables (`customer_messages`, `job_inquiries`, `intake_submissions`, `tenant_question_trees`, `blackout_dates`, …) follow the same rule:**
 `tenants`, `users`, `customers`, `employees`, `resources`, `services`, `appointments`, `service_employee`, `service_resource`, `tenant_skills`, `tenant_docs`, `employee_schedule`, `call_transcripts`, `call_summaries`, `tenant_integration_settings`, `entity_sync_map`, `tenant_calendar_settings`, `appointment_sync_map`, `reminder_schedules`, `unanswered_questions`.
 
 **Global / platform:**
@@ -236,7 +236,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 ### 4.3 Key columns
 
 - All entity IDs are **UUID** (services + employees migrated from `SERIAL` in Phase 9).
-- Every tenant-scoped row has `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`.
+- Every tenant-scoped row has `tenant_id UUID NOT NULL REFERENCES tenants(tenant_id)` (PKs follow the `<table_singular>_id` convention, never bare `id`).
 - Soft-deletable tables carry `is_deleted BOOLEAN DEFAULT false` + `deleted_at TIMESTAMPTZ` with partial indexes (e.g., `WHERE is_deleted = false`).
 - `customers.phone` is stored in E.164 format (`+1...`). `normalizePhone()` rejects anything with < 10 digits.
 - `appointments` has CHECK constraint `start_time < end_time`, indexes on `(tenant_id, start_time)` + `(resource_id, start_time)` for availability checks, and partial index on `call_id WHERE call_id IS NOT NULL` for back-reference to the originating call (LiveKit room ID; was Vapi call ID pre-`661d21d`).
@@ -252,7 +252,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 | `get_effective_shifts_bulk(tenant_id, start, end)` | Bulk variant — returns all employees' shifts in a date range. Used by scheduler for efficient loading.                                                                                                                                                                 |
 | `search_tenant_docs(tenant_id, query_embedding)`   | Cosine similarity over `tenant_docs.embedding` (pgvector `<=>` operator).                                                                                                                                                                                              |
 | `check_coverage_gaps(tenant_id)`                   | Returns list of services with missing coverage (no qualified employee or resource).                                                                                                                                                                                    |
-| `link_orphaned_transcripts()`                      | Post-call cleanup — joins transcripts to summaries where `call_id` matches. Called from `dispatcher.handleCallEnded()`.                                                                                                                                                |
+| `link_orphaned_transcripts()`                      | Joins transcripts to summaries where `call_id` matches. Exists in the schema but nothing in `src/` or `agent/src/` calls it today (the old `dispatcher.handleCallEnded()` caller is gone). |
 | `set_tenant_context(uuid)`                         | Sets `app.current_tenant_id` session variable for RLS policy evaluation. Called by `withTenantClient()`.                                                                                                                                                               |
 | `fn_audit_trigger()`                               | `SECURITY DEFINER` trigger — writes before/after snapshots to `audit_log` on INSERT/UPDATE/DELETE of appointments, customers, resources.                                                                                                                               |
 
@@ -274,7 +274,7 @@ client.release();
 
 ### 5.2 FORCE ROW LEVEL SECURITY
 
-Supabase's managed Postgres doesn't let us create a separate `api_user` role. Without FORCE, the `postgres` superuser role bypasses RLS entirely. Migration `20260323000000_force_rls_single_pool.sql` applies `FORCE ROW LEVEL SECURITY` to all 20 RLS-enabled tables, which makes RLS apply even to superusers.
+Migration `20260323000000_force_rls_single_pool.sql` applied `FORCE ROW LEVEL SECURITY` to the 20 RLS-enabled tables of the time, so RLS also binds the table-owner role. (FORCE does NOT bind a superuser or `BYPASSRLS` role — the backend originally connected as `postgres` and so was not actually RLS-filtered.) Since 2026-08-02 production connects as `app_user` (created by `20260724000100_app_user_role.sql`; policies made NULL-safe by `20260724000000_rls_null_safe_context.sql`), which is what makes the policies a live second layer. See CLAUDE.md → Database Key Details.
 
 ### 5.3 Admin bypass
 
@@ -297,7 +297,7 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 5. **Tool execution** — LLM issues tool calls → HTTP POST to `https://secretary-hq-production.up.railway.app/agent-tools/*` with `x-agent-secret` header.
 6. **Business logic** — Fastify route → `withTenantClient()` → Postgres RPCs and pgvector queries.
 7. **Response** — JSON `{ success: true, result: ... }` or `{ success: false, error: ... }` with HTTP 200 — the LLM relays both shapes naturally.
-8. **Call end** — LiveKit room close event → `src/routes/voice.ts` handles summary generation + embedding + `link_orphaned_transcripts()`.
+8. **Call end** — the agent's session `Close` callback posts `/agent-tools/voice-session-end` (`src/routes/agentTools/session.ts` → `end_voice_session()` RPC) with duration, outcome, transcript, the post-call summary (`agent/src/callSummary.ts`, bounded/failsafe) and the booked `appointment_id`. Backstop: `src/workers/voiceSessionReaper.ts` force-finalizes any session left `active` past `VOICE_SESSION_REAP_MINUTES`.
 9. **Post-call async** — Appointment mutations trigger fire-and-forget sync (via `syncOrchestrator.ts`) to Google/Outlook calendars **and** Square from route handlers.
 
 ### 6.2 TTS history — OpenAI → xAI Grok (2026-05) → OpenAI (2026-06-25) → **Deepgram Aura (2026-07-14, current)**
@@ -306,7 +306,7 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 **Why the switch off OpenAI TTS (2026-07-14):** the OpenAI LiveKit plugin is **non-streaming** — it buffers the entire reply before emitting any audio, so every turn was silence-then-a-burst. Chopping the input into sentences with `StreamAdapter` only traded one gap for a gap between every sentence. **You cannot make a non-streaming engine stream by chopping its input finer.**
 
-**Historical (no longer in the codebase):** the Grok/xAI phase (`agent/src/grokTTS.ts`, `XAI_TTS_VOICE`) was removed entirely on 2026-06-25 — no `XAI_API_KEY` is referenced anywhere. The OpenAI-TTS phase that followed it is likewise gone. Full index in `docs/voice/FRAMEWORK_MIGRATIONS.md`.
+**Historical (no longer in the codebase):** the Grok/xAI phase (`agent/src/grokTTS.ts`, `XAI_TTS_VOICE`) was removed entirely on 2026-06-25 — no `XAI_API_KEY` is referenced anywhere. The OpenAI-TTS phase that followed it is gone from the primary session path; `agent/src/fallback.ts` (`runFallback()`, the degraded-config last resort that speaks one short string) still constructs `openai.TTS`. Full index in `docs/voice/FRAMEWORK_MIGRATIONS.md`.
 
 ### 6.3 Call flow — THE QUESTION-TREE ARCHITECTURE (what production runs)
 
@@ -320,7 +320,7 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 **How question trees work.** The model is NOT given a script to follow. Instead:
 
-- **Trees are data** (`checklist/trees.ts`). 10 in `PLATFORM_TREE_LIBRARY`: `identity`, `booking`, `message`, `generic_subject`, `qa`, `job`, `buy_service`, `schedule_change`, `fix_computer`, `case_intake`. Nodes are `text`, `choice` (if-branch: answering one option activates its children and marks siblings `not_applicable`), or `action` (completed ONLY by a real tool's success id).
+- **Trees are data** (`checklist/trees.ts`). 10 hand-written trees in `PLATFORM_TREE_LIBRARY`: `identity`, `booking`, `message`, `generic_subject`, `qa`, `job`, `buy_service`, `schedule_change`, `fix_computer`, `case_intake` — plus 30 vertical intake trees spread in from `verticalIntakeTrees.ts` (#388, 2026-08-31). Nodes are `text`, `choice` (if-branch: answering one option activates its children and marks siblings `not_applicable`), or `action` (completed ONLY by a real tool's success id).
 - **Host code owns all state** (`checklist/tracker.ts`). 10 node statuses; it renders the live checklist into the model's context each turn (`[ASK]` / `[listen]` / `[ACTION NOW]` / `[✓]`), discards answers stranded on a branch the caller abandoned, and exposes `isResolved()`.
 - **`isResolved()` is the goodbye gate.** `finish_call` refuses to close the call while any selected node is unresolved. **This gate replaced book-first sequencing**: a stated goal cannot be forgotten because the call cannot END on it. Callers may answer out of order, in any order.
 - **The model has three jobs:** `set_purpose` (choose trees off a menu), `record_answer` (fill anything it hears), and call the action tool when the checklist says `[ACTION NOW]`. Plus `answer_question` (RAG) at any moment.
@@ -370,7 +370,7 @@ Every route returns HTTP 200 with one of:
 
 ### 7.3 Core agent-tools routes (booking/knowledge subset)
 
-> The table below is the original 10 Fastify `/agent-tools/*` routes. The agent defines **26 real tools** today in `agent/src/tools.ts`; this table documents the original booking/knowledge subset, not the full live catalog. For the current reachability split, see §7 above and `docs/voice/VOICE_AGENT_PLAYBOOK.md`.
+> The table below is the original 10 Fastify `/agent-tools/*` routes. The agent defines **27 real tools** today (`agent/src/tools/`, re-exported by `agent/src/tools.ts`); this table documents the original booking/knowledge subset, not the full live catalog. For the current reachability split, see §7 above and `docs/voice/VOICE_AGENT_PLAYBOOK.md`.
 
 | Route                                      | Input (Zod)                                                                                                                  | Return shape                                                                                                                                                                | Backing logic                                                                                                              |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -444,7 +444,7 @@ Request
       → withTenantClient(pool, tenantId, async (client) => {
           set_tenant_context(tenantId)
           await handler logic (SELECT/INSERT/UPDATE via client)
-          set_tenant_context(NULL)
+          set_config('app.current_tenant_id', '')   // clearTenantContext on release
         })
       → Zod validation at boundaries
       → assertRowAffected() on UPDATE/DELETE
@@ -548,12 +548,12 @@ On persistent refresh failure (invalidated refresh token), the integration is ma
 
 ```sql
 CREATE TABLE employee_schedule (
-  id UUID PRIMARY KEY,
   tenant_id UUID NOT NULL,
   employee_id UUID NOT NULL,
-  schedule_date DATE NOT NULL,
+  shift_date DATE NOT NULL,   -- PK (tenant_id, employee_id, shift_date)
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,  -- may be < start_time (cross-midnight / night shift)
+  is_off BOOLEAN ...,      -- day-off marker (abridged — see baseline.sql for the real DDL)
   ...
 );
 ```
@@ -572,12 +572,12 @@ Date-based only — no weekly patterns, no overrides. The `employee_shifts` week
 2. **Business hours** — (soft rule, not enforced at DB level) — checked before RPC call.
 3. **Resource availability** — no overlapping appointment on the same resource.
 4. **Staff on shift** — `start_time` and `end_time` fall inside an `employee_schedule` window (date-based, DST-safe via `AT TIME ZONE`, night-shift aware).
-5. **Staff expertise** — employee is in `service_employee` for the requested service (by skill_id).
+5. **Staff expertise** — employee is in `service_employee` for the requested service (active `service_employee` link).
 6. **Resource capability** — resource is in `service_resource` for the requested service.
 7. **Customer upsert** — if `customer_id IS NULL` and phone is provided, find-or-create.
 8. **Auto end-time** — if `end_time IS NULL`, compute from `service.duration_minutes`.
 
-Specific error codes: `TIMESLOT_OCCUPIED`, `NO_SKILLED_EMPLOYEE`, `EMPLOYEE_NOT_SCHEDULED`, `NO_AVAILABILITY`, `INVALID_PARAMS` (BUG-064).
+Specific error codes: `TIMESLOT_OCCUPIED`, `NO_SKILLED_EMPLOYEE`, `EMPLOYEE_NOT_SCHEDULED`, `NO_AVAILABILITY`, `INVALID_PARAMS` (BUG-064), plus `PAST_TIME` and `BUSINESS_CLOSED` (blackout dates) since Sept 2026. When `p_service_id` is given, the `service_employee` / `service_resource` links are the whole staffing rule (skill tags are not consulted) — see CLAUDE.md → Booking RPCs.
 
 ### 11.4 Night shifts
 
@@ -595,10 +595,10 @@ Shared between the Fastify backend (`../shared/...`) and the dashboard (`../../s
 
 ```sql
 CREATE TABLE tenant_docs (
-  id UUID PRIMARY KEY,
+  tenant_doc_id UUID PRIMARY KEY,
   tenant_id UUID NOT NULL,
-  source_file TEXT,
-  text TEXT,              -- raw chunk
+  title TEXT, section TEXT, source TEXT,
+  content TEXT,           -- raw chunk
   normalized_text TEXT,   -- post gpt-4o-mini normalization (§12.3)
   embedding vector(1536),
   ...
@@ -610,7 +610,7 @@ CREATE TABLE tenant_docs (
 1. Dashboard uploads PDF/DOCX/DOC/TXT/MD.
 2. Server parses + chunks (paragraph-aware with overlap).
 3. For each chunk: `text` → `normalizeForEmbedding()` → `normalized_text` → `text-embedding-3-small` → `embedding`.
-4. INSERT into `tenant_docs`. Duplicate detection: delete existing chunks from the same `source_file` before re-ingesting.
+4. INSERT into `tenant_docs` (`content`, `normalized_text`, `source` = the uploaded filename, `embedding`) via `src/services/knowledge/ingestChunks.ts`. No delete-before-reingest step exists in the ingest path — re-uploading a file adds new chunks (this doc previously claimed duplicate detection by `source_file`; not found in code).
 
 ### 12.3 Query normalization
 
@@ -629,7 +629,7 @@ Unanswered questions (no chunk above similarity threshold) are logged to `unansw
 
 ### 12.5 Knowledge base questionnaire
 
-`dashboard/lib/policyQuestions.ts` defines 40 policy Q&A pairs across 9 categories (cancellation, payment, service area, hours, warranty, etc.). Owners fill these in during onboarding; answers are stored as `tenant_docs` rows with `source_file = 'questionnaire'`.
+`shared/questionBank.ts` (re-exported by `dashboard/lib/policyQuestions.ts`) defines 40 policy Q&A pairs across 9 categories (cancellation, payment, service area, hours, warranty, etc.). Owners fill these in during onboarding; answers are stored as `tenant_docs` rows with `source = 'policy-questionnaire'` (the default on the `/knowledge` add route).
 
 ---
 
@@ -741,8 +741,8 @@ Next.js 16 App Router:
 
 ```
 Primary (always visible)           Advanced (owners + admins only)
-├─ Home                            ├─ My Business
-├─ Schedule                        ├─ My Team
+├─ Home                            ├─ Setup (My Business / My Team / Business Settings
+├─ Schedule                        │   as sub-tabs, merged 2026-06-03)
 ├─ Customers                       └─ Phone Assistant
 └─ Calls
 ```
@@ -756,13 +756,13 @@ Four React contexts in `dashboard/lib/`:
 | Context                    | Purpose                                                                                                                             |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `SessionContext`           | JWT, current user, active tenant (via `useActiveTenantId()`), tenant list, `tenantsVersion` counter for cross-component sync        |
-| `ThemeContext`             | 8 themes (light, dark, midnight, nord, sunset, forest, high-contrast, solarized) — swaps CSS custom properties in `app/globals.css` |
-| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 29 types across 6 categories    |
+| `ThemeContext`             | 8 themes (navy [default], rose, forest, midnight, nord, sunset, high-contrast, solarized) — swaps CSS custom properties in `app/globals.css` |
+| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 31 types across 6 categories (`supabase/seed.sql`)    |
 | `AppointmentDetailContext` | Holds selected appointment for cross-view access (list → detail panel)                                                              |
 
 ### 16.4 Component hierarchy
 
-- `components/ui/` — 16 primitives (Button, Card, Input, Select, Modal, ConfirmModal, Toast, Badge, TimeInput, PhoneInput, FolderTabs, CoverageBar, CoverageStatusBadge, FeedbackButton)
+- `components/ui/` — shared primitives, ~27 files (Button, Card, Input, Select, Modal, ConfirmModal, Toast, Badge, TimeInput, PhoneInput, FolderTabs, CoverageBar, CoverageStatusBadge, FeedbackButton)
 - `components/scheduler/` — `NewSchedulerView`, `StaffRow`, `ResourceColumns`, `QuickBookPanel`, `EmployeeDayFocusPanel`, `StaffProfileCard`
 - `components/SetupWizard/` — 7-step wizard + `WizardModeChooser` (solo vs team branching)
 - `components/CRM/`, `components/employees/`, `components/services/`, etc. — List+Detail pane pattern (sidebar + detail right)
@@ -791,11 +791,11 @@ Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,173 passin
 
 | Concern                     | Trigger point                                        | Runs in                                                                      |
 | --------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Post-call summary           | LiveKit room close event → `POST /voice/session/end` | `src/routes/voice.ts`                                                        |
-| Call summary embedding      | After summary insert                                 | `src/routes/voice.ts` (OpenAI embedding call)                                |
+| Post-call summary           | Agent session close → `POST /agent-tools/voice-session-end` | summary generated in the agent (`agent/src/callSummary.ts`), persisted by `src/routes/agentTools/session.ts` |
+| Stuck-session finalize      | 60s tick (`voiceSessionReaper`)                      | `src/workers/voiceSessionReaper.ts`                                          |
 | Calendar + Square CRM sync  | Appointment / customer mutation routes               | `src/services/syncOrchestrator.ts` → `calendarSync.ts` + `crm/squareSync.ts` |
-| SMS / reminders             | Planned cron-based                                   | `src/routes/reminders.ts` (stub; scheduler not yet wired)                    |
-| Orphaned transcript linking | After call end                                       | `link_orphaned_transcripts()` RPC from dispatcher                            |
+| Reminders                   | 60s tick polling `reminder_schedules`                | `src/workers/reminderScheduler.ts` → `src/services/reminders/` (SMS delivery is off until 10DLC — `ENABLE_SMS`) |
+| Website re-scan             | Daily tick                                           | `src/workers/websiteRescanScheduler.ts` (stages knowledge suggestions only)  |
 
 All async work is **best-effort**. If a sync fails, the user-facing operation still succeeds. Failures are logged + surfaced in the dashboard (e.g., "Reconnect required").
 
@@ -865,7 +865,7 @@ Railway captures stdout/stderr. No aggregation pipeline yet (Datadog/Logtail/etc
 
 ### 19.2 Audit log
 
-`audit_log` table records before/after snapshots for every INSERT/UPDATE/DELETE on appointments, customers, and resources. Trigger `fn_audit_trigger` runs as `SECURITY DEFINER` to bypass RLS. Written atomically with the mutation — if the write fails, the log entry isn't created.
+`audit_log` table records before/after snapshots for every INSERT/UPDATE/DELETE on appointments, customers, employees, resources, and services. Trigger `fn_audit_trigger` runs as `SECURITY DEFINER` to bypass RLS. Written atomically with the mutation — if the write fails, the log entry isn't created.
 
 Surfaces in dashboard via `GET /versionHistory/:entity/:id`.
 
@@ -926,7 +926,7 @@ Planned once there's real call volume.
 
 ## 21. Security Summary
 
-- **Row Level Security** — enforced on 20 tenant-scoped tables with `FORCE ROW LEVEL SECURITY`. Context via `app.current_tenant_id`.
+- **Row Level Security** — enforced on every tenant-scoped table (38 RLS-enabled tables in prod at the 2026-08-02 probe) with `FORCE ROW LEVEL SECURITY`, and production connects as the non-bypass role `app_user`. Context via `app.current_tenant_id`.
 - **JWT Authentication** — 8h expiry, auto-refresh, auto-logout on tenant deletion. bcrypt password hashing.
 - **Rate limiting** — 100 req/min global, 5 req / 5 min on auth endpoints.
 - **Security headers** — `@fastify/helmet` (HSTS, CSP, X-Frame-Options, etc.).
@@ -943,8 +943,7 @@ Planned once there's real call volume.
 ## 22. Known Gaps / Future Work
 
 - **Dashboard deployment** — Railway (production for all 3 services: backend, agent, dashboard); self-host / other platforms possible for the Next.js part.
-- **LiveKit migration** — Phase 2+ pending LiveKit API Secret + WSS URL (`.claude/plans/federated-snacking-puffin.md`).
-- **Communications/reminders** — routes + schemas exist, Telnyx SMS + nodemailer wiring pending.
+- **Communications/reminders** — the reminder worker is live; outbound SMS is off (`ENABLE_SMS=false`) until per-tenant 10DLC registration lands (CLAUDE.md → Architecture). (An older "LiveKit migration Phase 2+ pending" item here was stale — the migration shipped in `661d21d`.)
 - **Observability pipeline** — aggregation + alerting not started.
 - **Soft-delete SELECT filters** — only 2 of 20 routes currently filter `is_deleted = false` on SELECTs.
 - **Full billing system** — trial management, plan switching, call limits, Stripe portal. Post-launch.
