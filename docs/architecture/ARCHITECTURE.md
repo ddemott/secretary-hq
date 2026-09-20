@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-16 for filesystem/package facts (29 top-level route modules, 205 migrations, 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, 40 committed Playwright spec files, dashboard on Next.js 16 / React 19, backend on Fastify 5 — all unchanged from 2026-09-15) and live suite totals (backend 3,205 / 268 files — up from 3,194/267; dashboard 1,173 / 107 files — up from 1,138/104; agent 1,061 / 61 files — unchanged; both increases mostly from PR #517 merging mid-pass — see CLAUDE.md Project Status). The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
+**Last verified:** 2026-09-20 for the facts re-counted by command in that pass (30 top-level route modules — `consent.ts` added by PR #526; 206 migrations; 40 committed Playwright spec files) and for live suite totals (backend 3,365 / 281 files, dashboard 1,242 / 113 files, agent 1,085 / 63 files — see CLAUDE.md Project Status and `docs/planning/TEST_COVERAGE.md`). Carried forward from 2026-09-16 and NOT re-checked on 2026-09-20: 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, dashboard on Next.js 16 / React 19, backend on Fastify 5. The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -46,7 +46,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 27 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them (13 base tools, plus 3 identity tools on goal-bearing calls) — see §7.
 - **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 205 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
+- **DB**: Postgres + pgvector on Supabase, 206 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -70,7 +70,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
 │   └── 107 Vitest test files     React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               205 SQL migrations
+│   ├── migrations/               206 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts
@@ -777,7 +777,7 @@ Every component consumes CSS custom properties (`--bg`, `--fg`, `--accent`, `--b
 
 ### 16.7 Test harness
 
-Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,173 passing tests** across **107 files** (2026-09-16, up from 1,138/104 on 2026-09-15 — mostly PR #517's new `api.superAdminScope.test.ts` + `useStaticData.test.tsx`). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
+Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,242 passing tests** across **113 files** (2026-09-20, measured on the PR #540 branch = `main` through #539 + #540; up from 1,173/107 on 2026-09-16). Contexts are provided by a shared `renderWithProviders()` helper. Happy + sad paths with 5W diagnostic comments (Who / What / When / Where / Why) — failure messages are self-debugging.
 
 ### 16.8 Dev server
 
@@ -817,13 +817,13 @@ All async work is **best-effort**. If a sync fails, the user-facing operation st
 
 ### 18.2 Backend (`npm test`)
 
-Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-09-16): 3,205 passing across 268 files, full green — up from 3,194/267 on 2026-09-15** (PR #517 merged mid-pass tonight, adding `tests/routes/customers-superadmin-scope.test.ts` + `tests/routes/tenant-routes.test.ts` and extending 3 existing files; re-run three times across the pass — concurrent agent sessions sharing `test_db` produced transient FK-violation noise on individual runs, but the total test/file count is what these docs track and it moved cleanly with #517's own new-test tally). The 2026-08-18 `rlsIsolation` / `app_user` failure is gone — `scripts/start-test-db.sh` + `scripts/setup-test-db.ts` bootstrap the role.
+Vitest with `--fileParallelism=false` (tests share `test_db` on port 5433). Covers routes (happy + sad), services, scheduling, RLS enforcement, calendar sync, OAuth flows, voice-AI fixes, schema constraints, migration regressions, billing webhook handling, provisioning flows. Every test has 5W diagnostic comments (`// WHO: Bella's Hair Studio caller | WHAT: ... | WHEN: ... | WHERE: ... | WHY: ...`). **Latest local audit rerun (2026-09-20): 3,365 passing across 281 files, full green — up from 3,205/268 on 2026-09-16** (measured on the PR #540 branch = `main` through #539 + #540; adds PR #526's consent-gate tests and the route/CI tests from #535, #536 and #538). The 2026-08-18 `rlsIsolation` / `app_user` failure is gone — `scripts/start-test-db.sh` + `scripts/setup-test-db.ts` bootstrap the role. Run from a git worktree, `tests/tenantLiveCallJourneys.test.ts` fails to load unless `agent/node_modules` is linked — see `docs/planning/TEST_COVERAGE.md`.
 
-### 18.3 Dashboard (`cd dashboard && npm test` — 1,173 passing / 107 files on 2026-09-16)
+### 18.3 Dashboard (`cd dashboard && npm test` — 1,242 passing / 113 files on 2026-09-20, with PR #540)
 
 Vitest + React Testing Library (jsdom). Renders components with all 4 providers (Session, Theme, Vocabulary, AppointmentDetail). Tests interactions (click, keyboard, form submission), accessibility (role/tabIndex/aria attributes), and error states.
 
-### 18.4 Agent (`cd agent && npm test` — 1,061 passing / 61 files on 2026-09-16, unchanged from 2026-09-15)
+### 18.4 Agent (`cd agent && npm test` — 1,085 passing / 63 files on 2026-09-20)
 
 Vitest. Covers the LiveKit Agents worker: prompt assembly, the 27 defined tool schemas (`agent/src/tools/`), `toolsClient`, transcript recording, call-outcome tracking, the bounded post-call summary, and the TTS dead-air fallback.
 

@@ -66,6 +66,10 @@ export default function VoiceCallsView() {
       if (offset === 0) {
         setLoading(true);
         setHistoryError(null);
+        // A fresh first page supersedes any earlier failed "Load more" — leaving
+        // its banner up over a list that just reloaded would report a problem
+        // that no longer exists.
+        setLoadMoreError(null);
       } else {
         setHistoryLoading(true);
         setLoadMoreError(null);
@@ -75,6 +79,11 @@ export default function VoiceCallsView() {
     try {
       const data = await Api.voice.getHistory(tenantId, { limit: 20, offset });
       if (offset === 0) {
+        // ANY successful first-page response — including the silent background
+        // poll — proves the earlier failure is over. Without this the panel
+        // stayed on the error branch (which renders before the list) even after
+        // the poll delivered fresh calls.
+        setHistoryError(null);
         const fresh = data.calls || [];
         if (opts.silent && fresh.length === 0) return;
         if (opts.silent) {

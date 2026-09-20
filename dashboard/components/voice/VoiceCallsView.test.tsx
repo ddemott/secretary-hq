@@ -424,6 +424,70 @@ describe('VoiceCallsView', () => {
       );
     });
 
+    test('HAPPY: Refresh after a failed "Load more" clears the load-more banner too (review thread)', async () => {
+      // WHY: a fresh first page supersedes the earlier failed page-2 request.
+      // Refresh cleared historyError but not loadMoreError, so a red "Could not
+      // load more calls" banner stayed over a list that had just reloaded.
+      mockCallHistory
+        .mockResolvedValueOnce({ calls: [mockCall], total: 25, has_more: true })
+        .mockRejectedValueOnce(new Error('page 2 failed'))
+        // has_more stays TRUE on purpose: the banner lives in the "Load more" area,
+        // so if the refresh response dropped it (has_more:false) a stale
+        // loadMoreError would be hidden anyway and this test could not fail.
+        .mockResolvedValue({ calls: [mockCall], total: 25, has_more: true });
+      render(<VoiceCallsView />);
+      await waitFor(() => expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0));
+      fireEvent.click(screen.getByText(/Load more/));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/could not load more calls/i);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      // Refresh swaps the list for the loading spinner (no alert in it), so an
+      // immediate "no alert" check would pass vacuously. Wait for the reloaded
+      // list — its "Load more" button is back — and only then assert.
+      await screen.findByText(/Load more/);
+      expect(
+        screen.queryByRole('status', { name: 'Loading call history' })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(mockCallHistory).toHaveBeenCalledTimes(3);
+      expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0);
+    });
+
+    test('HAPPY: a successful background poll after a failed first load recovers the panel (review thread)', async () => {
+      // WHY: the first load failed (error branch, empty list). The silent 10s poll
+      // then succeeds. The error branch renders BEFORE the list, so without
+      // clearing historyError on success the owner stayed stuck on the error
+      // while the data had actually arrived.
+      mockCallHistory
+        .mockRejectedValueOnce(new Error('first load failed'))
+        .mockResolvedValue({ calls: [mockCall], total: 1, has_more: false });
+      render(<VoiceCallsView />);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/could not load call history/i);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10500);
+      });
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+      expect(screen.getAllByText('John Smith').length).toBeGreaterThan(0);
+    });
+
+    test('HAPPY: a successful but EMPTY background poll after a failure clears the error and shows the honest empty state', async () => {
+      mockCallHistory
+        .mockRejectedValueOnce(new Error('first load failed'))
+        .mockResolvedValue({ calls: [], total: 0, has_more: false });
+      render(<VoiceCallsView />);
+      await screen.findByRole('alert');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10500);
+      });
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+      expect(screen.getByText('No call history yet')).toBeInTheDocument();
+    });
+
     test('HAPPY: the initial spinner is a live status region with readable text', async () => {
       // WHY: an icon-only spinner has no text for a live region to announce.
       mockCallHistory.mockReturnValue(new Promise(() => {}));
