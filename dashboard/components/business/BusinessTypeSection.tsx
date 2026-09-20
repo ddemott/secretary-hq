@@ -34,6 +34,7 @@ export default function BusinessTypeSection({ tenantId, onChanged }: BusinessTyp
   const [config, setConfig] = useState<Tenant | null>(null);
   const [templates, setTemplates] = useState<BusinessTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<BusinessTemplate | null>(null);
   const [applying, setApplying] = useState(false);
@@ -43,6 +44,7 @@ export default function BusinessTypeSection({ tenantId, onChanged }: BusinessTyp
     if (!tenantId) return;
     let active = true;
     setLoading(true);
+    setLoadError(false);
     Promise.all([Api.tenants.getConfig(tenantId), Api.templates.listFull()])
       .then(([cfg, tpls]) => {
         if (!active) return;
@@ -50,7 +52,12 @@ export default function BusinessTypeSection({ tenantId, onChanged }: BusinessTyp
         setTemplates(Array.isArray(tpls) ? tpls : []);
       })
       .catch(() => {
-        /* surfaced via empty render below */
+        // A failed fetch left `config` null, which `currentLabel` below also
+        // reads as "no business type set yet" — a real network error and an
+        // honest not-set-yet tenant are different facts and need different
+        // copy (same class of gap as AnalyticsView's AiCostPanel: an empty
+        // ledger and a broken fetch aren't the same sentence).
+        if (active) setLoadError(true);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -155,8 +162,13 @@ export default function BusinessTypeSection({ tenantId, onChanged }: BusinessTyp
         style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
       >
         <div>
-          <div className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-            {loading ? 'Loading…' : currentLabel}
+          <div
+            className="text-sm font-bold"
+            style={{ color: loadError ? 'var(--danger)' : 'var(--text-primary)' }}
+            role={loading ? 'status' : loadError ? 'alert' : undefined}
+            aria-live={loading || loadError ? 'polite' : undefined}
+          >
+            {loading ? 'Loading…' : loadError ? "Couldn't load your business type" : currentLabel}
           </div>
           {currentCategory && (
             <div
@@ -171,7 +183,7 @@ export default function BusinessTypeSection({ tenantId, onChanged }: BusinessTyp
           variant="secondary"
           size="sm"
           onClick={() => setPickerOpen(true)}
-          disabled={loading || templates.length === 0}
+          disabled={loading || loadError || templates.length === 0}
         >
           Change business type…
         </Button>

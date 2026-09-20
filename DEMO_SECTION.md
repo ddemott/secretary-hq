@@ -59,7 +59,7 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
 
 - Dashboard demo: `POST /demo/start` → ephemeral tenant (`src/routes/demo.ts` +
   `src/services/demoSeed.ts`). Guards today: per-IP **3 starts / 15 min**, global
-  cap **50 concurrent** demo tenants, **30-min TTL**, expired-tenant purge in
+  cap **50 concurrent** demo tenants, **30-min TTL**, expired-tenant soft-delete in
   `reminderScheduler`, and `is_demo=true` suppresses **calendar/CRM sync**
   (`syncOrchestrator`).
 - Browser voice join mechanism exists internally: `scripts/simulate.sh call` /
@@ -100,7 +100,10 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
         **`['knowledge','scheduling']` only**. **Drop** `verification` (SMS OTP),
         `transfer` (dial-out), `messaging` (`take_message` / `capture_job_inquiry`
         → owner email+SMS). The agent never even _has_ those tools. (Capability
-        composition already exists — Playbook RULE 5.2.)
+        composition already exists — Playbook RULE 5.2. **Note 2026-09-18:**
+        production runs question trees, where the model's toolset comes from
+        `selectedTools()` in `agent/src/checklist/checklistTools.ts`, not the
+        ladder-era `buildTools` capability subset — the demo gate has to land there too.)
   - [ ] **Backend (backstop / defense-in-depth):** `/agent-tools/send-verification-code`,
         `verify-phone-code`, transfer, and message endpoints **reject when the
         tenant is `is_demo`** → return a graceful

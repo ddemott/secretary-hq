@@ -30,6 +30,7 @@ export default function CRMView() {
     }[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [customersError, setCustomersError] = useState(false);
   const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
   const [customerAppointments, setCustomerAppointments] = useState<
     {
@@ -79,6 +80,7 @@ export default function CRMView() {
 
   async function fetchCustomers() {
     setLoading(true);
+    setCustomersError(false);
     try {
       const data = await Api.customers.list(tenantId);
       if (!data || data.length === 0) {
@@ -99,6 +101,7 @@ export default function CRMView() {
       } else {
         setCustomers([]);
         setSelectedCustomer(null);
+        setCustomersError(true);
         showToast('Could not load customers. Please try again.', 'error');
       }
     }
@@ -242,6 +245,7 @@ export default function CRMView() {
         customers={customers}
         selectedCustomer={selectedCustomer}
         loading={loading}
+        loadError={customersError}
         isOwner={isOwner}
         tenantId={tenantId}
         showDetailOnMobile={showDetailOnMobile}

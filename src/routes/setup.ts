@@ -4,6 +4,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import {
@@ -133,6 +134,11 @@ export function registerSetupRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only (mirrors /setup/commit below): a dry-run over the same
+      // draft graph, which exposes the same business-structure detail
+      // (existing services/resources/employees, upcoming-appointment
+      // impact counts) even though it never writes anything itself.
+      if (!requireOwnerRole(req, reply)) return;
 
       const parsed = DraftGraphSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -166,6 +172,8 @@ export function registerSetupRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only: changes which service every unmatched call books.
+      if (!requireOwnerRole(req, reply)) return;
       const result = await withTenantClient(tenantId, (client) =>
         applyDefaultServicePolicy(client, tenantId)
       );
@@ -184,6 +192,15 @@ export function registerSetupRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only: this is the same insert/update/prune write surface that
+      // services.ts/employees.ts/resources.ts/shifts.ts/mappings.ts are each
+      // individually owner-gated for — reaching it through a bulk draft
+      // graph instead of the per-entity routes must not bypass that gate.
+      // A sync-mode commit soft-deletes/hard-deletes every service,
+      // resource, employee, shift and mapping the draft omits
+      // (setupGraph.ts), so this is strictly higher blast radius than any
+      // single route it stands in for.
+      if (!requireOwnerRole(req, reply)) return;
 
       const parsed = DraftGraphSchema.safeParse(req.body);
       if (!parsed.success) {

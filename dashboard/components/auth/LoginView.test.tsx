@@ -169,6 +169,179 @@ describe('LoginView affordances', () => {
   });
 });
 
+describe('LoginView consent gate interstitial', () => {
+  // supabase/migrations/20260916000000_tenant_admin_consent_gate.sql —
+  // an admin-provisioned tenant whose owner hasn't confirmed the emailed
+  // consent link gets 403 error_code:'consent_required' from /login, not
+  // a normal auth failure.
+
+  test('HAPPY: a correct password on a consent-gated account shows a distinct, non-dismissible interstitial — not the generic invalid-credentials error', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () =>
+        Promise.resolve({
+          success: false,
+          error: 'consent_required',
+          error_code: 'consent_required',
+        }),
+    });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'gated@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/can't access your dashboard yet/i);
+    expect(alert).toHaveTextContent(/before you can sign in/i);
+    // The interstitial replaces the whole form — no way to fall through
+    // to a dashboard from here.
+    expect(screen.queryByRole('button', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/invalid email or password/i)).not.toBeInTheDocument();
+  });
+
+  test('HAPPY: "Resend confirmation email" posts to /consent/resend with the same credentials and shows a generic confirmation', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: 'consent_required',
+            error_code: 'consent_required',
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ success: true }),
+      });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'gated@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+
+    await screen.findByText(/new confirmation link was just emailed/i);
+    expect(global.fetch).toHaveBeenLastCalledWith(
+      'https://localhost:4001/consent/resend',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'gated@biz.com', password: 'pass123' }),
+      })
+    );
+  });
+
+  const consentRequiredResponse = {
+    ok: false,
+    status: 403,
+    json: () =>
+      Promise.resolve({
+        success: false,
+        error: 'consent_required',
+        error_code: 'consent_required',
+      }),
+  };
+  const sendConsentLogin = async () => {
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'gated@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+  };
+
+  test('SAD: resend state is reset on a new login attempt — a second consent_required episode starts un-sent (review thread)', async () => {
+    // WHY: resendSent lived across attempts, so after one resend + "Back to
+    // login" + another gated login, the interstitial opened already saying
+    // "just emailed" and the resend button was gone.
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ success: true }),
+      })
+      .mockResolvedValueOnce(consentRequiredResponse);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+    await screen.findByText(/new confirmation link was just emailed/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /back to login/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /resend confirmation email/i })).toBeInTheDocument();
+  });
+
+  test('SAD: a 429 from /consent/resend does NOT claim an email was sent, and the button stays', async () => {
+    // WHY: /consent/resend is limited to 3/hour. The 4th press used to show
+    // "A new confirmation link was just emailed" — false, nothing was sent.
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/too many resend requests/i);
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /resend confirmation email/i })).toBeInTheDocument();
+  });
+
+  test('SAD: a network failure on resend shows an error, not "sent"', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockRejectedValueOnce(new Error('offline'));
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn't connect/i);
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+  });
+
+  test('HAPPY: "Back to login" returns to the login form (not the dashboard)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () =>
+        Promise.resolve({
+          success: false,
+          error: 'consent_required',
+          error_code: 'consent_required',
+        }),
+    });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'gated@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+
+    fireEvent.click(screen.getByRole('button', { name: /back to login/i }));
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
+  test('SAD: a plain invalid-credentials 401 still shows the generic error, not the consent interstitial', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ success: false, error: 'Invalid email or password' }),
+    });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@b.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'wrong' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/invalid email or password/i);
+    expect(screen.queryByText(/can't access your dashboard yet/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('LoginView accessibility', () => {
   test('HAPPY: labels are associated with inputs via htmlFor/id', () => {
     // WHY: Screen readers need the label-input association to announce

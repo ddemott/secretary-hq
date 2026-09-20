@@ -11,6 +11,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { assertRowAffected } from './routeHelpers';
@@ -82,6 +83,9 @@ export function registerServiceRoutes(
   app.post(
     '/services/create',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): service catalog changes
+      // affect what the AI agent offers to every caller.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CreateServiceSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -114,6 +118,9 @@ export function registerServiceRoutes(
   app.post(
     '/services/:id/update',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): service catalog changes
+      // affect what the AI agent offers to every caller.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const parsed = UpdateServiceSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -153,6 +160,9 @@ export function registerServiceRoutes(
   app.delete(
     '/services/:id/delete',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): service catalog changes
+      // affect what the AI agent offers to every caller.
+      if (!requireOwnerRole(req, reply)) return;
       const { id } = req.params as { id: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;

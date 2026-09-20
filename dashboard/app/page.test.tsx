@@ -131,6 +131,56 @@ describe('LandingPage mobile hamburger menu', () => {
   });
 });
 
+describe('LandingPage inline handlers (dead under dangerouslySetInnerHTML)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  it('SAD: the injected markup carries NO inline on* handler attributes', async () => {
+    // WHY: LANDING_HTML's four mobile-menu links had onclick="closeMobileMenu()",
+    // but closeMobileMenu only ever existed inside the never-executed inline
+    // <script>, so it was not a global — every mobile-menu link click threw
+    // "ReferenceError: closeMobileMenu is not defined" (also the jsdom warning
+    // that showed up in dashboard test runs). The useEffect already wires
+    // link clicks to close(); inline handlers here can only be dead or broken.
+    await renderLanding();
+    const offenders = Array.from(document.querySelectorAll('*')).filter((el) =>
+      el.getAttributeNames().some((name) => name.toLowerCase().startsWith('on'))
+    );
+    expect(offenders.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
+  });
+
+  it('SAD: clicking a mobile-menu link raises no uncaught error and still closes the menu', async () => {
+    await renderLanding();
+    const errors: string[] = [];
+    const onError = (e: ErrorEvent) => {
+      errors.push(e.message);
+      e.preventDefault();
+    };
+    window.addEventListener('error', onError);
+    try {
+      const btn = document.getElementById('hamburger-btn')!;
+      const menu = document.getElementById('mobile-menu')!;
+      const links = Array.from(document.querySelectorAll('.nav-mobile-menu a'));
+      expect(links.length).toBeGreaterThanOrEqual(4);
+      for (const link of links) {
+        // Each link is exercised with the menu genuinely open, and must close it.
+        expect(menu).not.toHaveClass('open');
+        fireEvent.click(btn);
+        expect(menu).toHaveClass('open');
+        fireEvent.click(link);
+        expect(menu).not.toHaveClass('open');
+        expect(btn).toHaveAttribute('aria-expanded', 'false');
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+  });
+});
+
 describe('LandingPage auth redirect', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -26,6 +26,7 @@ import { resolveLocalHttpsCertDir } from './localHttpsCerts';
 
 import { registerAuthRoutes } from './routes/auth';
 import { registerTenantRoutes } from './routes/tenants';
+import { registerConsentRoutes } from './routes/consent';
 import { registerAppointmentRoutes } from './routes/appointments';
 import { registerCustomerRoutes } from './routes/customers';
 import { registerEmployeeRoutes } from './routes/employees';
@@ -252,6 +253,7 @@ registerHealthRoutes(app, pool);
 registerCallerSimulatorRoutes(app);
 registerAuthRoutes(app, pool, generateToken);
 registerTenantRoutes(app, pool, withTenantClient);
+registerConsentRoutes(app, pool);
 registerAppointmentRoutes(app, pool, withTenantClient);
 registerCustomerRoutes(app, pool, withTenantClient);
 registerEmployeeRoutes(app, pool, withTenantClient);

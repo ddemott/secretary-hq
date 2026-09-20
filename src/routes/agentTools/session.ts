@@ -524,6 +524,19 @@ export function registerSessionRoutes({ app, pool, withTenantClient }: AgentTool
               [args.tenant_id, args.call_id, JSON.stringify(args.tool_calls)]
             );
           }
+          // Record WHY the call was ended by the outage guard (see schemas.ts).
+          // Same MERGE-not-SET rule as tool_calls above; the enrich pass omits it
+          // and omission must never erase it.
+          if (args.llm_outage != null) {
+            await client.query(
+              `UPDATE voice_sessions
+                  SET metadata = COALESCE(metadata, '{}'::jsonb)
+                        || jsonb_build_object('llm_outage', $3::jsonb),
+                      updated_at = now()
+                WHERE tenant_id = $1 AND call_id = $2`,
+              [args.tenant_id, args.call_id, JSON.stringify(args.llm_outage)]
+            );
+          }
           if (!['price', 'no_availability'].includes(args.outcome ?? '')) {
             return { ended: res.rows[0]?.ended ?? false, forwardPhone: null, inboundPhone: null };
           }
@@ -573,6 +586,28 @@ export function registerSessionRoutes({ app, pool, withTenantClient }: AgentTool
       // the agent scraped itself.
       if (ended) {
         callOutcomeTotal.inc({ outcome: args.outcome ?? 'unknown' });
+        if (args.llm_outage != null) {
+          // An empty provider balance gets its OWN event name: it is the one
+          // failure here that nothing but a human with a credit card can clear,
+          // so it must be alertable without a label filter. Everything else the
+          // guard ends a call on shares voice_llm_outage.
+          const event =
+            args.llm_outage.cause === 'quota_exhausted'
+              ? 'llm_quota_exhausted'
+              : 'voice_llm_outage';
+          errorsTotal.inc({ event });
+          app.log.error(
+            {
+              event,
+              tenant_id: args.tenant_id,
+              call_id: args.call_id,
+              cause: args.llm_outage.cause,
+              status_code: args.llm_outage.status_code ?? null,
+              reason: args.llm_outage.message ?? null,
+            },
+            'call ended by the outage guard — the caller was told "technical trouble" and hung up on'
+          );
+        }
         for (const ms of args.turn_latency_ms ?? []) turnLatencyMs.observe(ms);
       }
 

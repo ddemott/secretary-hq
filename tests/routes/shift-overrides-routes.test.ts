@@ -41,6 +41,14 @@ let mockClient: MockClient;
 let queryResponses: MockResponse[];
 let queries: { text: string; params: unknown[] }[];
 
+type TestAuth = { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+/**
+ * `undefined` = default owner stub (every route in this file is owner-gated
+ * via requireOwnerRole, 2026-09-16 role-check audit); set explicitly
+ * per-test to exercise the gate itself (front_desk → 403, null → 401).
+ */
+let authOverride: TestAuth | null | undefined;
+
 function buildApp() {
   const handle = createMockClient();
   mockClient = handle.mockClient;
@@ -52,11 +60,23 @@ function buildApp() {
   const fastify = Fastify({ logger: false });
 
   // The DELETE route reads request.tenantId from middleware; simulate
-  // tenant-id injection from query param or header for tests.
+  // tenant-id injection from query param or header for tests. Also stamp
+  // request.auth so the routes' requireOwnerRole gate sees an owner by
+  // default — real production requests always carry a JWT-derived auth.
   fastify.addHook('preHandler', async (request) => {
     const q = request.query as Record<string, string> | undefined;
     const tid = q?.tenant_id || (request.headers['x-tenant-id'] as string);
     if (tid) (request as unknown as { tenantId: string }).tenantId = tid;
+    // A real dashboard request always carries a JWT-derived req.auth,
+    // independent of whatever tenant_id (if any) is in the query/header/
+    // body — that's a separate, unrelated field the Zod schema validates
+    // on its own. Default to an authenticated owner here; tests that want
+    // to simulate a genuinely unauthenticated request set
+    // `authOverride = null` explicitly.
+    (request as unknown as { auth: TestAuth | null | undefined }).auth =
+      authOverride !== undefined
+        ? authOverride
+        : { tenant_id: tid || TENANT_ID, user_id: 'owner-user', email: 'owner@test.local', role: 'owner' };
   });
 
   registerShiftRoutes(
@@ -80,6 +100,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   queries.length = 0;
   queryResponses.length = 0;
+  authOverride = undefined;
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -288,6 +309,7 @@ describe('POST /shifts/overrides/:employeeId/:shiftDate/update — sad paths', (
     //       not the old misleading 400. Still no DB query runs.
     // WHY: same scoping argument as create — without an authenticated
     //      session a guessed composite key must not reach a cross-tenant UPDATE
+    authOverride = null;
     const res = await app.inject({
       method: 'POST',
       url: `/shifts/overrides/${EMPLOYEE_ID}/${SHIFT_DATE}/update`,
@@ -343,4 +365,64 @@ describe('DELETE /shifts/overrides/:employeeId/:shiftDate — sad paths', () => 
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ success: false });
   });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// SECURITY — owner-role gate (2026-09-16 role-check audit)
+// ════════════════════════════════════════════════════════════════════
+
+describe('shift-override routes — owner-role gate', () => {
+  const mutatingRoutes: Array<[string, string, string]> = [
+    ['POST', '/shifts/overrides/create', 'create'],
+    ['POST', `/shifts/overrides/${EMPLOYEE_ID}/${SHIFT_DATE}/update`, 'update'],
+    ['DELETE', `/shifts/overrides/${EMPLOYEE_ID}/${SHIFT_DATE}`, 'delete'],
+  ];
+
+  it.each(mutatingRoutes)(
+    'SECURITY: %s %s is rejected 403 for a front-desk user before any query runs',
+    async (method, path) => {
+      authOverride = {
+        tenant_id: TENANT_ID,
+        user_id: 'fd-user',
+        email: 'frontdesk@test.local',
+        role: 'front_desk',
+      };
+
+      const res = await app.inject({
+        method: method as 'POST' | 'DELETE',
+        url: path.includes('?') ? path : `${path}?tenant_id=${TENANT_ID}`,
+        payload: {
+          tenant_id: TENANT_ID,
+          employee_id: EMPLOYEE_ID,
+          shift_date: SHIFT_DATE,
+          is_off: true,
+        },
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().success).toBe(false);
+      expect(queries).toHaveLength(0);
+    }
+  );
+
+  it.each(mutatingRoutes)(
+    'SECURITY: %s %s is rejected 401 when unauthenticated',
+    async (method, path) => {
+      authOverride = null;
+
+      const res = await app.inject({
+        method: method as 'POST' | 'DELETE',
+        url: path.includes('?') ? path : `${path}?tenant_id=${TENANT_ID}`,
+        payload: {
+          tenant_id: TENANT_ID,
+          employee_id: EMPLOYEE_ID,
+          shift_date: SHIFT_DATE,
+          is_off: true,
+        },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(queries).toHaveLength(0);
+    }
+  );
 });

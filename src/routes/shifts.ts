@@ -11,6 +11,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { expandWeeklyToSchedule } from '../services/expandWeeklyToSchedule';
@@ -166,6 +167,8 @@ export function registerShiftRoutes(
   app.post(
     '/shifts/overrides/create',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CreateOverrideSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -210,6 +213,8 @@ export function registerShiftRoutes(
   app.post(
     '/shifts/overrides/:employeeId/:shiftDate/update',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const { employeeId, shiftDate } = req.params as { employeeId: string; shiftDate: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
@@ -243,6 +248,8 @@ export function registerShiftRoutes(
   app.delete(
     '/shifts/overrides/:employeeId/:shiftDate',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const { employeeId, shiftDate } = req.params as { employeeId: string; shiftDate: string };
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
@@ -268,6 +275,8 @@ export function registerShiftRoutes(
   app.post(
     '/shifts/copy-week',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CopyWeekSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -332,6 +341,8 @@ export function registerShiftRoutes(
   app.post(
     '/shifts/expand-weekly',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = ExpandWeeklySchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -414,6 +425,8 @@ export function registerShiftRoutes(
   app.post(
     '/shifts/blackouts',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
       const parsed = BlackoutSchema.safeParse(req.body);
@@ -443,6 +456,8 @@ export function registerShiftRoutes(
   app.delete(
     '/shifts/blackouts/:date',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
       const { date } = req.params as { date: string };

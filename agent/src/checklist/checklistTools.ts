@@ -72,8 +72,8 @@ const TREE_CONFLICTS: Map<string, Set<string>> = (() => {
  */
 const CONFLICT_CLARIFIERS: Record<string, string> = {
   'buy_service|job':
-    'Ask which it is ("Are you looking to hire him, or interested in the AI receptionist for your ' +
-    'own business?"), then select ONE of them.',
+    'Clarify which it is in a falling tone ("I can help with hiring him for a role, or with ' +
+    'the AI receptionist for your own business. Tell me which."), then select ONE of them.',
 };
 
 /**
@@ -546,7 +546,7 @@ const OFFERED_SLOT_FIELDS = ['open_times', 'slots', 'available_times', 'times'] 
  * lovely; the alternative was changing the route's result shape, which the
  * ladder path and several tests also read.
  */
-export const RAG_NO_ANSWER_MARKER = "I don't have specific information on that topic";
+export const RAG_NO_ANSWER_MARKER = "I don't have that on hand";
 
 /** True when the knowledge base returned its no-answer fallback. */
 export function ragCouldNotAnswer(text: string): boolean {
@@ -1030,9 +1030,9 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
           'REFUSED: you marked the work direction UNCLEAR but selected ' +
           (picksJob ? 'job' : 'buy_service') +
           ' — the two trees on that axis look alike from a vague opener, and a wrong pick ' +
-          'interrogates the caller down the wrong track. Ask ONE clarifying question ' +
-          '("Are you looking to hire him, or interested in the AI receptionist for your ' +
-          'own business?") and select once they answer. Other trees (message, qa, booking, ' +
+          'interrogates the caller down the wrong track. Clarify once in a falling tone ' +
+          '("I can help with hiring him for a role, or with the AI receptionist for your ' +
+          'own business. Tell me which.") and select once they answer. Other trees (message, qa, booking, ' +
           'schedule_change) may be selected now.'
         );
       }
@@ -1490,9 +1490,9 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       );
       directive +=
         '\n\nSTOP before you send this. "Opportunity" is the one word that means two ' +
-        'opposite things on this line, and you have not asked which. Ask ONE question now ' +
-        '("Are you looking to hire the owner for something, or are you interested in the AI ' +
-        'receptionist for your own business?") and then set_purpose accordingly — ' +
+        'opposite things on this line, and you have not asked which. Clarify once now in a ' +
+        'falling tone ("I can help with hiring the owner for something, or with the AI ' +
+        'receptionist for your own business. Tell me which.") and then set_purpose accordingly — ' +
         'buy_service if they want to BUY it, job if they are offering the owner work. Only ' +
         'if they truly just want a note passed along does this stay a plain message.';
     }
@@ -1538,15 +1538,31 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       }
     }
     if (args.node_id === CALLER_NAME && args.value && !args.declined) {
-      // 2026-07-21 live call: the caller gave his name and never heard it again
-      // until the goodbye. A receptionist who learns a name USES it — nudge at
-      // the exact moment it lands, when the acknowledgement is being composed.
-      // First name only: "Thanks, Dale." — never "Thanks, Dale DeMott."
-      const first = args.value.trim().split(/\s+/)[0];
+      // 2026-07-21: name never reused until goodbye → felt like a form.
+      // 2026-09-19 (SCL_ibdmZ9imLFtV): every intake turn opened "Thanks, Bob."
+      // 2026-09-20 Dale: no thanks after every answer — just the next question.
+      // Remember first name for booking confirm / goodbye only. Flatten first (#289).
+      const safeName = sanitizeVolunteered(args.value, 80);
+      const first = safeName?.split(/\s+/)[0];
+      if (first) {
+        directive +=
+          `\n\nTheir first name is ${first}. Keep it for booking confirm and goodbye only. ` +
+          `Do NOT thank them, nod ("Got it"), or say their name this turn — go straight ` +
+          `to the next question.`;
+      }
+    }
+    // Dale 2026-09-20: after an answer, speak the next question only — no thank-you
+    // machine. Phone read-back turns are exempt: that directive IS the whole spoken line.
+    const isPhoneReadbackTurn =
+      args.node_id === CALLER_PHONE &&
+      !!args.value &&
+      !args.declined &&
+      directive.includes('READ THE NUMBER BACK NOW');
+    if (!isPhoneReadbackTurn) {
       directive +=
-        `\n\nUse their first name in your acknowledgement right now ("Thanks, ${first}.") ` +
-        `and again at natural moments later — confirming the booking, wrapping up. ` +
-        `Not every sentence; that reads as salesy.`;
+        '\n\nYour next spoken line is the NEXT checklist question (or action) only. ' +
+        'No opener: no "Thanks", no "Thanks for that", no "Got it", no name, no "Okay". ' +
+        'Just ask.';
     }
     return stateBlock() + directive;
   }
@@ -1601,8 +1617,8 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       // First name only — "You're all set, Dale", never "…, Dale DeMott".
       const name = tracker.value(CALLER_NAME)?.trim().split(/\s+/)[0];
       const goodbye = name
-        ? `You're all set, ${name}. Thanks for calling, and have a great day!`
-        : `You're all set. Thanks for calling, and have a great day!`;
+        ? `You're all set, ${name}. Thanks for calling.`
+        : `You're all set. Thanks for calling.`;
       await deps.closeCall(goodbye);
       return 'Call complete.';
     },

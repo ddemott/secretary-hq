@@ -142,6 +142,59 @@ describe('ChecklistPresetSection', () => {
     );
   });
 
+  test('SAD: a failed initial load shows an error, not a fabricated derived preset', async () => {
+    // WHO: an owner opening Business Settings on a bad connection.
+    // WHAT: getConfig rejects, so `config` stays null. Falling straight
+    //       through to the "derived" default preset name would read as this
+    //       tenant's real (unconfigured) checklist rather than a load error.
+    // WHERE: ChecklistPresetSection's initial fetch effect.
+    // WHY: same class of gap as AnalyticsView's AiCostPanel — a real fetch
+    //      failure and an honest default must not render identically.
+    mockGetConfig.mockRejectedValue(new Error('network error'));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn.t load the call checklist/);
+    expect(screen.getByLabelText('Preset')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save checklist' })).toBeDisabled();
+  });
+
+  test('SAD: on a failed load the header says "Checklist unavailable" (not a derived preset name) and every toggle is disabled (review thread)', async () => {
+    // WHY: with config null the component falls back to a locally derived
+    // preset, so without this the header still showed a real-looking preset
+    // name ("Local service front desk") beside the error, and the block /
+    // optional / required chips were live even though nothing could be saved.
+    mockGetConfig.mockRejectedValue(new Error('network error'));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    await screen.findByRole('alert');
+    const name = screen.getByTestId('checklist-preset-name');
+    expect(name).toHaveTextContent('Checklist unavailable');
+    expect(name).not.toHaveTextContent(/front desk/i);
+    expect(screen.queryByText(/Derived from business type/)).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot be edited until it loads/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Book a time' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Callback number' })).toBeDisabled();
+  });
+
+  test('HAPPY: while loading, the preset name is a polite live-region status', async () => {
+    // WHY: the UX pass made the in-flight "Loading…" a role="status" region so a
+    // screen-reader user is told something is loading; once loaded the name is
+    // plain content, not a live region.
+    mockGetConfig.mockReturnValue(new Promise(() => {}));
+    render(<ChecklistPresetSection tenantId="t1" />);
+    const name = screen.getByTestId('checklist-preset-name');
+    expect(name).toHaveTextContent('Loading…');
+    expect(name).toHaveAttribute('role', 'status');
+    expect(name).toHaveAttribute('aria-live', 'polite');
+  });
+
+  test('HAPPY: a successful load shows no error alert and drops the live-region role', async () => {
+    // WHY: the load-error alert must appear ONLY on a real failure.
+    render(<ChecklistPresetSection tenantId="t1" />);
+    const name = await screen.findByTestId('checklist-preset-name');
+    await waitFor(() => expect(name).toHaveTextContent('Salon front desk'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(name).not.toHaveAttribute('role');
+  });
+
   test('HAPPY: marking callback number required posts required_node_ids', async () => {
     render(<ChecklistPresetSection tenantId="t1" />);
     await screen.findByText('Salon front desk');

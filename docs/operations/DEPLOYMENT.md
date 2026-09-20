@@ -43,10 +43,10 @@ From **Project Settings** > **Database**:
 In the Supabase SQL Editor, run:
 
 ```sql
-CREATE EXTENSION IF NOT EXISTS pgvector;
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-- `pgvector`: Required for RAG knowledge base embeddings
+- `vector` (pgvector): Required for RAG knowledge base embeddings
 
 (`pg_net` is no longer required — the old `notify_n8n_on_appointment` trigger is dead code. All async work runs inline in Fastify route handlers.)
 
@@ -62,7 +62,7 @@ Before applying migrations, validate that your cloud database meets all prerequi
 ./scripts/preflight-cloud.sh "postgres://postgres:[YOUR-PASSWORD]@db.<PROJECT_ID>.supabase.co:5432/postgres"
 ```
 
-This checks: connectivity, extensions (pgvector, pg_net), role creation, database state, PostgreSQL version, and migration file count. Fix any FAIL items before proceeding.
+This checks: connectivity, extensions (pgvector required; `pg_net` is only a WARN and is no longer needed — the n8n trigger it served was dropped in `20260821000000`), role creation, database state, PostgreSQL version, and migration file count. Fix any FAIL items before proceeding.
 
 ### 2.2 Apply Migrations
 
@@ -72,7 +72,7 @@ Use the existing `setup-db.sh` script, passing the production connection string:
 ./scripts/setup-db.sh "postgres://postgres:[YOUR-PASSWORD]@db.<PROJECT_ID>.supabase.co:5432/postgres"
 ```
 
-This applies all 204 migrations in order and seeds the database with the Bella's Hair Studio demo tenant.
+This applies all 205 migrations in order (tracked in `schema_migrations`, so re-runs only apply new files). It does **not** seed data — seeding is the separate `scripts/seed-db.sh`. Prefer `DATABASE_URL="<prod-url>" bash scripts/setup-db.sh` over the argument form so the password isn't left in shell history (see `docs/operations/DEPLOYMENT_CHECKLIST.md` §3).
 
 ### 2.3 RLS Enforcement
 
@@ -120,7 +120,7 @@ Railway is configured via `railway.json` + `nixpacks.toml` in the repo root.
 3. **Health check**: `/health` endpoint
 4. **Restart policy**: `ON_FAILURE` with max 10 retries
 
-**Database compatibility**: The backend uses a single DB pool via `DATABASE_URL`. Every RLS-enabled table has `FORCE ROW LEVEL SECURITY` (38 when last verified against prod 2026-08-02 — `docs/operations/SECURITY.md` carries the same pinned figure and is equally due for a re-count; new tenant-data tables ship with RLS enabled, and tables are occasionally dropped or merged too, so the count moves in both directions — re-verify with `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND rowsecurity` rather than trusting either doc's pinned figure). Since 2026-07-27 production connects as `app_user` (`rolbypassrls=f`), so the policies are a real second layer rather than decoration — `GET /ready` reports `rls_enforced` + `db_role` from the running process's own connection. Apply all 204 migrations (including `20260323000000_force_rls_single_pool.sql`, `20260427000000_telnyx_provisioning.sql`, `20260430000002_drop_employee_shifts.sql`, the 2026-05-01 atomic-booking exclusion-constraint pair `20260501000000` + `20260501000001`, the 2026-05-05 user-role column `20260505000000_user_roles.sql`, the 2026-08-11 generic intake envelope migration `20260811160000_intake_submissions.sql`, and the 2026-08-14 tenant-question-tree pair `20260814120000_checklist_preset_id_catalog_sync.sql` + `20260814130000_question_trees_per_tenant.sql`) to Supabase before deploying. The two atomic-booking migrations require a pre-flight scan for any existing overlapping `appointments` rows on the same `(resource_id, time-range)` or `(employee_id, time-range)` — the `ALTER TABLE ... ADD CONSTRAINT EXCLUDE` will fail if any are present. The user-role migration is harmless additive (DEFAULT `'owner'`, no NULL backfill).
+**Database compatibility**: The backend uses a single DB pool via `DATABASE_URL`. Every RLS-enabled table has `FORCE ROW LEVEL SECURITY` (38 when last verified against prod 2026-08-02 — `docs/operations/SECURITY.md` carries the same pinned figure and is equally due for a re-count; new tenant-data tables ship with RLS enabled, and tables are occasionally dropped or merged too, so the count moves in both directions — re-verify with `SELECT count(*) FROM pg_tables WHERE schemaname='public' AND rowsecurity` rather than trusting either doc's pinned figure). Since 2026-07-27 production connects as `app_user` (`rolbypassrls=f`), so the policies are a real second layer rather than decoration — `GET /ready` reports `rls_enforced` + `db_role` from the running process's own connection. Apply all 205 migrations (including `20260323000000_force_rls_single_pool.sql`, `20260427000000_telnyx_provisioning.sql`, `20260430000002_drop_employee_shifts.sql`, the 2026-05-01 atomic-booking exclusion-constraint pair `20260501000000` + `20260501000001`, the 2026-05-05 user-role column `20260505000000_user_roles.sql`, the 2026-08-11 generic intake envelope migration `20260811160000_intake_submissions.sql`, and the 2026-08-14 tenant-question-tree pair `20260814120000_checklist_preset_id_catalog_sync.sql` + `20260814130000_question_trees_per_tenant.sql`) to Supabase before deploying. The two atomic-booking migrations require a pre-flight scan for any existing overlapping `appointments` rows on the same `(resource_id, time-range)` or `(employee_id, time-range)` — the `ALTER TABLE ... ADD CONSTRAINT EXCLUDE` will fail if any are present. The user-role migration is harmless additive (DEFAULT `'owner'`, no NULL backfill).
 
 **Graceful shutdown**: The backend handles `SIGTERM`/`SIGINT` (Railway sends these during deploys) — closes Fastify and drains the DB pool.
 
@@ -144,7 +144,7 @@ This is the single source of truth for environment variables across all three de
 
 #### Backend (Fastify) — required at boot
 
-The backend exits on startup if any of these are missing in production (see `src/services/envWarnings.ts`).
+The backend exits on startup if any of these are missing in production (the check is at the top of `src/index.ts`; optional-var boot warnings live in `src/services/envWarnings.ts`).
 
 | Variable            | Description                                                       |
 | ------------------- | ----------------------------------------------------------------- |
@@ -229,7 +229,7 @@ lands in `opt_out_records`.
 | `JWT_EXPIRY`                                                      | `8h`                          | Token expiry duration                                                                                                                                                                                                                                                                                                                                 |
 | `PORT`                                                            | `4001`                        | Server port                                                                                                                                                                                                                                                                                                                                           |
 | `CORS_ORIGIN`                                                     | (none)                        | Permitted CORS origin for cross-domain dashboard requests                                                                                                                                                                                                                                                                                             |
-| `STRIPE_ENTERPRISE_PRICE_ID`                                      | (none)                        | Stripe price ID for Enterprise plan (not yet shipped)                                                                                                                                                                                                                                                                                                 |
+| `STRIPE_ENTERPRISE_PRICE_ID`                                      | (none)                        | Stripe price ID for Enterprise plan (not yet shipped — **no code reads this variable today**)                                                                                                                                                                                                                                                                                                 |
 | `ENABLE_REMINDER_SCHEDULER`                                       | `false` outside prod          | Forces the appointment-reminder background worker on in dev                                                                                                                                                                                                                                                                                           |
 | `ENABLE_WEBSITE_RESCAN_SCHEDULER`                                  | `false` outside prod          | Periodic website-KB re-scan worker. Prod ON unless exact `false`. Cost caps (clamped): `WEBSITE_RESCAN_STALE_DAYS` (default 30, 1–365), `WEBSITE_RESCAN_BATCH_SIZE` (default 5/tick, 1–50), `WEBSITE_RESCAN_INTERVAL_MS` (default 24h, 1h–7d), `WEBSITE_RESCAN_MAX_FAILS` (default 5, 1–20). Dead-URL exponential backoff + quarantine via `website_scan_fail_count` (metric `website_rescan_tenant_quarantined`). Multi-instance: Postgres session advisory lock serializes ticks across replicas (cost does not multiply). Stages suggestions only — never auto-publishes. Skip tick if no `OPENAI_API_KEY`. |
 | `TELEPHONY_PROVIDER`                                              | `telnyx`                      | (Optional) Override default SMS provider (Telnyx is the only supported provider; legacy support removed)                                                                                                                                                                                                                                              |
@@ -258,7 +258,7 @@ Each integration is independent — set the trio for the ones you wire up. All o
 
 #### Agent worker (`agent/`) — validated by Zod at startup
 
-The agent boots with `dotenv` loading the repo-root `.env` and `agent/.env` in that order. Missing/invalid → process exits with the failed Zod issue. See `agent/src/config.ts` for the schema.
+The agent boots with `dotenv` loading the repo-root `.env` and `agent/.env` in that order. Missing/invalid → process exits with the failed Zod issue. The schema is `agent/src/configSchema.ts` (parsed by `agent/src/config.ts`).
 
 | Variable             | Required | Description                                                                                                                                                                                                                                                                                                  |
 | -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -268,9 +268,10 @@ The agent boots with `dotenv` loading the repo-root `.env` and `agent/.env` in t
 | `AGENT_SECRET`       | Yes      | Min 32 chars. Must match backend's `AGENT_SECRET`.                                                                                                                                                                                                                                                           |
 | `OPENAI_API_KEY`     | Yes      | LLM (GPT-4.1-mini voice, 4o-mini auxiliary) + embeddings + summaries. NOT TTS since 2026-07-14                                                                                                                                                                                                                                    |
 | `DEEPGRAM_API_KEY`   | Yes      | STT (Nova-3) **and TTS (Aura, `aura-asteria-en`)** — a bad key or param takes the line SILENT; run `cd agent && npm run verify:tts`                                                                                                                                                                                                                                                                                                 |
-| `BACKEND_URL`        | No       | Where the agent posts `/agent-tools/*` calls. Default `http://localhost:4001`.                                                                                                                                                                                                                               |
+| `BACKEND_URL`        | Yes      | Where the agent posts `/agent-tools/*` calls. Must be a valid URL; **no default** — the worker exits at boot if unset (`agent/src/configSchema.ts`).                                                                                                                                                                                                                               |
 | `BETTER_STACK_TOKEN` | No       | Same value as the backend's `BETTER_STACK_TOKEN`. When set, agent forwards Pino logs to Better Stack alongside stdout; unset = stdout only. Per-call child logger adds `tenant_id` + `call_id` to every line so support can pull a specific call's full timeline with one filter. See "Observability" below. |
 | `LOG_LEVEL`          | No       | `trace` \| `debug` \| `info` (default) \| `warn` \| `error`                                                                                                                                                                                                                                                  |
+| Behaviour flags | No | Defaults (`agent/src/configSchema.ts`, `agent/src/greetingPickup.ts`): `ENABLE_QUESTION_TREE` **on** unless `false` (this is the live call architecture); `ENABLE_TASK_GROUP` off; `ENABLE_SMS` off (10DLC); `ENABLE_OUTPUT_WATCHDOG` on unless `false`; `ENABLE_PHONE_VERIFICATION` on unless `false`; `ENABLE_SEMANTIC_TURN` on unless `false`; `ENABLE_REALTIME` off; `AURA_TTS_STREAMING` on unless `false` (escape hatch — see RUNBOOK §2); `AGENT_NAME` default `secretary-hq-agent` (must NOT be shared with a local dev worker — use `npm run dev:local`); `PARTICIPANT_WAIT_MS` 20000. |
 | `SENTRY_DSN`         | No       | Same DSN as the backend (one Sentry project hosts both services; the `service` tag separates them). When set, agent forwards unhandled exceptions + fallback-triggered events to Sentry. Unset = no Sentry calls. See "Observability" below.                                                                 |
 
 #### Dashboard (Next.js)
@@ -354,7 +355,7 @@ The agent worker lives in `agent/` and runs as a separate Railway service (`secr
 
 **n8n has been removed from this project.** All async work runs inline in Fastify route handlers:
 
-- **Post-call summarization** — `src/routes/voice.ts` handles the LiveKit agent's `call-ended` event, calls OpenAI for summary + sentiment, stores in `call_summaries`.
+- **Post-call summarization** — done agent-side (`agent/src/callSummary.ts`, a bounded/failsafe OpenAI call); the agent posts the summary with the transcript to `POST /agent-tools/voice-session-end`, which persists it via the `end_voice_session()` RPC on the `voice_sessions` row. (`src/routes/voice.ts` only emits the dashboard's live `call-ended` socket event.)
 - **Calendar + CRM sync** — `src/services/syncOrchestrator.ts` fans appointment mutations out to the connected Google/Outlook calendars **and** to Square (the surviving external CRM sync). Each provider fails independently.
 - **SMS / reminders** — `src/services/reminders/index.ts` (`ReminderService`) + `src/services/communications/` (real Telnyx provider, not stubbed) drive delivery; `src/workers/reminderScheduler.ts` ticks every 60s. **`ENABLE_SMS` defaults `false` in prod** until 10DLC registration lands (see CLAUDE.md Architecture section) — email reminders/confirmations still send, SMS does not.
 
@@ -416,7 +417,7 @@ Backend and agent both ship Pino JSON logs to stdout (Railway captures them) and
 1. Sign up at [betterstack.com/logs](https://betterstack.com/logs). Free tier is 1 GB / 3 days retention — sufficient for current secretary-hq scale.
 2. Create a new source: type **JavaScript / Pino**.
 3. Copy the source token.
-4. Set `BETTER_STACK_TOKEN=<token>` on the backend Railway service (`secretary-hq-production`) AND on the agent Railway service (`secretary-hq-agent`). Same value on both.
+4. Set `BETTER_STACK_TOKEN=<token>` on the backend Railway service (`secretary-hq`) AND on the agent Railway service (`secretary-hq-agent`). Same value on both.
 5. Restart both services. New log lines start flowing within ~5 seconds.
 
 If the token is unset, both services keep running with stdout-only logging — there's no fail-open / fail-closed surprise.
@@ -435,7 +436,7 @@ If the token is unset, both services keep running with stdout-only logging — t
 ### Common support queries
 
 - "The call dropped at 2:14pm" → filter `service: secretary-hq-agent AND tenant_id: <id>`, find the call_id at the right timestamp, then re-filter `call_id: <id>` to see the full timeline (call_start → session_context_resolved → tenant_config_fetched → session_started → any tool calls → fallback_triggered if applicable).
-- "Why did the AI not book this customer?" → filter `service: secretary-hq-backend AND tenant_id: <id> AND event: booking_*` for the relevant minute. The booking RPC error code (`TIMESLOT_OCCUPIED` / `NO_SKILLED_EMPLOYEE` / `EMPLOYEE_NOT_SCHEDULED` / `NO_AVAILABILITY` / `INVALID_PARAMS`) is logged at the route handler.
+- "Why did the AI not book this customer?" → filter `service: secretary-hq-backend AND tenant_id: <id> AND event: booking_*` for the relevant minute. The booking RPC error code (`TIMESLOT_OCCUPIED` / `NO_SKILLED_EMPLOYEE` / `EMPLOYEE_NOT_SCHEDULED` / `NO_AVAILABILITY` / `INVALID_PARAMS` / `PAST_TIME` / `BUSINESS_CLOSED`) is logged at the route handler.
 - "Did fallback trigger today?" → filter `service: secretary-hq-agent AND event: fallback_triggered`. Returns the dispatch-metadata-invalid and session-context-lost cases (other fallback paths inside `runFallback` itself are not yet logged — separate follow-up).
 
 ### Cost knobs
@@ -461,7 +462,7 @@ Sentry sits on top of Better Stack to provide error grouping, stack-trace dedupl
 
 1. Sign up at [sentry.io](https://sentry.io). Free tier is 5k events / month — enough for pre-beta and the first few weeks of customer traffic.
 2. Create a Node.js project. Copy the DSN.
-3. Set `SENTRY_DSN=<dsn>` on the backend Railway service (`secretary-hq-production`) AND the agent Railway service (`secretary-hq-agent`). Same value on both.
+3. Set `SENTRY_DSN=<dsn>` on the backend Railway service (`secretary-hq`) AND the agent Railway service (`secretary-hq-agent`). Same value on both.
 4. Optional but recommended: set `SENTRY_RELEASE=$RAILWAY_GIT_COMMIT_SHA` on both services so Sentry can group events by build (helps spot "regressions started in commit X").
 5. Restart both services. New errors start appearing in the Sentry UI within seconds.
 
@@ -469,7 +470,7 @@ If `SENTRY_DSN` is unset, both services keep running with logging-only error obs
 
 ### What gets captured
 
-- **Backend.** Everything routed through `logError()` in `src/middleware.ts` (route handler errors via `withHandler`, post-call summary failures, booking RPC errors, calendar sync errors) plus Fastify's `setErrorHandler` for unhandled throws inside plugins. Auto-tagged with `tenant_id` + `route` + `event`.
+- **Backend.** Everything routed through `logError()` in `src/middleware/fastify-middleware.ts` (route handler errors via `withHandler`, post-call summary failures, booking RPC errors, calendar sync errors) plus Fastify's `setErrorHandler` for unhandled throws inside plugins. Auto-tagged with `tenant_id` + `route` + `event`.
 - **Agent.** Fallback-triggered events (`dispatch_metadata_invalid`, `session_context_lost`) plus Sentry's default Node integrations (uncaughtException, unhandledRejection). Auto-tagged with `tenant_id` + `call_id`.
 
 ### Performance + cost knobs
@@ -509,7 +510,7 @@ Before going live, verify:
 - [ ] **Database password** is strong and not committed to source control
 - [ ] **OPENAI_API_KEY** is not exposed in client-side code
 - [ ] **Login credentials** have been changed from the seeded defaults
-- [ ] **CORS origin** is restricted to your dashboard domain (currently set to `origin: true` which allows all)
+- [ ] **CORS origin** is restricted to your dashboard domain — set `CORS_ORIGIN` on the backend service; when unset `src/index.ts` falls back to `origin: true` (allow all), and the boot feature-readiness report flags it
 - [ ] **Supabase RLS** is verified as enabled on all tenant-scoped tables
 
 ---
@@ -524,6 +525,6 @@ Before going live, verify:
 | Calls to a Telnyx number return "not in service" | Carrier-side LERG propagation. Verify the number is `active` and bound to the right SIP Connection via Telnyx API; if so, open a Telnyx support ticket — see `TICKET_SUPPORT.md` for template |
 | Database connection refused                      | Verify connection string and that Supabase allows your IP                                                                                                                                     |
 | Migrations fail on Supabase                      | `pgvector` extension must be enabled first                                                                                                                                                    |
-| CORS errors on dashboard                         | Update CORS origin in `src/index.ts` to your dashboard domain                                                                                                                                 |
+| CORS errors on dashboard                         | Set the backend's `CORS_ORIGIN` env var to your dashboard origin (`src/index.ts` reads it; no code edit needed)                                                                                                                                 |
 | JWT errors after deploy                          | Ensure `JWT_SECRET` is the same across backend restarts                                                                                                                                       |
 | Knowledge base search returns nothing            | Verify `pgvector` extension is enabled and documents have embeddings                                                                                                                          |

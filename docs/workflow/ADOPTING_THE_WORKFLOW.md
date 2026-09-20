@@ -137,6 +137,7 @@ You almost never need to edit the `.sh` files themselves after the first adoptio
 
 Copy the scripts from the kit into your `scripts/` folder (create it if needed):
 
+- `config-reader.sh` (the helper every other script sources to read `workflow.config.json`)
 - `create-feature-branch.sh`
 - `prepare-commit.sh`
 - `setup-hooks.sh`
@@ -193,7 +194,7 @@ The kit uses **Husky** for automatic hook management.
    "prepare": "husky"
    ```
 
-3. Copy the `.husky/` folder from the kit into your project (or create the hooks manually using the examples).
+3. Create `.husky/pre-commit` and `.husky/pre-push` in your project (the kit does not ship a `.husky/` folder). Each is a one-liner that calls the matching example script, e.g. `bash scripts/example-pre-commit-hook.sh` and `bash scripts/example-pre-push-hook.sh` — this is how the source repo wires them.
 
 After running `npm install`, the hooks will be installed automatically.
 

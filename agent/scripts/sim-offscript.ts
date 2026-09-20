@@ -300,7 +300,7 @@ async function ask(
     // model's context starts with it already said.
     {
       role: 'assistant',
-      content: `Thanks for calling! I'm Piper, an AI assistant for ${BUSINESS}, and this call is transcribed for quality and service. How can I help you today?`,
+      content: `Thanks for calling! I'm Piper, an AI assistant for ${BUSINESS}. This call is transcribed for quality and service. Tell me how I can help.`,
     },
     ...priorTurns,
     { role: 'user', content: utterance },

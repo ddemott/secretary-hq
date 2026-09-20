@@ -1131,7 +1131,7 @@ number. Nothing else.`,
       date: '2026-07-21',
       spoken:
         'You already have an appointment at 2:30 PM. On Tuesday, July 21 I have 1:15 PM or ' +
-        '3:00 PM. Would any of those work?',
+        '3:00 PM. Those times are open. Tell me which you prefer.',
     }),
     persona: {
       opener: 'Hi, I want to book a call with Dale at 2:30 today.',

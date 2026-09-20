@@ -7,11 +7,12 @@
 > - **The call flow below is not the architecture.** Live calls run question trees
 >   (`agent/src/checklist/`) — purpose-selected trees and a goodbye gate, not a
 >   scripted business-or-personal branch. See `docs/voice/QUESTION_TREE_ARCHITECTURE.md`.
-> - **`transfer_call` IS built** (`agent/src/tools.ts`, `transferClient.ts`, SIP REFER)
->   — the "❌ NOT BUILT" row below is out of date. BUT it is **not reachable on a live
->   call**: the question-tree toolset never presents it, so personal calls still cannot
->   be forwarded to `+1 608-217-5303`. The outcome in the status table is right for the
->   wrong reason.
+> - **`transfer_call` IS built** (`agent/src/tools/transfer.ts`, `transferClient.ts`, SIP REFER)
+>   — the "❌ NOT BUILT" row below is out of date. Update 2026-09-18: it was unreachable
+>   on the question-tree path until 2026-09-14 (#462); it is now model-facing on a live
+>   call whenever the tenant has a forward number configured
+>   (`ALWAYS_ON_PASSTHROUGH_TOOLS` + `offerTransfer` in `checklistTools.ts`). A live ring
+>   proof on Dale's validation call is still outstanding (CLAUDE.md).
 >
 > Read this for Dale's original intent. Do not read it for current behaviour.
 # (file renamed to AIASSISTANT_ for generic, was BETH_PERSONA_DRAFT.md)

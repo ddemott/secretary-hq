@@ -30,11 +30,10 @@ function buildMockPool(responses: Array<{ rows: unknown[]; rowCount?: number }>)
     release: vi.fn(),
   };
 
-  const pool = {
-    connect: vi.fn(async () => client),
-  } as unknown as Pool;
+  const connect = vi.fn(async () => client);
+  const pool = { connect } as unknown as Pool;
 
-  return { pool, client, queries };
+  return { pool, client, queries, connect };
 }
 
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -76,11 +75,19 @@ describe('createTenantWithOwner — happy paths', () => {
       duplicateCheck: 'email',
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      // This call passes no legalConsent, so — same rule as the admin
+      // create flow — the new tenant is gated behind the consent-invite
+      // flow. (legalConsent-present behavior is covered by test 4a below.)
+      consentGateRequired: true,
+    });
     expect(queries.map((q) => q.text)).toEqual([
       'BEGIN',
       'SELECT user_id FROM users WHERE email = $1',
-      'INSERT INTO tenants (name, business_type) VALUES ($1, $2) RETURNING tenant_id',
+      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
       expect.stringContaining('INSERT INTO users'),
       // A new business gets its OWN copy of its vertical's questions, inside the
       // same transaction that creates it — so a tenant never exists with a
@@ -89,7 +96,7 @@ describe('createTenantWithOwner — happy paths', () => {
       'COMMIT',
     ]);
     expect(queries[1].params).toEqual(['dale@test.com']);
-    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire']);
+    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire', true]);
     // mobile-tire now resolves to its own dedicated `mobile_tire` vertical — the
     // slot-filling intake tree that shipped with the vertical-intake presets — so
     // a new mobile-tire tenant provisions the mobile_tire questions, not the
@@ -125,9 +132,20 @@ describe('createTenantWithOwner — happy paths', () => {
       duplicateCheck: 'tenant_name',
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      // Admin create flow (duplicateCheck: 'tenant_name', no legalConsent)
+      // always gates the new tenant behind the consent-invite flow.
+      consentGateRequired: true,
+    });
     expect(queries[1].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
     expect(queries[1].params).toEqual(['Sharp Salon']);
+    expect(queries[2].text).toBe(
+      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id'
+    );
+    expect(queries[2].params).toEqual(['Sharp Salon', 'salon', true]);
     // user INSERT params: tenantId, email, hash, full, first, last
     const userInsertParams = queries[3].params;
     expect(userInsertParams[0]).toBe(TENANT_ID);
@@ -197,7 +215,13 @@ describe('createTenantWithOwner — happy paths', () => {
       legalConsent: { ip: '198.51.100.7', userAgent: 'Mozilla/5.0' },
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      consentGateRequired: false,
+    });
+    expect(queries[2].params).toEqual(['ConsentCo', 'salon', false]);
     const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
     expect(consentUpdate).toBeDefined();
     expect(consentUpdate?.text).toMatch(/UPDATE tenants/i);
@@ -228,7 +252,7 @@ describe('createTenantWithOwner — happy paths', () => {
       { rows: [] }, // COMMIT
     ]);
 
-    await createTenantWithOwner(pool, {
+    const result = await createTenantWithOwner(pool, {
       tenantName: 'AdminCreated',
       businessType: 'salon',
       ownerEmail: 'admincreated@test.com',
@@ -239,6 +263,16 @@ describe('createTenantWithOwner — happy paths', () => {
 
     const consentUpdate = queries.find((q) => /legal_consent/i.test(q.text));
     expect(consentUpdate).toBeUndefined();
+    // legalConsent omitted -> consent_gate_required is true on the INSERT,
+    // and the returned result says so too (the admin route uses this to
+    // decide whether to send the consent-invite email).
+    expect(queries[2].params).toEqual(['AdminCreated', 'salon', true]);
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      consentGateRequired: true,
+    });
   });
 
   it('4c. legalConsent with null ip/userAgent still stamps attested_at/attested_by', async () => {
@@ -465,5 +499,69 @@ describe('createTenantWithOwner — error propagation', () => {
     });
 
     expect(client.release).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// HIPAA-vertical denylist — independent of the dashboard picker
+// (2026-09-16 role-check audit; RegisterSchema checks this too for the
+// self-serve path, but POST /tenants/create has no equivalent Zod schema,
+// so this is the one check both entry points share).
+// ════════════════════════════════════════════════════════════════════
+
+describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
+  it.each([
+    'dental',
+    'Dental Office',
+    'veterinary-clinic',
+    'chiropractic',
+    'optometry',
+    'Family Medical Group',
+    'HIPAA Provider',
+  ])(
+    '10. rejects business_type %j before opening a connection — no BEGIN, no INSERT',
+    async (businessType) => {
+      const { pool, queries, connect } = buildMockPool([]);
+
+      const result = await createTenantWithOwner(pool, {
+        tenantName: 'Should Not Exist',
+        businessType,
+        ownerEmail: 'blocked@test.com',
+        ownerPassword: 'secure123',
+        ownerFullName: 'Blocked Owner',
+        duplicateCheck: 'email',
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        conflictMessage: 'This business type is not supported on this platform.',
+      });
+      // No connection was ever checked out — the denylist check runs before
+      // `pool.connect()`, so nothing here can leak a pool slot either.
+      expect(connect).not.toHaveBeenCalled();
+      expect(queries).toHaveLength(0);
+    }
+  );
+
+  it('11. an unrelated business_type is not blocked', async () => {
+    const { pool, queries } = buildMockPool([
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ tenant_id: TENANT_ID }] },
+      { rows: [{ user_id: USER_ID }] },
+      { rows: [] },
+    ]);
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'Fine Business',
+      businessType: 'salon',
+      ownerEmail: 'fine@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Fine Owner',
+      duplicateCheck: 'email',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.length).toBeGreaterThan(0);
   });
 });

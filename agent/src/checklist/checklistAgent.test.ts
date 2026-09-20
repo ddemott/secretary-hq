@@ -63,11 +63,11 @@ describe('buildChecklistPrompt — wrong-business handling', () => {
 describe('buildChecklistPrompt — wrap-up is one question, not a 12s stack', () => {
   it('SAD: ending does not stack passed-along + email + anything-else in one breath', () => {
     // WHO: caller at checklist COMPLETE on 2026-07-21
-    // WHAT: wrap-up is ONLY "Anything else I can help you with?" then finish_call
+    // WHAT: wrap-up is ONLY "Tell me if you need anything else." then finish_call
     // WHY: a 12s turn packed "I've passed that along" + email instruction +
     //      anything-else. Email is its own node (best_email). Passed-along is a
     //      tool result, not a wrap-up speech.
-    expect(prompt).toMatch(/Anything else I can help you with\?/);
+    expect(prompt).toMatch(/Tell me if you need anything else/);
     expect(prompt).toMatch(
       /Do not combine a[\s\S]{0,40}passed-along line, an email instruction, and "anything else" in one turn/
     );
@@ -639,7 +639,7 @@ describe('buildChecklistPrompt — orientation, off-topic, and never going silen
   it('HAPPY: wrong-business answer names the business, says what it does, and offers a way in', () => {
     expect(withBusiness).toContain('do NOT answer with a bare "no"');
     expect(withBusiness).toContain('Say what this business actually does');
-    expect(withBusiness).toMatch(/anything there I can help with/i);
+    expect(withBusiness).toMatch(/Tell me if there is anything there I can help with/i);
   });
 
   it('HAPPY: sophisticated first turns are answered at their level before narrowing', () => {
@@ -994,7 +994,7 @@ describe('buildChecklistPrompt — hire / meeting purpose examples', () => {
 
   it('SAD: a vague opener still must ask, not guess job vs buy', () => {
     expect(hirePrompt).toMatch(/If a vague opener could be either, do not guess/i);
-    expect(hirePrompt).toMatch(/Are you looking to hire him/i);
+    expect(hirePrompt).toMatch(/I can help with hiring him for a role/i);
   });
 
   it('SAD: a service request that uses the word "job" is not the job tree', () => {

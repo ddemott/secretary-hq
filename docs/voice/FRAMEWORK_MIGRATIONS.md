@@ -2,7 +2,7 @@
 
 Tracks in-flight and recently-completed framework/provider swaps. This is the index — detailed retrospectives live in commit messages, and active follow-ups live in `docs/planning/TODO.md`.
 
-**Last updated:** 2026-08-11 (refreshed current tool-count wording and kept the live voice stack / question-tree status aligned with the repo)
+**Last updated:** 2026-09-18 (tool count 26 → 27, PSTN status corrected, §4 marked as-of-then; §3/§4 remain historical)
 
 ---
 
@@ -14,7 +14,7 @@ Tracks in-flight and recently-completed framework/provider swaps. This is the in
 
 **Current stack:** Telnyx (carrier + SIP trunk) → LiveKit Cloud (SIP ingress) → LiveKit Agent worker (Node) → Deepgram Nova-3 (STT) + **OpenAI GPT-4.1-mini** (voice LLM; 4o-mini for summaries/classify/fallback) + **Deepgram Aura** (TTS, streaming; per-tenant voice via `tenants.tts_voice` — `tts_speed` is INERT, see §5) → Fastify `/agent-tools/*`. Call SEQUENCING is question trees (§6).
 
-**Open follow-up:** First live PSTN call still pending full different-carrier verification — see `docs/planning/TODO.md` (P0 Voice) and `docs/operations/RUNBOOK.md` section 7.
+**Open follow-up:** PSTN inbound reaching the agent was confirmed 2026-06-30; the booking + transfer + preference legs on a live different-carrier call are still unverified — see `docs/planning/TODO.md` (P0 Voice) and `docs/operations/RUNBOOK.md` section 7.
 
 ---
 
@@ -24,7 +24,7 @@ Tracks in-flight and recently-completed framework/provider swaps. This is the in
 
 **Why:** LiveKit agent runs as a Node.js worker; keeping tools in Deno edge functions added a network hop and a second runtime. Consolidating into Fastify lets tools share the existing DB pool, middleware, and types.
 
-**Current implementation:** 26 defined voice tools across `src/routes/agentTools/` + `agent/src/tools.ts`. Auth via `x-agent-secret` header. The live question-tree path exposes a subset of those tools, not the entire catalog. See `docs/architecture/ARCHITECTURE.md` for the current reachability split.
+**Current implementation:** 27 defined voice tools (`agent/src/tools/`, re-exported by `agent/src/tools.ts`) backed by `src/routes/agentTools/`. Auth via `x-agent-secret` header. The live question-tree path exposes a subset of those tools, not the entire catalog. See `docs/architecture/ARCHITECTURE.md` for the current reachability split.
 
 ---
 
@@ -46,7 +46,7 @@ The fallback path inside `runFallback()` uses `openai.TTS` as a last-resort voic
 
 **Why:** OpenAI TTS is now smoother (lower latency, better seamlessness in practice) than the prior Grok implementation. Full removal also eliminates a second provider credential surface, simplifies cost tracking (all TTS under OpenAI), and aligns voice selection with the dashboard picker. Legacy Grok voice values (e.g. `ara`) are gracefully mapped to `shimmer` in `agent/src/index.ts:toOpenAIVoice`.
 
-**Current implementation:** Standard `@livekit/agents-plugin-openai` TTS in `agent/src/index.ts` (both normal session and `runFallback`). Voice/speed pulled per-tenant in `tenantConfig.ts` and passed to the OpenAI TTS constructor. The output watchdog, adaptive interruption, Realtime mode (separate flag), and cached fillers provide the "never-silent" behavior. Cost events for TTS now always use provider `openai`.
+**Implementation at the time (superseded by §5 — only `runFallback()` in `agent/src/fallback.ts` still uses `openai.TTS`):** Standard `@livekit/agents-plugin-openai` TTS in `agent/src/index.ts` (both normal session and `runFallback`). Voice/speed pulled per-tenant in `tenantConfig.ts` and passed to the OpenAI TTS constructor. The output watchdog, adaptive interruption, Realtime mode (separate flag), and cached fillers provide the "never-silent" behavior. Cost events for TTS now always use provider `openai`.
 
 **Verification:** `agent/src/fallback.test.ts` still asserts "uses OpenAI TTS for fallback (independent of primary path)". `simulate.sh call` and real calls exercise it. Docs, comments, and `supabase/baseline.sql` (regenerated as needed) updated for the final state.
 

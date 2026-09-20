@@ -1,12 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useId } from 'react';
 import { Mail, MapPin, RefreshCw } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { PhoneInput } from '../ui/PhoneInput';
 import { Select } from '../ui/Select';
 import { Card } from '../ui/Card';
 import { US_STATES, US_TIMEZONES } from '../../lib/constants';
+import { formatCustomerAddress } from '../../lib/utils';
 import type { Customer } from '@/lib/types';
 import type { EditForm } from './CustomerDetailHeader';
 
@@ -25,6 +26,7 @@ export function ContactDetailsCard({
   editForm,
   onEditFormChange,
 }: ContactDetailsCardProps) {
+  const notesId = useId();
   return (
     <Card title="Contact Details & Notes" className="max-w-2xl" id="customer-contact">
       {!isEditing && !isCreating ? (
@@ -38,18 +40,8 @@ export function ContactDetailsCard({
           <div className="flex items-start">
             <MapPin className="w-4 h-4 mr-3 mt-0.5" style={{ color: 'var(--text-muted)' }} />
             <span style={{ color: 'var(--text-primary)' }}>
-              {selectedCustomer
-                ? [
-                    selectedCustomer.address,
-                    selectedCustomer.address_line2,
-                    selectedCustomer.city,
-                    [selectedCustomer.state, selectedCustomer.postal_code]
-                      .filter(Boolean)
-                      .join(' '),
-                  ]
-                    .filter(Boolean)
-                    .join(', ') || 'No address on file'
-                : 'No address on file'}
+              {(selectedCustomer && formatCustomerAddress(selectedCustomer)) ||
+                'No address on file'}
             </span>
           </div>
           <div className="flex items-start">
@@ -143,12 +135,14 @@ export function ContactDetailsCard({
           />
           <div>
             <label
+              htmlFor={notesId}
               className="block text-xs font-bold uppercase mb-1"
               style={{ color: 'var(--text-muted)' }}
             >
               Internal Notes
             </label>
             <textarea
+              id={notesId}
               rows={4}
               value={editForm.notes}
               onChange={(e) => onEditFormChange('notes', e.target.value)}

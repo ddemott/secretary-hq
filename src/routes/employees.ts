@@ -11,6 +11,7 @@ import {
   withHandler,
   logEvent,
   requireTenantId,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { assertRowAffected } from './routeHelpers';
@@ -67,6 +68,8 @@ export function registerEmployeeRoutes(
   app.post(
     '/employees/create',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = CreateEmployeeSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -135,6 +138,8 @@ export function registerEmployeeRoutes(
   app.delete(
     '/employees/:id/delete',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const id = (req.params as { id: string }).id;
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
@@ -158,6 +163,8 @@ export function registerEmployeeRoutes(
   app.post(
     '/employees/:id/update',
     withHandler(async (req: AppRequest, reply) => {
+      // Owner-only (mirrors /customers/import): staffing CRUD, PR #508/TODO.md.
+      if (!requireOwnerRole(req, reply)) return;
       const id = (req.params as { id: string }).id;
       const parsed = UpdateEmployeeSchema.safeParse(req.body);
       if (!parsed.success) {

@@ -91,7 +91,7 @@ const ask = (question: string) =>
   });
 
 /** The route's own graceful "no answer" line — matched, not re-typed. */
-const CANNOT_ANSWER = /don't have specific information on that topic/i;
+const CANNOT_ANSWER = /don't have that on hand/i;
 
 beforeAll(async () => {
   try {
@@ -103,12 +103,22 @@ beforeAll(async () => {
     process.env.AGENT_SECRET = AGENT_SECRET;
 
     app = Fastify({ logger: false });
-    type TenantRequest = FastifyRequest & { tenantId?: string; auth?: { user_id: string } };
+    type TenantRequest = FastifyRequest & {
+      tenantId?: string;
+      auth?: { tenant_id: string; user_id: string; email: string; role: 'owner' | 'front_desk' };
+    };
     app.addHook('preHandler', async (request: TenantRequest) => {
       const header = request.headers['x-tenant-id'];
       if (typeof header === 'string' && header) {
         request.tenantId = header;
-        request.auth = { user_id: '00000000-0000-0000-0000-000000000001' };
+        // Owner by default — /knowledge/add and DELETE /knowledge/:id are
+        // owner-gated (requireOwnerRole, 2026-09-16 role-check audit).
+        request.auth = {
+          tenant_id: header,
+          user_id: '00000000-0000-0000-0000-000000000001',
+          email: 'owner@test.local',
+          role: 'owner',
+        };
       }
     });
     const withTenantClient = createWithTenantClient(pool);

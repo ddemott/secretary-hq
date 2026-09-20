@@ -7,12 +7,15 @@
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
+import { randomBytes, createHash } from 'crypto';
 import {
   withHandler,
   withPoolClient,
   logEvent,
+  logError,
   requireAuth,
   requireSuperAdmin,
+  requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { SUPER_ADMIN_TENANT_ID } from '../constants';
@@ -24,6 +27,18 @@ import {
   deriveChecklistRuntimeConfig,
 } from '../../shared/checklistPresetDerivation';
 import { applyChecklistOverrides } from '../../shared/checklistOverrides';
+import {
+  sendTenantConsentInviteEmail,
+  sendTenantConsentPendingAdminNotice,
+  PLATFORM_ADMIN_EMAIL,
+} from '../services/communications/systemEmail';
+import { errorsTotal } from '../services/metrics';
+
+const CONSENT_INVITE_TTL_DAYS = 14;
+
+function hashConsentToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 const CreateTenantSchema = z.object({
   tenant_name: z.string().min(1).max(200),
@@ -333,6 +348,11 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant config access' });
       }
+      // Owner-only (mirrors /customers/import): call-transfer destination,
+      // legally-attested disclosure text, and checklist behavior all live in
+      // this config — reading it is lower risk than writing it, but the
+      // gate is applied to both for consistency.
+      if (!requireOwnerRole(req, reply)) return;
       const res = await withPoolClient(pool, (client) =>
         client.query(
           // call_disclosure (+ attestation stamp) MUST be here: AIConfigView loads
@@ -368,6 +388,10 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant config update' });
       }
+      // Owner-only (mirrors /customers/import): this write reaches the live
+      // call-transfer destination and the owner's attested legal disclosure
+      // text — a front-desk login must not be able to hijack either.
+      if (!requireOwnerRole(req, reply)) return;
       const parsed = UpdateConfigSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -683,7 +707,90 @@ export function registerTenantRoutes(
       }
 
       logEvent(req, 'tenant_created', { tenantId: result.tenantId, name: tenantName });
-      return reply.send({ success: true, tenant_id: result.tenantId });
+
+      // ADMIN-PROVISIONED TENANTS ARE CONSENT-GATED. createTenantWithOwner
+      // stamped consent_gate_required=true (no legalConsent was passed —
+      // an admin isn't the business owner attesting anything). Issue the
+      // invite and email it now, inside this handler rather than inside
+      // the bootstrap transaction, so a mail failure can never roll back a
+      // tenant that was otherwise created successfully.
+      let consentInviteIssued = false;
+      if (result.consentGateRequired) {
+        const rawToken = randomBytes(32).toString('base64url');
+        const tokenHash = hashConsentToken(rawToken);
+        // BEST-EFFORT, like the emails below: the tenant + owner are already
+        // COMMITTED, so an invite-INSERT failure must not become a 500 that
+        // invites the admin to retry (the retry conflicts on the now-existing
+        // owner and leaves the admin guessing what state the tenant is in).
+        // The owner can still self-serve a fresh link via POST /consent/resend,
+        // and `consent_invite_issued: false` in the response tells the admin UI
+        // it needs doing.
+        try {
+          await withPoolClient(pool, async (client) => {
+            await client.query(
+              `INSERT INTO tenant_consent_invites (tenant_id, user_id, token_hash, expires_at)
+               VALUES ($1, $2, $3, NOW() + ($4 || ' days')::interval)`,
+              [result.tenantId, result.userId, tokenHash, CONSENT_INVITE_TTL_DAYS]
+            );
+          });
+          consentInviteIssued = true;
+        } catch (err: unknown) {
+          errorsTotal.inc({ event: 'tenant_consent_invite_insert_failed' });
+          logError(req, 'tenant_consent_invite_insert_failed', err, {
+            tenantId: result.tenantId,
+          });
+        }
+
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        const consentLink = `${dashboardUrl}/consent?token=${rawToken}`;
+
+        // FIRE-AND-FORGET (same pattern + reasoning as /forgot-password,
+        // src/routes/auth.ts ~line 285: an awaited SMTP send hung prod
+        // once and left the caller staring at a spinner with no response.
+        // The invite row is already durable at this point, so the
+        // response owes the super-admin nothing further from the email
+        // sends below.
+        // Never email a link whose token was not stored — it could not work.
+        if (consentInviteIssued) {
+          void sendTenantConsentInviteEmail(body.owner_email, consentLink, tenantName).catch(
+            (err: unknown) => {
+              errorsTotal.inc({ event: 'tenant_consent_invite_email_failed' });
+              logError(req, 'tenant_consent_invite_email_failed', err, {
+                tenantId: result.tenantId,
+              });
+            }
+          );
+        }
+        // Neither env var configured — skip rather than guess an address
+        // (same guard as the port-request flow just below in this file).
+        // The owner invite above already went out regardless.
+        if (!PLATFORM_ADMIN_EMAIL) {
+          logError(
+            req,
+            'tenant_consent_admin_notice_email_failed',
+            new Error('PLATFORM_ADMIN_EMAIL and EMAIL_USER both unset — nowhere to send'),
+            { tenantId: result.tenantId }
+          );
+        } else {
+          void sendTenantConsentPendingAdminNotice(PLATFORM_ADMIN_EMAIL, {
+            businessName: tenantName,
+            ownerEmail: body.owner_email,
+            createdAt: new Date(),
+          }).catch((err: unknown) => {
+            errorsTotal.inc({ event: 'tenant_consent_admin_notice_email_failed' });
+            logError(req, 'tenant_consent_admin_notice_email_failed', err, {
+              tenantId: result.tenantId,
+            });
+          });
+        }
+      }
+
+      return reply.send({
+        success: true,
+        tenant_id: result.tenantId,
+        // Only meaningful for consent-gated (admin-provisioned) tenants.
+        consent_invite_issued: result.consentGateRequired ? consentInviteIssued : undefined,
+      });
     }, 'Failed to create tenant')
   );
 
@@ -703,6 +810,9 @@ export function registerTenantRoutes(
           .status(403)
           .send({ success: false, error: 'Forbidden: cross-tenant finalize' });
       }
+      // Owner-only (mirrors /customers/import): finishing setup is a
+      // one-way wizard action, not a front-desk operation.
+      if (!requireOwnerRole(req, reply)) return;
       const result = await withTenantClient(id, async (client) => {
         await client.query('BEGIN');
         try {
