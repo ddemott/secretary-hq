@@ -52,7 +52,12 @@ export function MyAvailabilityCard({ shifts, shiftsLoading }: MyAvailabilityCard
       </div>
 
       {shiftsLoading ? (
-        <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+        <div
+          className="text-sm"
+          style={{ color: 'var(--text-muted)' }}
+          role="status"
+          aria-live="polite"
+        >
           Loading schedule...
         </div>
       ) : shifts.length === 0 ? (

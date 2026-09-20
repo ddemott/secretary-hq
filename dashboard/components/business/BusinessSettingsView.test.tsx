@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import React from 'react';
 
@@ -157,6 +157,63 @@ describe('BusinessSettingsView', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  describe('Tenant switching (review thread)', () => {
+    // WHO: a super-admin flipping between managed tenants.
+    // WHY: configLoaded was set true once and never reset, so after a switch
+    //      the page kept rendering the PREVIOUS tenant's settings while the new
+    //      tenant's config was still in flight, and a slow response from the old
+    //      tenant could land after the switch and overwrite the new one.
+    function deferred<T>() {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => (resolve = r));
+      return { promise, resolve };
+    }
+
+    test('SAD: switching tenants re-engages the loading gate until the new config arrives', async () => {
+      const t2 = deferred<{ team_size: number }>();
+      mockGetConfig.mockImplementation((tid: string) =>
+        tid === 'tenant-two' ? t2.promise : Promise.resolve({ team_size: 3 })
+      );
+      mockTenantId = 'tenant-one';
+      const { rerender } = render(<BusinessSettingsView />);
+      await screen.findByText('Business Settings');
+
+      mockTenantId = 'tenant-two';
+      rerender(<BusinessSettingsView />);
+
+      // Not the previous tenant's page — the gate is back up.
+      expect(await screen.findByText('Loading settings...')).toBeInTheDocument();
+      expect(screen.queryByText('Business Settings')).not.toBeInTheDocument();
+
+      t2.resolve({ team_size: 3 });
+      expect(await screen.findByText('Business Settings')).toBeInTheDocument();
+    });
+
+    test('SAD: a slow response from the tenant we left cannot overwrite the current tenant', async () => {
+      const t1 = deferred<{ team_size: number }>();
+      mockGetConfig.mockImplementation((tid: string) =>
+        tid === 'tenant-one' ? t1.promise : Promise.resolve({ team_size: 3 })
+      );
+      mockTenantId = 'tenant-one';
+      const { rerender } = render(<BusinessSettingsView />);
+
+      mockTenantId = 'tenant-two';
+      rerender(<BusinessSettingsView />);
+      // tenant-two (team of 3) settles first and renders team mode.
+      expect(await screen.findByText('Calendar Synchronization')).toBeInTheDocument();
+
+      // tenant-one's late answer says solo (team_size 1). It must be ignored.
+      // act() flushes the resolved promise AND the React state update it would
+      // trigger; without it this assertion can pass before the bug is visible.
+      await act(async () => {
+        t1.resolve({ team_size: 1 });
+        await t1.promise;
+      });
+      expect(screen.getByText('Calendar Synchronization')).toBeInTheDocument();
+      expect(screen.queryByText('My Calendar')).not.toBeInTheDocument();
+    });
   });
 
   describe('Happy Paths - Team Mode', () => {
@@ -448,10 +505,14 @@ describe('BusinessSettingsView', () => {
     test('shows loading state while fetching team size', async () => {
       mockGetConfig.mockImplementation(() => new Promise(() => {})); // Never resolves
       render(<BusinessSettingsView />);
-      expect(screen.getByText('Loading settings...')).toBeInTheDocument();
-      // WHO: users | WHAT: loading indicator
+      const loadingRegion = screen.getByText('Loading settings...').closest('[role="status"]');
+      expect(loadingRegion).toBeInTheDocument();
+      expect(loadingRegion).toHaveAttribute('aria-busy', 'true');
+      expect(loadingRegion).toHaveAttribute('aria-label', 'Loading settings');
+      // WHO: users | WHAT: loading indicator, announced to assistive tech
       // WHEN: fetching config | WHERE: main view
-      // WHY: feedback while determining team size
+      // WHY: feedback while determining team size — a screen reader user
+      //      gets nothing from a silent blank pane while this is in flight
     });
 
     test('handles team size fetch error gracefully', async () => {
@@ -461,9 +522,52 @@ describe('BusinessSettingsView', () => {
         // Should fall back to team mode (teamSize = null treated as team)
         expect(screen.queryByText('My Services')).not.toBeInTheDocument();
       });
+      // The page must actually render once the fetch settles, not stay on
+      // the loading screen forever — `teamSize === null` used to be the only
+      // gate, and a rejected fetch produces exactly that same value, so a
+      // real error and "still loading" were indistinguishable and the whole
+      // settings page (every card, not just team-size-dependent ones) never
+      // appeared. This is the regression test for that fix.
+      expect(screen.getByText('Business Settings')).toBeInTheDocument();
+      expect(screen.queryByText('Loading settings...')).not.toBeInTheDocument();
       // WHO: users | WHAT: error fallback
       // WHEN: config API fails | WHERE: view rendering
-      // WHY: default to team mode on error
+      // WHY: default to team mode on error, without getting stuck loading
+    });
+
+    test('SAD: a failed business-type fetch shows a load error, not a false "Not set"', async () => {
+      // WHO: an owner whose connection drops mid-load.
+      // WHAT: BusinessTypeSection's own getConfig call fails; `config` stays
+      //       null, which is the SAME value an honestly-unconfigured tenant
+      //       has. Before this fix both rendered "Not set" with a live
+      //       "Change business type…" button — no way to tell a broken fetch
+      //       from a real blank field.
+      // WHERE: BusinessTypeSection.
+      // WHY: same class of gap as AnalyticsView's AiCostPanel: error and
+      //      empty are different facts and need different copy.
+      mockGetConfig.mockRejectedValue(new Error('network error'));
+      render(<BusinessSettingsView />);
+      expect(await screen.findByText("Couldn't load your business type")).toBeInTheDocument();
+      expect(screen.queryByText('Not set')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Change business type…' })).toBeDisabled();
+    });
+
+    test('SAD: a failed calendar-status check shows an error without hiding the connect buttons', async () => {
+      // WHO: an owner who may already have a calendar connected.
+      // WHAT: getSettings throws; previously this was swallowed to
+      //       console.error only, and the UI silently showed the same
+      //       "not connected" buttons a genuinely disconnected tenant sees —
+      //       a connected owner would be told, wrongly, that nothing is
+      //       hooked up.
+      // WHERE: CalendarSyncCard.fetchCalendarSettings.
+      // WHY: a status check that fails must say so, not impersonate the
+      //      honest empty state.
+      mockGetCalendarSettings.mockRejectedValue(new Error('network error'));
+      render(<BusinessSettingsView />);
+      expect(
+        await screen.findByText(/Couldn.t check your calendar connection\. Refresh the page/)
+      ).toBeInTheDocument();
+      expect(screen.getByText('Connect Google Calendar')).toBeInTheDocument();
     });
 
     test('shows empty services message when no services exist', async () => {
@@ -523,6 +627,10 @@ describe('BusinessSettingsView', () => {
       await waitFor(() => {
         expect(screen.getByText('Loading schedule...')).toBeInTheDocument();
       });
+      // Announced to assistive tech, same role="status" convention as the
+      // page-level loading indicator — a screen reader user previously got
+      // nothing while this card's fetch was in flight.
+      expect(screen.getByText('Loading schedule...')).toHaveAttribute('role', 'status');
     });
 
     test('fetches shifts for solo employee', async () => {
