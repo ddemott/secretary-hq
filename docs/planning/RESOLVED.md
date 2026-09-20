@@ -9,6 +9,7 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 Each item one branch → PR → green CI → merge → purge. Items land below as they merge.
 
 - **`/reminders/process` + `/reminders/status` had no auth check** (their own comments said "admin only"). Any tenant login, front_desk included, could run the due-reminder batch that sends for EVERY tenant. Both now `requireSuperAdmin`; dashboard never called either. Test: `tests/routes/reminders.adminRoutes.test.ts` (red on old code, green on fix).
+- **Root `tsx` was undeclared → CI flake (PR #535's first backend run).** ~15 root npm scripts and 3 test files (`scripts/purge-soft-deleted.test.ts`, `scripts/find-abandoned-test-numbers.test.ts`, `tests/starterServices.test.ts`) run `npx tsx`, but only `agent/` declared tsx. On CI npx fetched it from the registry mid-test; npm's "will be installed" warning landed where the tests expected the script's own error text → 9 failures, green on re-run. Fixed by adding `tsx` as a root devDependency (+ lockfile) and correcting the stale comment in `.github/workflows/pre-merge-checks.yml`. Test: `tests/scripts/tsxDependency.test.ts` (3 of 4 red without the dependency, green with it).
 
 ---
 
