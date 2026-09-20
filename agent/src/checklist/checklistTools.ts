@@ -1538,15 +1538,17 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       }
     }
     if (args.node_id === CALLER_NAME && args.value && !args.declined) {
-      // 2026-07-21 live call: the caller gave his name and never heard it again
-      // until the goodbye. A receptionist who learns a name USES it — nudge at
-      // the exact moment it lands, when the acknowledgement is being composed.
-      // First name only: "Thanks, Dale." — never "Thanks, Dale DeMott."
+      // 2026-07-21: name never reused until goodbye → felt like a form.
+      // 2026-09-19 (SCL_ibdmZ9imLFtV): opposite failure — every intake turn opened
+      // "Thanks, Bob." because this nudge templated "Thanks, {first}" and the style
+      // rule said "use it at natural moments." One brief nod when the name lands;
+      // booking confirm + goodbye only after that. First name only, never full name.
       const first = args.value.trim().split(/\s+/)[0];
       directive +=
-        `\n\nUse their first name in your acknowledgement right now ("Thanks, ${first}.") ` +
-        `and again at natural moments later — confirming the booking, wrapping up. ` +
-        `Not every sentence; that reads as salesy.`;
+        `\n\nTheir first name is ${first}. ONCE this turn you may nod with it ` +
+        `("Got it, ${first}." — or just move on). Do NOT say "Thanks, ${first}" and do ` +
+        `NOT open any later turn with thanks or their name. Speak the name again only ` +
+        `when confirming a booking or saying goodbye.`;
     }
     return stateBlock() + directive;
   }
