@@ -22,12 +22,20 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [resendEmail, setResendEmail] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setConsentRequired(false);
+    // The interstitial's resend state belongs to ONE consent_required
+    // episode. Without this reset, a resend followed by "Back to login" and a
+    // second consent_required attempt reopened the interstitial already in
+    // the "sent" state, hiding the resend button.
+    setResendSent(false);
+    setResendLoading(false);
+    setResendError(null);
 
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
@@ -92,17 +100,26 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
   const handleResendConsent = async () => {
     setResendLoading(true);
+    setResendError(null);
     try {
-      await fetch(`${API_BASE_URL}/consent/resend`, {
+      const response = await fetch(`${API_BASE_URL}/consent/resend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resendEmail, password }),
       });
-      // /consent/resend always answers { success: true } regardless of
-      // eligibility — same enumeration-safe posture as /forgot-password.
-      setResendSent(true);
+      // /consent/resend answers { success: true } regardless of eligibility
+      // (enumeration-safe, like /forgot-password), so a 2xx is the only
+      // honest "sent". A 429 (3 resends/hour) or a gateway error is NOT: it
+      // must not claim an email went out when none did.
+      if (response.ok) {
+        setResendSent(true);
+      } else if (response.status === 429) {
+        setResendError('Too many resend requests. Please wait a while and try again.');
+      } else {
+        setResendError("We couldn't send the email. Please try again in a moment.");
+      }
     } catch {
-      setResendSent(true);
+      setResendError("Couldn't connect. Check your internet and try again.");
     } finally {
       setResendLoading(false);
     }
@@ -134,9 +151,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             >
               <p className="font-semibold mb-1">You can&apos;t access your dashboard yet.</p>
               <p>
-                We emailed you a confirmation link when your account was created. You must click
-                it and confirm before you can sign in — this is required, not optional, and there
-                is nothing else to do first.
+                We emailed you a confirmation link when your account was created. You must click it
+                and confirm before you can sign in — this is required, not optional, and there is
+                nothing else to do first.
               </p>
             </div>
 
@@ -145,22 +162,36 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 A new confirmation link was just emailed to you.
               </p>
             ) : (
-              <button
-                type="button"
-                onClick={handleResendConsent}
-                disabled={resendLoading}
-                aria-busy={resendLoading}
-                className="w-full py-3 rounded-xl font-semibold text-sm border transition-all disabled:opacity-50"
-                style={{ borderColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
-              >
-                {resendLoading ? 'Sending...' : 'Resend confirmation email'}
-              </button>
+              <>
+                {resendError && (
+                  <p
+                    role="status"
+                    className="mb-3 text-sm text-center text-red-600 dark:text-red-400"
+                  >
+                    {resendError}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleResendConsent}
+                  disabled={resendLoading}
+                  aria-busy={resendLoading}
+                  className="w-full py-3 rounded-xl font-semibold text-sm border transition-all disabled:opacity-50"
+                  style={{ borderColor: 'var(--border-soft)', color: 'var(--text-primary)' }}
+                >
+                  {resendLoading ? 'Sending...' : 'Resend confirmation email'}
+                </button>
+              </>
             )}
 
             <div className="mt-6 text-center">
               <button
                 type="button"
-                onClick={() => setConsentRequired(false)}
+                onClick={() => {
+                  setConsentRequired(false);
+                  setResendSent(false);
+                  setResendError(null);
+                }}
                 className="text-xs hover:underline"
                 style={{ color: 'var(--text-secondary)' }}
               >

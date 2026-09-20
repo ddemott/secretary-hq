@@ -11,9 +11,20 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { FastifyReply } from 'fastify';
 import bcrypt from 'bcrypt';
+import type * as bcryptTypes from 'bcrypt';
 import type { AppRequest } from '../../src/middleware/fastify-middleware';
 import { createMockClient, createMockPool } from '../mock';
 import type { registerConsentRoutes as RegisterConsentRoutes } from '../../src/routes/consent';
+
+// Passthrough spy: every test still runs real bcrypt, but we can assert that
+// /consent/resend spends a compare even when no account matches the email.
+// default and the named export share ONE spy because the route reads
+// `(await import('bcrypt')).compare` while this file reads `bcrypt.default`.
+vi.mock('bcrypt', async (importOriginal) => {
+  const actual = await importOriginal<typeof bcryptTypes>();
+  const compare = vi.fn(actual.compare);
+  return { ...actual, compare, default: { ...actual.default, compare } };
+});
 
 vi.mock('../../src/services/communications/systemEmail', () => ({
   sendTenantConsentInviteEmail: vi.fn(async () => undefined),
@@ -305,6 +316,53 @@ describe('Consent Routes — Handler-Level', () => {
 
       expect(reply.body).toEqual({ success: true });
       expect(sysmail.sendTenantConsentInviteEmail).not.toHaveBeenCalled();
+    });
+
+    it('SAD (review thread): an unknown email still spends one bcrypt compare, against a dummy hash — latency must not reveal which emails have accounts', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerConsentRoutes(app, pool);
+      queryResponses.push({ rows: [] });
+
+      await findRoute(routes, '/consent/resend').handler(
+        createMockRequest({ email: 'nobody@business.com', password: 'whatever' }),
+        createMockReply()
+      );
+
+      expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+      const [plain, hash] = vi.mocked(bcrypt.compare).mock.calls[0] as [string, string];
+      expect(plain).toBe('whatever');
+      expect(hash).toMatch(/^\$2b\$10\$/);
+    });
+
+    it('SAD (review thread): a known email with a wrong password also spends exactly one compare — same work as the unknown-email path', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerConsentRoutes(app, pool);
+      const realHash = await bcrypt.hash('correctpass', 10);
+      vi.mocked(bcrypt.compare).mockClear();
+      queryResponses.push({
+        rows: [
+          {
+            user_id: USER_ID_MOCK,
+            tenant_id: TENANT_ID_MOCK,
+            password_hash: realHash,
+            email: 'gated@business.com',
+            tenant_name: 'Gated Biz',
+            consent_gate_required: true,
+            legal_consent_attested_at: null,
+          },
+        ],
+      });
+
+      await findRoute(routes, '/consent/resend').handler(
+        createMockRequest({ email: 'gated@business.com', password: 'wrongpass' }),
+        createMockReply()
+      );
+
+      expect(bcrypt.compare).toHaveBeenCalledTimes(1);
     });
 
     it('WHO: an owner on a tenant that is not gated at all (consent_gate_required=false) | WHAT: correct password, but nothing to resend | WHERE: /consent/resend | WHY: success:true, no email — resend is a no-op on a normal tenant', async () => {

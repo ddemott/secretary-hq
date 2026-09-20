@@ -104,7 +104,11 @@ describe('POST /tenants/create — consent-invite side effects', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ success: true, tenant_id: TENANT_ID });
+    expect(JSON.parse(res.body)).toEqual({
+      success: true,
+      tenant_id: TENANT_ID,
+      consent_invite_issued: true,
+    });
 
     const inviteInsert = queries.find((q) => /INSERT INTO tenant_consent_invites/i.test(q.text));
     expect(inviteInsert).toBeDefined();
@@ -126,6 +130,46 @@ describe('POST /tenants/create — consent-invite side effects', () => {
     expect(adminTo).toBe('admin@platform.test');
     expect(fields.businessName).toBe('New Biz');
     expect(fields.ownerEmail).toBe('jane@newbiz.com');
+  });
+
+  it('SAD (review thread): an invite-INSERT failure after COMMIT is best-effort — 200 (not 500), no dead link emailed, admin still told, owner can /consent/resend', async () => {
+    const sysmail = await import('../../src/services/communications/systemEmail');
+    scriptHappyCreate();
+    const realQuery = mockClient.query.getMockImplementation()!;
+    mockClient.query.mockImplementation(async (text: string, params?: unknown[]) => {
+      if (/INSERT INTO tenant_consent_invites/i.test(text)) throw new Error('db down');
+      return realQuery(text, params);
+    });
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/tenants/create',
+        payload: {
+          tenant_name: 'New Biz',
+          business_type: 'salon',
+          owner_first_name: 'Jane',
+          owner_last_name: 'Doe',
+          owner_email: 'jane@newbiz.com',
+          owner_pass: 'secure123',
+        },
+      });
+
+      // The tenant + owner already committed: a 500 here would tell the admin to
+      // retry a create that can only conflict on the existing owner.
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({
+        success: true,
+        tenant_id: TENANT_ID,
+        consent_invite_issued: false,
+      });
+      await new Promise((r) => setImmediate(r));
+      // No stored token -> a link in an email could never work.
+      expect(sysmail.sendTenantConsentInviteEmail).not.toHaveBeenCalled();
+      // The admin still learns a tenant is pending consent.
+      expect(sysmail.sendTenantConsentPendingAdminNotice).toHaveBeenCalledTimes(1);
+    } finally {
+      mockClient.query.mockImplementation(realQuery);
+    }
   });
 
   it('SAD: non-super-admin cannot create a tenant, so no invite row and no emails', async () => {

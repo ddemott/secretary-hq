@@ -44,6 +44,13 @@ const ResendSchema = z.object({
   password: z.string().min(1),
 });
 
+// A real cost-10 bcrypt hash of a random string nobody knows (cost 10 matches
+// what createTenantWithOwner writes). /consent/resend compares against it when
+// no account matches the email, so the unknown-email path spends the same
+// bcrypt time as the known-email path — otherwise response latency alone
+// tells a caller which emails have accounts, defeating the always-200 answer.
+const DUMMY_PASSWORD_HASH = '$2b$10$.no4pJwdMzW7kSlRuaiq1e8AxEaUNAt2zZR7csL9sMbEDCCUZiaAe';
+
 function hashConsentToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -197,9 +204,12 @@ export function registerConsentRoutes(app: AppFastifyInstance, pool: Pool) {
         return res.rows[0];
       });
 
+      // ALWAYS run one bcrypt compare, matched account or not (see
+      // DUMMY_PASSWORD_HASH) so latency does not reveal account existence.
+      const bcrypt = await import('bcrypt');
+      const match = await bcrypt.compare(password, candidate?.password_hash ?? DUMMY_PASSWORD_HASH);
+
       if (candidate) {
-        const bcrypt = await import('bcrypt');
-        const match = await bcrypt.compare(password, candidate.password_hash);
         const eligible =
           match &&
           candidate.consent_gate_required === true &&

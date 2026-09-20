@@ -235,6 +235,75 @@ describe('LoginView consent gate interstitial', () => {
     );
   });
 
+  const consentRequiredResponse = {
+    ok: false,
+    status: 403,
+    json: () =>
+      Promise.resolve({
+        success: false,
+        error: 'consent_required',
+        error_code: 'consent_required',
+      }),
+  };
+  const sendConsentLogin = async () => {
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'gated@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+  };
+
+  test('SAD: resend state is reset on a new login attempt — a second consent_required episode starts un-sent (review thread)', async () => {
+    // WHY: resendSent lived across attempts, so after one resend + "Back to
+    // login" + another gated login, the interstitial opened already saying
+    // "just emailed" and the resend button was gone.
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ success: true }),
+      })
+      .mockResolvedValueOnce(consentRequiredResponse);
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+    await screen.findByText(/new confirmation link was just emailed/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /back to login/i }));
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    await screen.findByRole('alert');
+
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /resend confirmation email/i })).toBeInTheDocument();
+  });
+
+  test('SAD: a 429 from /consent/resend does NOT claim an email was sent, and the button stays', async () => {
+    // WHY: /consent/resend is limited to 3/hour. The 4th press used to show
+    // "A new confirmation link was just emailed" — false, nothing was sent.
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/too many resend requests/i);
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /resend confirmation email/i })).toBeInTheDocument();
+  });
+
+  test('SAD: a network failure on resend shows an error, not "sent"', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(consentRequiredResponse)
+      .mockRejectedValueOnce(new Error('offline'));
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    await sendConsentLogin();
+    fireEvent.click(screen.getByRole('button', { name: /resend confirmation email/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn't connect/i);
+    expect(screen.queryByText(/just emailed/i)).not.toBeInTheDocument();
+  });
+
   test('HAPPY: "Back to login" returns to the login form (not the dashboard)', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

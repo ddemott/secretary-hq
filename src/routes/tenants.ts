@@ -714,16 +714,32 @@ export function registerTenantRoutes(
       // invite and email it now, inside this handler rather than inside
       // the bootstrap transaction, so a mail failure can never roll back a
       // tenant that was otherwise created successfully.
+      let consentInviteIssued = false;
       if (result.consentGateRequired) {
         const rawToken = randomBytes(32).toString('base64url');
         const tokenHash = hashConsentToken(rawToken);
-        await withPoolClient(pool, async (client) => {
-          await client.query(
-            `INSERT INTO tenant_consent_invites (tenant_id, user_id, token_hash, expires_at)
-             VALUES ($1, $2, $3, NOW() + ($4 || ' days')::interval)`,
-            [result.tenantId, result.userId, tokenHash, CONSENT_INVITE_TTL_DAYS]
-          );
-        });
+        // BEST-EFFORT, like the emails below: the tenant + owner are already
+        // COMMITTED, so an invite-INSERT failure must not become a 500 that
+        // invites the admin to retry (the retry conflicts on the now-existing
+        // owner and leaves the admin guessing what state the tenant is in).
+        // The owner can still self-serve a fresh link via POST /consent/resend,
+        // and `consent_invite_issued: false` in the response tells the admin UI
+        // it needs doing.
+        try {
+          await withPoolClient(pool, async (client) => {
+            await client.query(
+              `INSERT INTO tenant_consent_invites (tenant_id, user_id, token_hash, expires_at)
+               VALUES ($1, $2, $3, NOW() + ($4 || ' days')::interval)`,
+              [result.tenantId, result.userId, tokenHash, CONSENT_INVITE_TTL_DAYS]
+            );
+          });
+          consentInviteIssued = true;
+        } catch (err: unknown) {
+          errorsTotal.inc({ event: 'tenant_consent_invite_insert_failed' });
+          logError(req, 'tenant_consent_invite_insert_failed', err, {
+            tenantId: result.tenantId,
+          });
+        }
 
         const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
         const consentLink = `${dashboardUrl}/consent?token=${rawToken}`;
@@ -734,14 +750,17 @@ export function registerTenantRoutes(
         // The invite row is already durable at this point, so the
         // response owes the super-admin nothing further from the email
         // sends below.
-        void sendTenantConsentInviteEmail(body.owner_email, consentLink, tenantName).catch(
-          (err: unknown) => {
-            errorsTotal.inc({ event: 'tenant_consent_invite_email_failed' });
-            logError(req, 'tenant_consent_invite_email_failed', err, {
-              tenantId: result.tenantId,
-            });
-          }
-        );
+        // Never email a link whose token was not stored — it could not work.
+        if (consentInviteIssued) {
+          void sendTenantConsentInviteEmail(body.owner_email, consentLink, tenantName).catch(
+            (err: unknown) => {
+              errorsTotal.inc({ event: 'tenant_consent_invite_email_failed' });
+              logError(req, 'tenant_consent_invite_email_failed', err, {
+                tenantId: result.tenantId,
+              });
+            }
+          );
+        }
         // Neither env var configured — skip rather than guess an address
         // (same guard as the port-request flow just below in this file).
         // The owner invite above already went out regardless.
@@ -766,7 +785,12 @@ export function registerTenantRoutes(
         }
       }
 
-      return reply.send({ success: true, tenant_id: result.tenantId });
+      return reply.send({
+        success: true,
+        tenant_id: result.tenantId,
+        // Only meaningful for consent-gated (admin-provisioned) tenants.
+        consent_invite_issued: result.consentGateRequired ? consentInviteIssued : undefined,
+      });
     }, 'Failed to create tenant')
   );
 
