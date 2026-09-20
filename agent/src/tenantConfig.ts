@@ -49,10 +49,11 @@ export interface TenantDisplayConfig {
    */
   preferencesInstructions: string | null;
   /**
-   * Per-tenant OpenAI TTS settings. ttsVoice is an OpenAI voice id
-   * (shimmer/nova/alloy/echo/onyx/fable); NULL = platform default (shimmer).
-   * ttsSpeed is the OpenAI speech rate. (The old Grok-only soft/cheerful prosody
-   * tags were dropped 2026-06-25 in the full OpenAI conversion.)
+   * Per-tenant TTS settings. ttsVoice is the picker's legacy OpenAI-style voice id
+   * (shimmer/nova/alloy/echo/onyx/fable); the agent maps it to a Deepgram Aura model
+   * via toAuraVoice() in index.ts (NULL/unknown = aura-asteria-en). ttsSpeed is saved
+   * but never sent to Aura (its WS answers 400 on ?speed=), so it is inert. (The old
+   * Grok-only soft/cheerful prosody tags were dropped 2026-06-25.)
    */
   ttsVoice: string | null;
   ttsSpeed: number | null;
