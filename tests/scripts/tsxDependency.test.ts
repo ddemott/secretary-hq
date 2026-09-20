@@ -28,7 +28,9 @@ const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'u
 
 describe('root tsx dependency', () => {
   it('HAPPY: any root script that runs `npx tsx` has tsx declared in package.json', () => {
-    const usesTsx = Object.values(pkg.scripts).some((cmd) => /\btsx\b/.test(cmd));
+    // A real command token: `tsx` / `npx tsx` at the start of a command or after
+    // whitespace, NOT a substring like the prettier glob "*.{ts,tsx,js}".
+    const usesTsx = Object.values(pkg.scripts).some((cmd) => /(?:^|\s)tsx(?:\s|$)/.test(cmd));
     expect(usesTsx, 'sanity: some root script should use tsx').toBe(true);
     const declared = pkg.devDependencies?.tsx ?? pkg.dependencies?.tsx;
     expect(declared, 'root scripts use tsx but package.json does not declare it').toBeTruthy();
@@ -40,6 +42,13 @@ describe('root tsx dependency', () => {
 
   it('HAPPY: the local binary exists, so npx never falls back to a registry fetch', () => {
     expect(fs.existsSync(path.join(ROOT, 'node_modules', '.bin', 'tsx'))).toBe(true);
+  });
+
+  it('SAD: the detector ignores tsx inside a glob (prettier "*.{ts,tsx,js}")', () => {
+    const detect = (cmd: string) => /(?:^|\s)tsx(?:\s|$)/.test(cmd);
+    expect(detect('prettier --check "src/**/*.{ts,tsx,js,jsx}"')).toBe(false);
+    expect(detect('npx tsx scripts/foo.ts')).toBe(true);
+    expect(detect('tsx scripts/foo.ts')).toBe(true);
   });
 
   it('SAD: tsx is not accidentally left only in the agent package', () => {
