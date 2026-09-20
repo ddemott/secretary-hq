@@ -648,6 +648,11 @@ const PUBLIC_ROUTES = [
   '/login',
   '/forgot-password',
   '/reset-password',
+  // Admin-provisioned-tenant consent gate — the token itself is the
+  // credential, same trust model as /reset-password (no JWT to check
+  // against). /consent/resend additionally requires the login password.
+  '/consent/confirm',
+  '/consent/resend',
   '/',
   '/demo',
   '/demo/start',

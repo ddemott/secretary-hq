@@ -75,11 +75,19 @@ describe('createTenantWithOwner — happy paths', () => {
       duplicateCheck: 'email',
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      // This call passes no legalConsent, so — same rule as the admin
+      // create flow — the new tenant is gated behind the consent-invite
+      // flow. (legalConsent-present behavior is covered by test 4a below.)
+      consentGateRequired: true,
+    });
     expect(queries.map((q) => q.text)).toEqual([
       'BEGIN',
       'SELECT user_id FROM users WHERE email = $1',
-      'INSERT INTO tenants (name, business_type) VALUES ($1, $2) RETURNING tenant_id',
+      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
       expect.stringContaining('INSERT INTO users'),
       // A new business gets its OWN copy of its vertical's questions, inside the
       // same transaction that creates it — so a tenant never exists with a
@@ -88,7 +96,7 @@ describe('createTenantWithOwner — happy paths', () => {
       'COMMIT',
     ]);
     expect(queries[1].params).toEqual(['dale@test.com']);
-    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire']);
+    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire', true]);
     // mobile-tire now resolves to its own dedicated `mobile_tire` vertical — the
     // slot-filling intake tree that shipped with the vertical-intake presets — so
     // a new mobile-tire tenant provisions the mobile_tire questions, not the
@@ -124,9 +132,20 @@ describe('createTenantWithOwner — happy paths', () => {
       duplicateCheck: 'tenant_name',
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      // Admin create flow (duplicateCheck: 'tenant_name', no legalConsent)
+      // always gates the new tenant behind the consent-invite flow.
+      consentGateRequired: true,
+    });
     expect(queries[1].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
     expect(queries[1].params).toEqual(['Sharp Salon']);
+    expect(queries[2].text).toBe(
+      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id'
+    );
+    expect(queries[2].params).toEqual(['Sharp Salon', 'salon', true]);
     // user INSERT params: tenantId, email, hash, full, first, last
     const userInsertParams = queries[3].params;
     expect(userInsertParams[0]).toBe(TENANT_ID);
@@ -196,7 +215,13 @@ describe('createTenantWithOwner — happy paths', () => {
       legalConsent: { ip: '198.51.100.7', userAgent: 'Mozilla/5.0' },
     });
 
-    expect(result).toEqual({ ok: true, tenantId: TENANT_ID, userId: USER_ID });
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      consentGateRequired: false,
+    });
+    expect(queries[2].params).toEqual(['ConsentCo', 'salon', false]);
     const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
     expect(consentUpdate).toBeDefined();
     expect(consentUpdate?.text).toMatch(/UPDATE tenants/i);
@@ -227,7 +252,7 @@ describe('createTenantWithOwner — happy paths', () => {
       { rows: [] }, // COMMIT
     ]);
 
-    await createTenantWithOwner(pool, {
+    const result = await createTenantWithOwner(pool, {
       tenantName: 'AdminCreated',
       businessType: 'salon',
       ownerEmail: 'admincreated@test.com',
@@ -238,6 +263,16 @@ describe('createTenantWithOwner — happy paths', () => {
 
     const consentUpdate = queries.find((q) => /legal_consent/i.test(q.text));
     expect(consentUpdate).toBeUndefined();
+    // legalConsent omitted -> consent_gate_required is true on the INSERT,
+    // and the returned result says so too (the admin route uses this to
+    // decide whether to send the consent-invite email).
+    expect(queries[2].params).toEqual(['AdminCreated', 'salon', true]);
+    expect(result).toEqual({
+      ok: true,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      consentGateRequired: true,
+    });
   });
 
   it('4c. legalConsent with null ip/userAgent still stamps attested_at/attested_by', async () => {
@@ -475,7 +510,15 @@ describe('createTenantWithOwner — error propagation', () => {
 // ════════════════════════════════════════════════════════════════════
 
 describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
-  it.each(['dental', 'Dental Office', 'veterinary-clinic', 'chiropractic', 'optometry', 'Family Medical Group', 'HIPAA Provider'])(
+  it.each([
+    'dental',
+    'Dental Office',
+    'veterinary-clinic',
+    'chiropractic',
+    'optometry',
+    'Family Medical Group',
+    'HIPAA Provider',
+  ])(
     '10. rejects business_type %j before opening a connection — no BEGIN, no INSERT',
     async (businessType) => {
       const { pool, queries, connect } = buildMockPool([]);

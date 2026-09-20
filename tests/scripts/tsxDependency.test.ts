@@ -40,8 +40,12 @@ describe('root tsx dependency', () => {
     expect(lock.packages['node_modules/tsx']).toBeTruthy();
   });
 
-  it('HAPPY: the local binary exists, so npx never falls back to a registry fetch', () => {
-    expect(fs.existsSync(path.join(ROOT, 'node_modules', '.bin', 'tsx'))).toBe(true);
+  it('HAPPY: tsx resolves from the repo the way Node/npx resolve it, so npx never falls back to a registry fetch', () => {
+    // Resolution (walks up parent node_modules), NOT a fixed
+    // ROOT/node_modules/.bin path: a git worktree carries a partial
+    // node_modules and still resolves through its parent checkout, so a
+    // path check fails there while npx works fine.
+    expect(() => require.resolve('tsx/package.json', { paths: [ROOT] })).not.toThrow();
   });
 
   it('SAD: the detector ignores tsx inside a glob (prettier "*.{ts,tsx,js}")', () => {
