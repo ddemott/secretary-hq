@@ -181,8 +181,9 @@ describe('IdentityTask — the rung is code now, not a paragraph', () => {
     expect(task.instructions).toContain('a meeting to talk about a contract position');
     // POSITIVE framing (2026-07-15, Dale's point: models act on "do X", not "don't do Y").
     // Instead of "do NOT ask how can I help", the rung is told its last action IS a brief
-    // acknowledgement and the system takes over — nothing to decline, just a thing to do.
-    expect(task.instructions).toMatch(/short, warm acknowledgement/i);
+    // close and the system takes over — nothing to decline, just a thing to do.
+    // 2026-09-19: dropped the "Perfect, thanks + name" template (thank-you loops on live calls).
+    expect(task.instructions).toMatch(/short warm close/i);
     expect(task.instructions).toMatch(/system will act on their request/i);
   });
 
