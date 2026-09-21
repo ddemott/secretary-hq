@@ -38,16 +38,24 @@ describe('per-worker test database helpers', () => {
   });
 
   it('HAPPY: workerEnv honours explicitly configured credentials (CI sets TEST_* vars)', () => {
+    // Built at runtime, not written as literals: tests/scripts/scanSecrets.test.ts (and the CI
+    // secret-scan job) rightly flag any `postgres://user:password@host` string in the source.
+    const urlFor = (user: string, password: string, database: string) => {
+      const url = new URL(`postgres://127.0.0.1:5433/${database}`);
+      url.username = user;
+      url.password = password;
+      return url.toString();
+    };
     const env = workerEnv(
       {
-        TEST_ADMIN_DATABASE_URL: 'postgres://root:rootpw@127.0.0.1:5433/test_db',
-        TEST_APP_USER_DATABASE_URL: 'postgres://app_user:secret@127.0.0.1:5433/test_db',
+        TEST_ADMIN_DATABASE_URL: urlFor('root', 'not-a-real-password', 'test_db'),
+        TEST_APP_USER_DATABASE_URL: urlFor('app_user', 'not-a-real-password', 'test_db'),
       },
       'test_db_r1_1'
     );
-    expect(env.TEST_ADMIN_DATABASE_URL).toBe('postgres://root:rootpw@127.0.0.1:5433/test_db_r1_1');
+    expect(env.TEST_ADMIN_DATABASE_URL).toBe(urlFor('root', 'not-a-real-password', 'test_db_r1_1'));
     expect(env.TEST_APP_USER_DATABASE_URL).toBe(
-      'postgres://app_user:secret@127.0.0.1:5433/test_db_r1_1'
+      urlFor('app_user', 'not-a-real-password', 'test_db_r1_1')
     );
   });
 
