@@ -9,9 +9,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_WORKERS,
+  MAX_WORKERS,
   STALE_AFTER_MS,
   assertLocalHost,
   newRunId,
+  parseWorkerCount,
   staleWorkerDbs,
   withDatabase,
   workerDbName,
@@ -98,5 +101,25 @@ describe('per-worker test database helpers', () => {
     );
     expect(() => assertLocalHost(ADMIN)).not.toThrow();
     expect(() => assertLocalHost('postgres://u:p@127.0.0.1:5433/test_db')).not.toThrow();
+  });
+  it('HAPPY: parseWorkerCount accepts a whole number and defaults when unset', () => {
+    expect(parseWorkerCount('4')).toBe(4);
+    expect(parseWorkerCount(' 3 ')).toBe(3);
+    expect(parseWorkerCount(undefined)).toBe(DEFAULT_WORKERS);
+    expect(parseWorkerCount('2.9')).toBe(2);
+  });
+
+  it('SAD: parseWorkerCount never returns NaN or below 1 (Math.max(1, NaN) is NaN and would clone no databases)', () => {
+    for (const bad of ['abc', '', '   ', '0', '-3', 'NaN', 'Infinity', '4x']) {
+      const n = parseWorkerCount(bad === '4x' ? undefined : bad);
+      expect(Number.isInteger(n), `TEST_WORKERS=${JSON.stringify(bad)}`).toBe(true);
+      expect(n).toBeGreaterThanOrEqual(1);
+    }
+    expect(parseWorkerCount('abc')).toBe(DEFAULT_WORKERS);
+    expect(parseWorkerCount('0', 3)).toBe(3);
+  });
+
+  it('SAD: parseWorkerCount caps an absurd value so a typo cannot clone hundreds of databases', () => {
+    expect(parseWorkerCount('1000')).toBe(MAX_WORKERS);
   });
 });

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitest/config';
+import { parseWorkerCount } from './tests/setup/dbUrls';
 
 const perWorkerDb = process.env.TEST_PER_WORKER_DB !== '0';
-const workers = perWorkerDb ? Math.max(1, Number(process.env.TEST_WORKERS ?? 6)) : 1;
+const workers = perWorkerDb ? parseWorkerCount(process.env.TEST_WORKERS) : 1;
 
 // restoreRoleGrants.test.ts runs `ALTER ROLE api_user BYPASSRLS` — a cluster-wide change that
 // every worker's database would see while its own RLS tests run.

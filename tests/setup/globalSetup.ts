@@ -33,6 +33,7 @@ import {
   TEST_DB_PREFIX,
   assertLocalHost,
   newRunId,
+  parseWorkerCount,
   staleWorkerDbs,
   withDatabase,
   workerDbName,
@@ -93,7 +94,7 @@ export default async function setup(): Promise<void> {
     'postgres://postgres:postgres@localhost:5433/test_db';
   assertLocalHost(adminUrl);
   const maintenanceUrl = withDatabase(adminUrl, 'postgres');
-  const workers = Math.max(1, Number(process.env.TEST_WORKERS ?? 6));
+  const workers = parseWorkerCount(process.env.TEST_WORKERS);
   const started = Date.now();
 
   const admin = new pg.Client({ connectionString: maintenanceUrl });

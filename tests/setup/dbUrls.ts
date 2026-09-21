@@ -12,6 +12,25 @@ export const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 const WORKER_DB = new RegExp(`^${TEST_DB_PREFIX}_r([0-9a-z]+)_(\\d+)$`);
 
+/** Default worker count; also what an unset or unusable TEST_WORKERS falls back to. */
+export const DEFAULT_WORKERS = 6;
+/** Upper bound so a typo like TEST_WORKERS=1000 cannot try to clone a thousand databases. */
+export const MAX_WORKERS = 32;
+
+/**
+ * TEST_WORKERS as a whole number in 1..MAX_WORKERS. Anything else (unset, empty, non-numeric,
+ * zero, negative) falls back to the default: `Math.max(1, Number('abc'))` is NaN, which would
+ * skip cloning every worker database while still pointing workers at them.
+ */
+export function parseWorkerCount(
+  raw: string | undefined,
+  fallback: number = DEFAULT_WORKERS
+): number {
+  const parsed = Number.parseInt((raw ?? '').trim(), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, MAX_WORKERS);
+}
+
 /** Same connection string, different database name (credentials/host/query kept). */
 export function withDatabase(connectionString: string, database: string): string {
   const url = new URL(connectionString);
