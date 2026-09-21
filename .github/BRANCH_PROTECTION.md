@@ -20,7 +20,11 @@ Go to **Settings → Branches → Branch protection rules → Add rule** for the
     - `Backend (typecheck + tests + integration)` (from `.github/workflows/ci.yml`)
     - `Dashboard (typecheck + tests)`
     - `Agent (typecheck + tests)`
-    - `E2E (Playwright)`
+    - `E2E (Playwright)` — this is an **aggregator job**, not the tests themselves. The E2E suite runs as four
+      parallel jobs named `E2E shard 1/4` … `E2E shard 4/4` (`--shard=n/4`); those four are deliberately NOT
+      required checks. The `E2E (Playwright)` job always runs, fails unless every shard passed, and on a code change
+      runs `scripts/verify-e2e-shards.mjs` to prove every test ran in exactly one shard (none lost, none run twice).
+      Keep this name exactly — if the job is renamed, the required check never reports and merges block.
   - Require branches to be up to date before merging (recommended)
 
 - [x] **Require branches to be up to date before merging**
