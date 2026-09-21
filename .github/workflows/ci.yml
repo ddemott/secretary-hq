@@ -308,10 +308,18 @@ jobs:
         if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
         run: npm test
 
-  e2e:
-    name: E2E (Playwright)
+  # E2E is split into 4 parallel shards. The shard jobs are NOT the required check: the `e2e` job at
+  # the bottom of this file keeps the required name "E2E (Playwright)" and only passes when every
+  # shard passed AND every test in the full list ran in exactly one shard.
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      # Every shard must report, so one failing shard never hides what the others found.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: ankane/pgvector:v0.5.1
@@ -485,7 +493,15 @@ jobs:
 
       - name: Run Playwright E2E
         if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
-        run: cd dashboard && npx playwright test
+        # Records the FULL unsharded list first, then runs this shard. Same step, same env, so the
+        # list can never differ from what the shard ran (specs read env vars at collection time).
+        # Playwright includes the login `setup` project in every shard, so each shard has its
+        # own saved login. `list` prints per-test timings; `json` feeds the accounting below.
+        run: |
+          mkdir -p /tmp/e2e
+          cd dashboard
+          PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/e2e/list.json npx playwright test --list --reporter=json > /dev/null
+          PLAYWRIGHT_JSON_OUTPUT_NAME=/tmp/e2e/results.json npx playwright test --shard=${{ matrix.shard }}/4 --reporter=list,json
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5433/test_db
           NEXT_PUBLIC_API_BASE_URL: http://localhost:4001
@@ -524,7 +540,8 @@ jobs:
           BROWSER_CALLER_E2E_STUB: '1'
 
       - name: Run simulate tools (agent-tools journey as regression guard)
-        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
+        # Once per run, not once per shard.
+        if: (github.event_name != 'pull_request' || steps.changes.outputs.code != 'false') && matrix.shard == 1
         # Runs the realistic booking + recall journey against the live servers
         # in this job. Flags [dev] gaps the same way `simulate.sh tools` does
         # locally. Non-zero exit will fail the job (like other steps).
@@ -546,7 +563,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           # test-results/ holds the per-test screenshot + error-context.md
           # (the page's accessibility snapshot at the moment of failure) —
           # the only way to see WHY a headless CI test failed.
@@ -555,3 +572,70 @@ jobs:
             dashboard/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+      # Inputs for the accounting in the `e2e` job: the full test list and this shard's results.
+      - name: Upload this shard's list and results
+        if: always() && (github.event_name != 'pull_request' || steps.changes.outputs.code != 'false')
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-shard-${{ matrix.shard }}
+          path: /tmp/e2e/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # The REQUIRED check ("E2E (Playwright)" in branch protection). Always runs, so a failed or
+  # cancelled shard fails this check instead of leaving it skipped (a skipped required check counts
+  # as passing). On a code change it also proves the split lost nothing.
+  e2e:
+    name: E2E (Playwright)
+    needs: e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same filter as the shard jobs: a docs-only PR skips the shards' heavy steps, so there is
+      # nothing to account for. Pushes to main always account.
+      - name: Detect relevant changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'dashboard/**'
+              - 'agent/**'
+              - 'scripts/**'
+              - 'supabase/**'
+              - 'shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+              # NB: do NOT append a negation like '!**/*.md' here. dorny/paths-filter
+              # feeds this list to picomatch, where a negated pattern in an array
+              # matches every file that ISN'T markdown — so '.gitignore', 'LICENSE'
+              # and 'workflow.config.json' all matched `code` and ran the full
+              # pipeline. The skip only ever worked for .md files. A .md inside a
+              # code dir now triggers a run; that over-runs (safe) rather than
+              # under-runs, and there is exactly one such file in the repo.
+
+      - name: Every shard must have passed
+        run: |
+          if [ "${{ needs.e2e-shard.result }}" != "success" ]; then
+            echo "::error::E2E shards did not all pass (result: ${{ needs.e2e-shard.result }})"
+            exit 1
+          fi
+
+      - name: Download shard lists and results
+        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: e2e-shard-*
+          path: e2e-artifacts
+
+      - name: Verify no E2E test was lost or run twice
+        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
+        run: node scripts/verify-e2e-shards.mjs e2e-artifacts 4
