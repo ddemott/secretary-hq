@@ -16,9 +16,11 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Client } from 'pg';
-import { skipIfDbDown } from '../utils';
+import { ROOT_DB_URL, skipIfDbDown } from '../utils';
 
-const DB_URL = 'postgres://postgres:postgres@localhost:5433/test_db';
+// Follows the per-worker database (tests/setup/perWorkerDb.ts) instead of hardcoding the shared
+// `test_db`, which would let this file collide with whatever else is using it.
+const DB_URL = ROOT_DB_URL;
 
 // ═══════════════════════════════════════════════════════════════════════
 // UNIT TESTS (no DB required)

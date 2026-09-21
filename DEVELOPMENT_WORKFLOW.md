@@ -81,7 +81,7 @@ All DB scripts check host (`localhost`, `127.0.0.1`, etc.) and DB name. `setup-t
 
 ## CI / Pre-PR
 
-`npm run pre-pr` includes tests. `test:ci` sets `DATABASE_URL` to test_db. Bootstrap ensures RLS tests run reliably.
+`npm run pre-pr` includes tests. `test:ci` sets `DATABASE_URL` to test_db, which supplies the connection credentials; the backend tests themselves run on per-worker databases cloned from a `test_db_tpl` template (see `CLAUDE.md` → Backend test databases; `TEST_PER_WORKER_DB=0` restores the old single-database serial run). Bootstrap ensures RLS tests run reliably.
 
 Run `npx tsx scripts/setup-test-db.ts` after schema changes affecting RLS or roles.
 

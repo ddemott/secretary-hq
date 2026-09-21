@@ -105,28 +105,9 @@ jobs:
       - name: Install root + agent dependencies
         run: npm ci --no-audit --no-fund && (cd agent && npm ci --no-audit --no-fund --prefer-offline)
 
-      - name: Apply migrations
-        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
-        run: bash scripts/setup-db.sh
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5433/test_db
-
-      - name: Seed database
-        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
-        # `src/index.test.ts` asserts `/tenants` and `/templates` return
-        # the seeded rows. Without this step CI's fresh test_db has only
-        # the schema (from migrations) but zero rows — both tests then
-        # see an empty array and fail length > 0. Re-runnable thanks
-        # to `ON CONFLICT DO NOTHING / DO UPDATE` inside seed.sql.
-        run: bash scripts/seed-db.sh
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5433/test_db
-
-      - name: Seed question tree templates
-        if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
-        run: npm run trees:seed
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5433/test_db
+      # Migrations, seed data and question-tree templates are NOT applied to test_db here any more.
+      # The test run builds them once into a template database (tests/setup/globalSetup.ts) and
+      # clones one database per vitest worker from it, so no test uses test_db itself.
 
       - name: TypeScript check
         if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
