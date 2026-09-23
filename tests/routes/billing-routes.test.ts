@@ -235,6 +235,51 @@ describe('POST /billing/checkout', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('HAPPY: STRIPE_FIXTURE_MODE activates the plan locally and does not call Stripe', async () => {
+    vi.stubEnv('STRIPE_FIXTURE_MODE', 'true');
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('DASHBOARD_URL', 'https://dash.example');
+    const { app, queries } = buildApp({
+      poolResponses: [
+        { rows: [{ tenant_id: TENANT_ID, stripe_customer_id: null }] },
+        { rows: [], rowCount: 1 },
+      ],
+    });
+
+    const res = await post(app, '/billing/checkout', { plan: 'growth' });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ url: string; fixture: boolean }>();
+    expect(body.fixture).toBe(true);
+    expect(body.url).toContain('billing=fixture');
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomersCreate).not.toHaveBeenCalled();
+    expect(queries[1].text).toContain("subscription_status = 'active'");
+    expect(queries[1].params).toContain('growth');
+    expect(queries[1].params[0]).toBe(`cus_fixture_${TENANT_ID}`);
+  });
+
+  it('SECURITY: STRIPE_FIXTURE_MODE is ignored when NODE_ENV=production', async () => {
+    vi.stubEnv('STRIPE_FIXTURE_MODE', 'true');
+    vi.stubEnv('NODE_ENV', 'production');
+    mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_live_path' });
+    const { app } = buildApp({
+      poolResponses: [
+        {
+          rows: [
+            { tenant_id: TENANT_ID, name: 'Test Biz', stripe_customer_id: STRIPE_CUSTOMER_ID },
+          ],
+        },
+      ],
+    });
+
+    const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ fixture?: boolean }>().fixture).toBeUndefined();
+    expect(mockCheckoutCreate).toHaveBeenCalled();
+  });
+
   it('SECURITY: a front-desk user is rejected 403 before any query runs (2026-09-16 role-check audit)', async () => {
     const { app, queries } = buildApp({ poolResponses: [], role: 'front_desk' });
     const res = await post(app, '/billing/checkout', { plan: 'solo' });
@@ -316,6 +361,114 @@ describe('POST /billing/webhook', () => {
     expect(queries[0].text).toContain('stripe_subscription_id = NULL');
     expect(queries[0].text).toContain('subscription_plan = NULL');
     expect(queries[0].params).toContain(STRIPE_CUSTOMER_ID);
+  });
+
+  it('SAD: checkout.session.completed with payment_status unpaid does not activate', async () => {
+    const event = {
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          payment_status: 'unpaid',
+          subscription: STRIPE_SUBSCRIPTION_ID,
+          metadata: { tenant_id: TENANT_ID, plan: 'solo' },
+        },
+      },
+    };
+    mockConstructEvent.mockReturnValue(event);
+    const { app, queries } = buildApp({ poolResponses: [] });
+
+    const res = await post(app, '/billing/webhook', event, { 'stripe-signature': 'sig_test' });
+
+    expect(res.statusCode).toBe(200);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('HAPPY: invoice.payment_succeeded lifts past_due back to active', async () => {
+    const event = {
+      type: 'invoice.payment_succeeded',
+      data: {
+        object: {
+          customer: STRIPE_CUSTOMER_ID,
+          parent: { subscription_details: { subscription: STRIPE_SUBSCRIPTION_ID } },
+        },
+      },
+    };
+    mockConstructEvent.mockReturnValue(event);
+    const { app, queries } = buildApp({ poolResponses: [{ rows: [], rowCount: 1 }] });
+
+    const res = await post(app, '/billing/webhook', event, { 'stripe-signature': 'sig_test' });
+
+    expect(res.statusCode).toBe(200);
+    expect(queries[0].text).toContain("subscription_status = 'active'");
+    expect(queries[0].text).toContain("subscription_status = 'past_due'");
+    expect(queries[0].params).toContain(STRIPE_CUSTOMER_ID);
+    expect(queries[0].params).toContain(STRIPE_SUBSCRIPTION_ID);
+  });
+
+  it('HAPPY: customer.subscription.updated syncs plan from the price id', async () => {
+    const event = {
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: STRIPE_SUBSCRIPTION_ID,
+          customer: STRIPE_CUSTOMER_ID,
+          status: 'active',
+          items: { data: [{ price: { id: 'price_growth_test' } }] },
+        },
+      },
+    };
+    mockConstructEvent.mockReturnValue(event);
+    const { app, queries } = buildApp({ poolResponses: [{ rows: [], rowCount: 1 }] });
+
+    const res = await post(app, '/billing/webhook', event, { 'stripe-signature': 'sig_test' });
+
+    expect(res.statusCode).toBe(200);
+    expect(queries[0].params).toContain('active');
+    expect(queries[0].params).toContain('growth');
+    expect(queries[0].params).toContain(STRIPE_SUBSCRIPTION_ID);
+  });
+
+  it('HAPPY: customer.subscription.updated canceled clears the plan', async () => {
+    const event = {
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: STRIPE_SUBSCRIPTION_ID,
+          customer: STRIPE_CUSTOMER_ID,
+          status: 'canceled',
+          items: { data: [] },
+        },
+      },
+    };
+    mockConstructEvent.mockReturnValue(event);
+    const { app, queries } = buildApp({ poolResponses: [{ rows: [], rowCount: 1 }] });
+
+    const res = await post(app, '/billing/webhook', event, { 'stripe-signature': 'sig_test' });
+
+    expect(res.statusCode).toBe(200);
+    expect(queries[0].text).toContain("subscription_status = 'canceled'");
+    expect(queries[0].text).toContain('subscription_plan = NULL');
+  });
+
+  it('HAPPY: customer.subscription.updated incomplete does not write', async () => {
+    const event = {
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: STRIPE_SUBSCRIPTION_ID,
+          customer: STRIPE_CUSTOMER_ID,
+          status: 'incomplete',
+          items: { data: [] },
+        },
+      },
+    };
+    mockConstructEvent.mockReturnValue(event);
+    const { app, queries } = buildApp({ poolResponses: [] });
+
+    const res = await post(app, '/billing/webhook', event, { 'stripe-signature': 'sig_test' });
+
+    expect(res.statusCode).toBe(200);
+    expect(queries).toHaveLength(0);
   });
 
   it('HAPPY: unknown event type → 200 received:true, no DB call', async () => {
@@ -432,6 +585,19 @@ describe('POST /billing/portal', () => {
     expect(mockPortalCreate).toHaveBeenCalledWith(
       expect.objectContaining({ customer: STRIPE_CUSTOMER_ID })
     );
+  });
+
+  it('SAD: fixture mode refuses the portal instead of inventing a Stripe session', async () => {
+    vi.stubEnv('STRIPE_FIXTURE_MODE', 'true');
+    vi.stubEnv('NODE_ENV', 'test');
+    const { app, queries } = buildApp({ poolResponses: [] });
+
+    const res = await post(app, '/billing/portal', {});
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toContain('Stripe account');
+    expect(queries).toHaveLength(0);
+    expect(mockPortalCreate).not.toHaveBeenCalled();
   });
 
   it('SAD: tenant has no Stripe customer yet → 400', async () => {

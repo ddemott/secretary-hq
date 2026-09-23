@@ -27,15 +27,69 @@ const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || '';
 
 const SUPER_ADMIN_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
+/** Local stand-in. Ignored in production so a stray flag cannot grant a plan. */
+export function stripeFixtureMode(): boolean {
+  return process.env.STRIPE_FIXTURE_MODE === 'true' && process.env.NODE_ENV !== 'production';
+}
+
 function getStripe(): Stripe | null {
   if (!STRIPE_SECRET_KEY) return null;
-  // The installed Stripe SDK's `apiVersion` literal union doesn't include
-  // every release date — we pin to a specific version that may be newer
-  // than the SDK's known set. Cast through `Stripe.StripeConfig['apiVersion']`
-  // names the exact slot we're filling instead of bare `any`.
-  return new Stripe(STRIPE_SECRET_KEY, {
-    apiVersion: '2025-02-24.acacia' as Stripe.StripeConfig['apiVersion'],
-  });
+  // Omit apiVersion so the installed SDK sends the version its own types match.
+  return new Stripe(STRIPE_SECRET_KEY);
+}
+
+function stripeId(value: unknown): string | null {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (value && typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === 'string' && id.length > 0) return id;
+  }
+  return null;
+}
+
+function planFromPriceId(priceId: string | null): string | null {
+  if (!priceId) return null;
+  if (priceId === STRIPE_SOLO_PRICE_ID) return 'solo';
+  if (priceId === STRIPE_GROWTH_PRICE_ID) return 'growth';
+  if (priceId === STRIPE_PRO_PRICE_ID) return 'professional';
+  return null;
+}
+
+const ALLOWED_PLANS = ['solo', 'growth', 'professional'];
+
+/** Checkout-session metadata is ours, but a webhook payload is still external input — validate before writing. */
+function validPlan(plan: unknown): string | null {
+  return typeof plan === 'string' && ALLOWED_PLANS.includes(plan) ? plan : null;
+}
+
+/** Map a Stripe subscription status onto the three statuses the gate understands. */
+function localStatusForStripe(status: string): 'active' | 'past_due' | 'canceled' | null {
+  switch (status) {
+    case 'active':
+    case 'trialing':
+      return 'active';
+    case 'past_due':
+    case 'unpaid':
+    case 'paused':
+      return 'past_due';
+    case 'canceled':
+    case 'incomplete_expired':
+      return 'canceled';
+    default:
+      return null;
+  }
+}
+
+function priceIdFromSubscription(subscription: Stripe.Subscription): string | null {
+  return subscription.items?.data?.[0]?.price?.id ?? null;
+}
+
+/** Current invoices nest the subscription under parent; older payloads kept it top-level. */
+function subscriptionIdFromInvoice(invoice: Stripe.Invoice): string | null {
+  const legacy = stripeId((invoice as Stripe.Invoice & { subscription?: unknown }).subscription);
+  if (legacy) return legacy;
+  const details = invoice.parent?.subscription_details;
+  return details ? stripeId(details.subscription) : null;
 }
 
 export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
@@ -46,10 +100,6 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       // Owner-only (mirrors /customers/import): opens a real Stripe
       // checkout session for the tenant's billing.
       if (!requireOwnerRole(req, reply)) return;
-      const stripe = getStripe();
-      if (!stripe) {
-        return reply.status(503).send({ success: false, error: 'Billing not configured' });
-      }
 
       const tenant_id = requireTenantId(req, reply);
       if (!tenant_id) return;
@@ -58,6 +108,39 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
         return reply
           .status(400)
           .send({ success: false, error: 'plan must be "solo", "growth", or "professional"' });
+      }
+
+      // No Stripe account required. Writes the same columns the webhook would
+      // after checkout.session.completed, then sends the owner back to Billing.
+      if (stripeFixtureMode()) {
+        const tenantRes = await pool.query(
+          'SELECT tenant_id, stripe_customer_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+          [tenant_id]
+        );
+        if (tenantRes.rows.length === 0) {
+          return reply.status(404).send({ success: false, error: 'Tenant not found' });
+        }
+        const customerId = tenantRes.rows[0].stripe_customer_id || `cus_fixture_${tenant_id}`;
+        await pool.query(
+          `UPDATE tenants
+             SET stripe_customer_id = $1,
+                 stripe_subscription_id = $2,
+                 subscription_status = 'active',
+                 subscription_plan = $3
+           WHERE tenant_id = $4 AND is_deleted = false`,
+          [customerId, `sub_fixture_${plan}`, plan, tenant_id]
+        );
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        logEvent(req, 'fixture_checkout_activated', { tenantId: tenant_id, plan });
+        return reply.send({
+          url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=fixture`,
+          fixture: true,
+        });
+      }
+
+      const stripe = getStripe();
+      if (!stripe) {
+        return reply.status(503).send({ success: false, error: 'Billing not configured' });
       }
 
       const priceMap: Record<string, string> = {
@@ -167,13 +250,16 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
           case 'checkout.session.completed': {
             const session = event.data.object;
             const tenantId = session.metadata?.tenant_id;
-            const plan = session.metadata?.plan;
-            if (tenantId && session.subscription) {
+            const plan = validPlan(session.metadata?.plan);
+            const subscriptionId = stripeId(session.subscription);
+            // A completed session can still be unpaid (delayed payment method).
+            // Leave the tenant inactive until a later paid event.
+            if (tenantId && subscriptionId && session.payment_status !== 'unpaid') {
               await pool.query(
                 `UPDATE tenants
-               SET stripe_subscription_id = $1, subscription_status = 'active', subscription_plan = $2
-               WHERE tenant_id = $3`,
-                [session.subscription, plan, tenantId]
+               SET stripe_subscription_id = $1, subscription_status = 'active', subscription_plan = COALESCE($2, subscription_plan)
+               WHERE tenant_id = $3 AND is_deleted = false`,
+                [subscriptionId, plan, tenantId]
               );
               logEvent(req, 'subscription_activated', { tenantId, plan });
             }
@@ -182,11 +268,11 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
 
           case 'invoice.payment_failed': {
             const invoice = event.data.object;
-            const customerId =
-              typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+            const customerId = stripeId(invoice.customer);
             if (customerId) {
               await pool.query(
-                `UPDATE tenants SET subscription_status = 'past_due' WHERE stripe_customer_id = $1`,
+                `UPDATE tenants SET subscription_status = 'past_due'
+                 WHERE stripe_customer_id = $1 AND is_deleted = false`,
                 [customerId]
               );
               req.log.warn({ customerId }, 'Payment failed — subscription past_due');
@@ -194,17 +280,67 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
             break;
           }
 
+          case 'invoice.paid':
+          case 'invoice.payment_succeeded': {
+            // checkout.session.completed is what first activates a plan.
+            // This only lifts a tenant the failure event already marked past_due,
+            // so a late invoice cannot resurrect a cancellation.
+            const invoice = event.data.object;
+            const customerId = stripeId(invoice.customer);
+            const subscriptionId = subscriptionIdFromInvoice(invoice);
+            if (customerId) {
+              await pool.query(
+                `UPDATE tenants
+                 SET subscription_status = 'active',
+                     stripe_subscription_id = COALESCE($2, stripe_subscription_id)
+                 WHERE stripe_customer_id = $1
+                   AND is_deleted = false
+                   AND subscription_status = 'past_due'`,
+                [customerId, subscriptionId]
+              );
+              logEvent(req, 'subscription_payment_recovered', { customerId });
+            }
+            break;
+          }
+
+          case 'customer.subscription.updated': {
+            const subscription = event.data.object;
+            const customerId = stripeId(subscription.customer);
+            const next = localStatusForStripe(subscription.status);
+            if (!customerId || !next) break;
+            if (next === 'canceled') {
+              await pool.query(
+                `UPDATE tenants
+                 SET subscription_status = 'canceled',
+                     stripe_subscription_id = NULL,
+                     subscription_plan = NULL
+                 WHERE stripe_customer_id = $1 AND is_deleted = false`,
+                [customerId]
+              );
+              logEvent(req, 'subscription_canceled', { customerId, via: 'updated' });
+              break;
+            }
+            const plan = planFromPriceId(priceIdFromSubscription(subscription));
+            await pool.query(
+              `UPDATE tenants
+               SET subscription_status = $2,
+                   stripe_subscription_id = $3,
+                   subscription_plan = COALESCE($4, subscription_plan)
+               WHERE stripe_customer_id = $1 AND is_deleted = false`,
+              [customerId, next, subscription.id, plan]
+            );
+            logEvent(req, 'subscription_updated', { customerId, status: next, plan });
+            break;
+          }
+
           case 'customer.subscription.deleted': {
             const subscription = event.data.object;
-            const customerId =
-              typeof subscription.customer === 'string'
-                ? subscription.customer
-                : subscription.customer?.id;
+            const customerId = stripeId(subscription.customer);
             if (customerId) {
               await pool.query(
                 `UPDATE tenants
                SET subscription_status = 'canceled', stripe_subscription_id = NULL, subscription_plan = NULL
-               WHERE stripe_customer_id = $1`,
+               WHERE stripe_customer_id = $1 AND is_deleted = false`,
                 [customerId]
               );
               logEvent(req, 'subscription_canceled', { customerId });
@@ -238,7 +374,10 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       if (res.rows.length === 0) {
         return reply.status(404).send({ success: false, error: 'Tenant not found' });
       }
-      return reply.send(res.rows[0]);
+      return reply.send({
+        ...res.rows[0],
+        billing_mode: stripeFixtureMode() ? 'fixture' : 'stripe',
+      });
     }, 'Failed to check billing status')
   );
 
@@ -279,6 +418,13 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       // Owner-only (mirrors /customers/import): opens the tenant's Stripe
       // billing portal (payment methods, invoices, cancellation).
       if (!requireOwnerRole(req, reply)) return;
+      if (stripeFixtureMode()) {
+        return reply.status(400).send({
+          success: false,
+          error:
+            'Billing portal needs a Stripe account. Fixture mode activates a plan locally and cannot manage a card.',
+        });
+      }
       const stripe = getStripe();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });

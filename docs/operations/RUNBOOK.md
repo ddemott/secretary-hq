@@ -69,7 +69,7 @@ Symptom: customer pays but the tenant gate doesn't flip; Stripe dashboard shows 
 Check in order:
 
 1. **`STRIPE_WEBHOOK_SECRET` set + correct?** An empty/mismatched secret makes the handler reject every event 400 (signature verify fails — boot warning fires when `STRIPE_SECRET_KEY` is set but the webhook secret isn't). Fix: copy the signing secret from the Stripe webhook endpoint into Railway.
-2. **Webhook registered at the right URL?** `https://secretary-hq-production.up.railway.app/billing/webhook`, subscribed to the 3 events (`checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`).
+2. **Webhook registered at the right URL?** `https://secretary-hq-production.up.railway.app/billing/webhook`, subscribed to `checkout.session.completed`, `invoice.payment_failed`, `invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated`, `customer.subscription.deleted`.
 3. **Price IDs.** A missing `STRIPE_SOLO/GROWTH/PRO_PRICE_ID` makes that plan's checkout 503 before any webhook.
 4. **Verify the round-trip locally** with `stripe listen` + `./scripts/simulate.sh stripe` before blaming prod.
 

@@ -105,19 +105,42 @@ export function evaluateCapabilities(ctx: FeatureReadinessContext): CapabilityEv
 
   // ── stripe_billing ───────────────────────────────────────────────────
   {
-    const missing = !env.STRIPE_SECRET_KEY;
-    evaluations.push({
-      feature: 'stripe_billing',
-      status: missing ? 'disabled' : 'ready',
-      detail: missing
-        ? 'STRIPE_SECRET_KEY not set — all /billing/* routes return 503'
-        : 'Stripe secret key configured',
-      warnings: missing
-        ? [
-            'STRIPE_SECRET_KEY not set — billing and subscription management disabled (all /billing/* routes return 503)',
-          ]
-        : [],
-    });
+    const fixtureRequested = env.STRIPE_FIXTURE_MODE === 'true';
+    const fixtureLive = fixtureRequested && env.NODE_ENV !== 'production';
+    const missingKey = !env.STRIPE_SECRET_KEY;
+    const missingPrice =
+      !env.STRIPE_SOLO_PRICE_ID || !env.STRIPE_GROWTH_PRICE_ID || !env.STRIPE_PRO_PRICE_ID;
+    const warnings: string[] = [];
+    let status: FeatureStatus;
+    let detail: string;
+    if (fixtureLive) {
+      status = 'mocked';
+      detail =
+        'STRIPE_FIXTURE_MODE — checkout activates a plan locally and does not contact Stripe';
+      warnings.push(
+        'STRIPE_FIXTURE_MODE is on — billing checkout does not contact Stripe and does not charge a card'
+      );
+    } else if (missingKey) {
+      status = 'disabled';
+      detail = 'STRIPE_SECRET_KEY not set — all /billing/* routes return 503';
+      warnings.push(
+        'STRIPE_SECRET_KEY not set — billing and subscription management disabled (all /billing/* routes return 503)'
+      );
+    } else if (missingPrice) {
+      status = 'missing_config';
+      detail =
+        'Stripe key set but STRIPE_SOLO_PRICE_ID, STRIPE_GROWTH_PRICE_ID, or STRIPE_PRO_PRICE_ID is empty — that plan checkout returns 503';
+      warnings.push(detail);
+    } else {
+      status = 'ready';
+      detail = 'Stripe secret key and price IDs configured';
+    }
+    if (fixtureRequested && env.NODE_ENV === 'production') {
+      warnings.push(
+        'STRIPE_FIXTURE_MODE is set in production and is ignored — checkout still requires Stripe'
+      );
+    }
+    evaluations.push({ feature: 'stripe_billing', status, detail, warnings });
   }
 
   // ── stripe_webhook ───────────────────────────────────────────────────

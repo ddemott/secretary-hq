@@ -342,7 +342,7 @@ STEPS:
 
 1. Decide tier pricing (research suggests Solo $99–129 / Growth $199–249 / Pro $349+).
 2. Create 3 products + prices in Stripe **TEST** mode.
-3. Register webhook `https://secretary-hq-production.up.railway.app/billing/webhook` (events: `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted`); copy `whsec_`.
+3. Register webhook `https://secretary-hq-production.up.railway.app/billing/webhook` (events: `checkout.session.completed`, `invoice.payment_failed`, `invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated`, `customer.subscription.deleted`); copy `whsec_`.
 4. Set Railway env: `STRIPE_WEBHOOK_SECRET`, `STRIPE_SOLO_PRICE_ID`, `STRIPE_GROWTH_PRICE_ID`, `STRIPE_PRO_PRICE_ID`.
 5. Run a test checkout (card `4242 4242 4242 4242`).
    ACCEPTANCE_TEST:
