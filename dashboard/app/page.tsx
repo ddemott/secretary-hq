@@ -48,9 +48,22 @@ body {
   mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 0%, transparent 100%);
 }
 
-/* ── NAV ── */
-nav {
+/* ── ANNOUNCE BAR + NAV (single fixed wrapper so the page never has to
+   guess the combined height — see .top-fixed) ── */
+.top-fixed {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+}
+.announce-bar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; flex-wrap: wrap;
+  background: linear-gradient(90deg, rgba(245,158,11,0.14), rgba(37,99,235,0.14));
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px; line-height: 1.4;
+  padding: 8px 16px; text-align: center;
+}
+.announce-bar strong { color: var(--text); font-weight: 600; }
+nav {
   height: 64px;
   display: flex; align-items: center; padding: 0 48px;
   background: rgba(8,8,8,0.85);
@@ -112,7 +125,7 @@ nav {
 /* ── HERO ── */
 .hero {
   min-height: 100vh; display: flex; align-items: center;
-  padding: 120px 48px 80px; position: relative; z-index: 1;
+  padding: 168px 48px 80px; position: relative; z-index: 1;
 }
 .hero-inner {
   max-width: 1200px; margin: 0 auto; width: 100%;
@@ -531,8 +544,12 @@ footer {
 .nav-mobile-backdrop.open { display: block; }
 .nav-mobile-menu {
   display: none; flex-direction: column;
-  /* Sits above backdrop (z-98) but below nav (z-100) */
-  position: fixed; top: 64px; left: 0; right: 0; z-index: 99;
+  /* Sits above backdrop (z-98) but below nav (z-100). --top-offset is
+     measured from the real .top-fixed height (announce bar + nav) by a
+     ResizeObserver in LandingPage — the bar can wrap to 2 lines on
+     narrow screens, so a hardcoded guess here would overlap it. 104px
+     is only the pre-JS/no-JS fallback. */
+  position: fixed; top: var(--top-offset, 104px); left: 0; right: 0; z-index: 99;
   background: rgba(8,8,8,0.97); backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
@@ -540,7 +557,7 @@ footer {
   /* iOS Safari scroll isolation — prevents underlying page from
      scrolling through the open menu on iPad */
   overscroll-behavior: contain;
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - var(--top-offset, 104px));
   overflow-y: auto;
 }
 .nav-mobile-menu.open { display: flex; }
@@ -561,7 +578,8 @@ footer {
   nav { padding: 0 24px; }
   .nav-links { display: none; }
   .hamburger { display: flex; }
-  .hero { padding: 100px 24px 60px; }
+  .announce-bar { font-size: 12px; padding: 8px 12px; }
+  .hero { padding: 148px 24px 60px; }
   .hero-inner { grid-template-columns: 1fr; gap: 48px; }
   .feat-grid-hero { grid-template-columns: 1fr 1fr; }
   .section { padding: 72px 24px; }
@@ -580,7 +598,11 @@ footer {
 const LANDING_HTML = `
 <div class="grid-bg"></div>
 
-<!-- NAV -->
+<!-- ANNOUNCE BAR + NAV -->
+<div class="top-fixed">
+<div class="announce-bar" role="status">
+  🚧 <strong>SecretaryHQ is finishing final testing before public launch.</strong> Coming very soon.
+</div>
 <nav id="main-nav">
   <a href="#" class="nav-logo">
     <div class="nav-logo-icon">
@@ -605,6 +627,7 @@ const LANDING_HTML = `
     </button>
   </div>
 </nav>
+</div>
 <div class="nav-mobile-backdrop" id="mobile-backdrop" aria-hidden="true"></div>
 <div class="nav-mobile-menu" id="mobile-menu" role="navigation" aria-label="Mobile navigation">
   <a href="#how">How It Works</a>
@@ -1192,6 +1215,26 @@ export default function LandingPage() {
     );
     document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
     return () => observer.disconnect();
+  }, [checked]);
+
+  // Measures the real announce-bar + nav height so the mobile menu's top
+  // offset never has to guess — the bar can wrap to 2 lines on narrow
+  // screens, and a hardcoded px offset would either gap or overlap it.
+  useEffect(() => {
+    if (!checked) return;
+    const topFixed = document.querySelector<HTMLElement>('.top-fixed');
+    if (!topFixed) return;
+    const setOffset = () => {
+      document.documentElement.style.setProperty('--top-offset', `${topFixed.offsetHeight}px`);
+    };
+    setOffset();
+    const observer = new ResizeObserver(setOffset);
+    observer.observe(topFixed);
+    window.addEventListener('resize', setOffset);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', setOffset);
+    };
   }, [checked]);
 
   // Annual/monthly pricing toggle. Wired here (not in an injected <script>,
