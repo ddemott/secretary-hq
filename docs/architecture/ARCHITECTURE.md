@@ -143,13 +143,13 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 
 | Service            | Platform                               | Region / URL                                                                                                     | Deploy mechanism                                                                                                       |
 | ------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Backend (Fastify)  | Railway                                | `secretary-hq-production.up.railway.app`                                                                               | Nixpacks auto-deploy from `main`                                                                                       |
-| Agent worker       | Railway (service `secretary-hq-agent`)       | WebSocket long-runner, worker ID `AW_vPmGExrgTeGn`, registers with LiveKit under agent name `secretary-hq-agent` | Node.js package under `agent/`                                                                                         |
+| Backend (Fastify)  | Railway                                | `secretary-hq-production.up.railway.app`                                                                         | Nixpacks auto-deploy from `main`                                                                                       |
+| Agent worker       | Railway (service `secretary-hq-agent`) | WebSocket long-runner, worker ID `AW_vPmGExrgTeGn`, registers with LiveKit under agent name `secretary-hq-agent` | Node.js package under `agent/`                                                                                         |
 | Database           | Supabase (managed Postgres + pgvector) | `sgibijfchvfuizudrmir` (us-west-2)                                                                               | Migrations applied via `npm run db:migrate`                                                                            |
 | Dashboard          | Railway                                | `dashboard-production-cee3.up.railway.app`                                                                       | Next.js build via `dashboard/server.js`                                                                                |
 | Telephony          | Telnyx                                 | `+1 (630) 822-9086` (live; `937-9478` + `866-1960` decommissioned)                                               | SIP Connection `livekit-outbound` (ID `2945038451784812111`); provisioned per tenant via `POST /provisioning/activate` |
 | Voice orchestrator | LiveKit Cloud                          | `ai-secretary-nmlkkmgf.sip.livekit.cloud:5060` (SIP); WebSocket for agent                                        | Dispatch rule `SDR_WEL49AwBB4NW` routes to agent name `secretary-hq-agent`                                             |
-| Stripe             | Hosted                                 | Route exists at `/billing/webhook` on Railway                                                                    | Stripe endpoint registration and final price IDs are still pending                                                      |
+| Stripe             | Hosted                                 | Route exists at `/billing/webhook` on Railway                                                                    | Stripe endpoint registration and final price IDs are still pending                                                     |
 
 **Graceful shutdown:** Backend handles `SIGTERM`/`SIGINT` (Railway sends these during deploys) — closes Fastify and drains the DB pool.
 
@@ -252,7 +252,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 | `get_effective_shifts_bulk(tenant_id, start, end)` | Bulk variant — returns all employees' shifts in a date range. Used by scheduler for efficient loading.                                                                                                                                                                 |
 | `search_tenant_docs(tenant_id, query_embedding)`   | Cosine similarity over `tenant_docs.embedding` (pgvector `<=>` operator).                                                                                                                                                                                              |
 | `check_coverage_gaps(tenant_id)`                   | Returns list of services with missing coverage (no qualified employee or resource).                                                                                                                                                                                    |
-| `link_orphaned_transcripts()`                      | Joins transcripts to summaries where `call_id` matches. Exists in the schema but nothing in `src/` or `agent/src/` calls it today (the old `dispatcher.handleCallEnded()` caller is gone). |
+| `link_orphaned_transcripts()`                      | Joins transcripts to summaries where `call_id` matches. Exists in the schema but nothing in `src/` or `agent/src/` calls it today (the old `dispatcher.handleCallEnded()` caller is gone).                                                                             |
 | `set_tenant_context(uuid)`                         | Sets `app.current_tenant_id` session variable for RLS policy evaluation. Called by `withTenantClient()`.                                                                                                                                                               |
 | `fn_audit_trigger()`                               | `SECURITY DEFINER` trigger — writes before/after snapshots to `audit_log` on INSERT/UPDATE/DELETE of appointments, customers, resources.                                                                                                                               |
 
@@ -312,11 +312,11 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 `agent/src/index.ts` selects one of three, in this precedence order:
 
-| Flow | Flag | Status |
-|---|---|---|
-| **`ChecklistAgent`** — question trees (`agent/src/checklist/`) | `ENABLE_QUESTION_TREE`, `(v) => v !== 'false'` — **ON unless disabled** | **LIVE. This is production.** |
-| `CallRootAgent` — TaskGroup "rungs" (`agent/src/tasks/`) | `ENABLE_TASK_GROUP=true` AND question-tree off | Fallback. Superseded 2026-07-21. |
-| `SpeakingAgent` — the prompt ladder (`prompt.ts` + `tenants.system_prompt`) | both flags off | Fallback. The original design. |
+| Flow                                                                        | Flag                                                                    | Status                           |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------- |
+| **`ChecklistAgent`** — question trees (`agent/src/checklist/`)              | `ENABLE_QUESTION_TREE`, `(v) => v !== 'false'` — **ON unless disabled** | **LIVE. This is production.**    |
+| `CallRootAgent` — TaskGroup "rungs" (`agent/src/tasks/`)                    | `ENABLE_TASK_GROUP=true` AND question-tree off                          | Fallback. Superseded 2026-07-21. |
+| `SpeakingAgent` — the prompt ladder (`prompt.ts` + `tenants.system_prompt`) | both flags off                                                          | Fallback. The original design.   |
 
 **How question trees work.** The model is NOT given a script to follow. Instead:
 
@@ -337,13 +337,13 @@ Super-admin operations (cross-tenant queries, tenant listing, user registration)
 
 **But defining a tool does not put it in front of the model.** Under question trees, `selectedTools()` (`agent/src/checklist/checklistTools.ts`) rebuilds the toolset from the currently selected trees, and presents **13 base tools**, plus **`transfer_call` whenever a forward number is configured** (`ALWAYS_ON_PASSTHROUGH_TOOLS` + `offerTransfer`, shipped #462), plus **3 identity tools whenever the `identity` tree is selected** (which is true on goal-bearing calls, so most real calls with a forward number see 17):
 
-| Group | Tools |
-|---|---|
-| Base (always) | `set_purpose`, `record_answer`, `finish_call`, `answer_question` (wraps `get_company_policy_answer` — RAG under another name) |
-| Always-on passthrough (forward-number gated) | `transfer_call` (SIP REFER live handoff; omitted entirely when no forward number / capability off) |
-| Action nodes (per selected tree) | `book_with_scheduling`, `take_message`, `capture_job_inquiry`, `cancel_appointment`, `reschedule_appointment`, `capture_case_inquiry` |
-| Passthrough (per selected tree) | `get_available_slots`, `get_service_catalog`, `get_my_appointments` |
-| Identity add-ons (when `identity` is selected) | `get_customer_context`, `send_verification_code`, `verify_phone_code` |
+| Group                                          | Tools                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Base (always)                                  | `set_purpose`, `record_answer`, `finish_call`, `answer_question` (wraps `get_company_policy_answer` — RAG under another name)         |
+| Always-on passthrough (forward-number gated)   | `transfer_call` (SIP REFER live handoff; omitted entirely when no forward number / capability off)                                    |
+| Action nodes (per selected tree)               | `book_with_scheduling`, `take_message`, `capture_job_inquiry`, `cancel_appointment`, `reschedule_appointment`, `capture_case_inquiry` |
+| Passthrough (per selected tree)                | `get_available_slots`, `get_service_catalog`, `get_my_appointments`                                                                   |
+| Identity add-ons (when `identity` is selected) | `get_customer_context`, `send_verification_code`, `verify_phone_code`                                                                 |
 
 The rest are **never offered on a live call.** Some are dead by design: `start_booking` / `manage_appointment` were ladder-era ROUTERS, `book_appointment` / `check_availability` / `get_scheduling_options` are superseded, and `record_sms_consent` / `send_self_service_link` are gated off with SMS anyway. **Still not model-facing on the question-tree path** (see `DEFINED_UNREACHABLE_ON_QUESTION_TREE`): `page_owner_via_sms`, `attach_meeting_notes`, `save_customer_preference`, `identify_caller` (host-code-only via `maybeIdentify()`), `get_detailed_customer_history`, and `find_caller_by_name` (deliberately excluded). Live human handoff **is** exposed when a forward number is set — that is no longer a gap.
 
@@ -685,12 +685,12 @@ Fires from the 4 appointment mutation points (create, update, delete, cancel). C
 
 ### 15.1 Plans
 
-| Plan label in code | Current state | Notes |
-| ------------------ | ------------- | ----- |
-| Solo               | Checkout path exists | Price not finalized; old dollar figures were placeholders |
-| Growth             | Checkout path exists | Price not finalized; old dollar figures were placeholders |
-| Professional       | Backlog / partial wiring | Not yet a launched plan |
-| Enterprise         | Not implemented | Placeholder only |
+| Plan label in code | Current state            | Notes                                                     |
+| ------------------ | ------------------------ | --------------------------------------------------------- |
+| Solo               | Checkout path exists     | Price not finalized; old dollar figures were placeholders |
+| Growth             | Checkout path exists     | Price not finalized; old dollar figures were placeholders |
+| Professional       | Backlog / partial wiring | Not yet a launched plan                                   |
+| Enterprise         | Not implemented          | Placeholder only                                          |
 
 ### 15.2 Checkout flow
 
@@ -704,20 +704,20 @@ POST /billing/checkout { tenant_id, plan }
     })
   → returns { url }
 
-Client → redirects to checkout_url
+Client → redirects to `url`
 ```
 
 ### 15.3 Webhook (`POST /billing/webhook`)
 
 The route exists and verifies Stripe signatures via `STRIPE_WEBHOOK_SECRET`, but **no Stripe webhook endpoint is registered yet**, so production has not received these events. When wired, it handles:
 
-| Event | Action |
-| ----- | ------ |
-| `checkout.session.completed` | Activate the tenant (`subscription_status = active`, plan + subscription id). Skips `payment_status = unpaid`. |
-| `invoice.payment_failed` | `subscription_status = past_due` |
-| `invoice.paid`, `invoice.payment_succeeded` | `past_due` → `active`. Does not resurrect `canceled`. |
-| `customer.subscription.updated` | Sync status and, when the price id matches `STRIPE_*_PRICE_ID`, the plan. `canceled` clears the plan. |
-| `customer.subscription.deleted` | `canceled`, clear subscription id and plan |
+| Event                                       | Action                                                                                                         |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `checkout.session.completed`                | Activate the tenant (`subscription_status = active`, plan + subscription id). Skips `payment_status = unpaid`. |
+| `invoice.payment_failed`                    | `subscription_status = past_due`                                                                               |
+| `invoice.paid`, `invoice.payment_succeeded` | `past_due` → `active`. Does not resurrect `canceled`.                                                          |
+| `customer.subscription.updated`             | Sync status and, when the price id matches `STRIPE_*_PRICE_ID`, the plan. `canceled` clears the plan.          |
+| `customer.subscription.deleted`             | `canceled`, clear subscription id and plan                                                                     |
 
 `STRIPE_FIXTURE_MODE=true` (ignored when `NODE_ENV=production`) skips Stripe on checkout and writes the same active-plan columns locally. The Customer Portal route stays a 400 in that mode.
 
@@ -757,12 +757,12 @@ Single top-level tab bar. Front-desk-only users (`role === 'front_desk' && !isAd
 
 Four React contexts in `dashboard/lib/`:
 
-| Context                    | Purpose                                                                                                                             |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `SessionContext`           | JWT, current user, active tenant (via `useActiveTenantId()`), tenant list, `tenantsVersion` counter for cross-component sync        |
-| `ThemeContext`             | 8 themes (navy [default], rose, forest, midnight, nord, sunset, high-contrast, solarized) — swaps CSS custom properties in `app/globals.css` |
-| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 31 types across 6 categories (`supabase/seed.sql`)    |
-| `AppointmentDetailContext` | Holds selected appointment for cross-view access (list → detail panel)                                                              |
+| Context                    | Purpose                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SessionContext`           | JWT, current user, active tenant (via `useActiveTenantId()`), tenant list, `tenantsVersion` counter for cross-component sync                           |
+| `ThemeContext`             | 8 themes (navy [default], rose, forest, midnight, nord, sunset, high-contrast, solarized) — swaps CSS custom properties in `app/globals.css`           |
+| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 31 types across 6 categories (`supabase/seed.sql`) |
+| `AppointmentDetailContext` | Holds selected appointment for cross-view access (list → detail panel)                                                                                 |
 
 ### 16.4 Component hierarchy
 
@@ -793,13 +793,13 @@ Vitest + React Testing Library (jsdom). Latest local audit rerun: **1,242 passin
 
 `n8n/` was removed. All async work runs inline in Fastify route handlers as fire-and-forget calls.
 
-| Concern                     | Trigger point                                        | Runs in                                                                      |
-| --------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Post-call summary           | Agent session close → `POST /agent-tools/voice-session-end` | summary generated in the agent (`agent/src/callSummary.ts`), persisted by `src/routes/agentTools/session.ts` |
-| Stuck-session finalize      | 60s tick (`voiceSessionReaper`)                      | `src/workers/voiceSessionReaper.ts`                                          |
-| Calendar + Square CRM sync  | Appointment / customer mutation routes               | `src/services/syncOrchestrator.ts` → `calendarSync.ts` + `crm/squareSync.ts` |
-| Reminders                   | 60s tick polling `reminder_schedules`                | `src/workers/reminderScheduler.ts` → `src/services/reminders/` (SMS delivery is off until 10DLC — `ENABLE_SMS`) |
-| Website re-scan             | Daily tick                                           | `src/workers/websiteRescanScheduler.ts` (stages knowledge suggestions only)  |
+| Concern                    | Trigger point                                               | Runs in                                                                                                         |
+| -------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Post-call summary          | Agent session close → `POST /agent-tools/voice-session-end` | summary generated in the agent (`agent/src/callSummary.ts`), persisted by `src/routes/agentTools/session.ts`    |
+| Stuck-session finalize     | 60s tick (`voiceSessionReaper`)                             | `src/workers/voiceSessionReaper.ts`                                                                             |
+| Calendar + Square CRM sync | Appointment / customer mutation routes                      | `src/services/syncOrchestrator.ts` → `calendarSync.ts` + `crm/squareSync.ts`                                    |
+| Reminders                  | 60s tick polling `reminder_schedules`                       | `src/workers/reminderScheduler.ts` → `src/services/reminders/` (SMS delivery is off until 10DLC — `ENABLE_SMS`) |
+| Website re-scan            | Daily tick                                                  | `src/workers/websiteRescanScheduler.ts` (stages knowledge suggestions only)                                     |
 
 All async work is **best-effort**. If a sync fails, the user-facing operation still succeeds. Failures are logged + surfaced in the dashboard (e.g., "Reconnect required").
 

@@ -55,6 +55,13 @@ function planFromPriceId(priceId: string | null): string | null {
   return null;
 }
 
+const ALLOWED_PLANS = ['solo', 'growth', 'professional'];
+
+/** Checkout-session metadata is ours, but a webhook payload is still external input — validate before writing. */
+function validPlan(plan: unknown): string | null {
+  return typeof plan === 'string' && ALLOWED_PLANS.includes(plan) ? plan : null;
+}
+
 /** Map a Stripe subscription status onto the three statuses the gate understands. */
 function localStatusForStripe(status: string): 'active' | 'past_due' | 'canceled' | null {
   switch (status) {
@@ -243,14 +250,14 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
           case 'checkout.session.completed': {
             const session = event.data.object;
             const tenantId = session.metadata?.tenant_id;
-            const plan = session.metadata?.plan;
+            const plan = validPlan(session.metadata?.plan);
             const subscriptionId = stripeId(session.subscription);
             // A completed session can still be unpaid (delayed payment method).
             // Leave the tenant inactive until a later paid event.
             if (tenantId && subscriptionId && session.payment_status !== 'unpaid') {
               await pool.query(
                 `UPDATE tenants
-               SET stripe_subscription_id = $1, subscription_status = 'active', subscription_plan = $2
+               SET stripe_subscription_id = $1, subscription_status = 'active', subscription_plan = COALESCE($2, subscription_plan)
                WHERE tenant_id = $3 AND is_deleted = false`,
                 [subscriptionId, plan, tenantId]
               );

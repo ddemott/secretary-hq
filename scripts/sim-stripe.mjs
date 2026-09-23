@@ -116,6 +116,14 @@ async function main() {
   // half of the TODO. A 503 on the FIRST plan means the key is missing; we note
   // that once and stop probing the rest (they'd all 503 for the same reason).
   const PLANS = ['solo', 'growth', 'professional'];
+  // The professional plan's env var is STRIPE_PRO_PRICE_ID, not
+  // STRIPE_PROFESSIONAL_PRICE_ID — this map is the only place that mismatch
+  // matters, so it's named here rather than uppercasing the plan string.
+  const PRICE_ENV_VAR = {
+    solo: 'STRIPE_SOLO_PRICE_ID',
+    growth: 'STRIPE_GROWTH_PRICE_ID',
+    professional: 'STRIPE_PRO_PRICE_ID',
+  };
   let keyMissing = false;
   for (const plan of PLANS) {
     if (keyMissing) {
@@ -132,7 +140,7 @@ async function main() {
       // A missing price ID ALSO returns 503 ("Price ID not configured for …"),
       // so check it BEFORE the generic key-missing 503 branch — otherwise one
       // unpriced plan would be misreported as "key missing" and skip the rest.
-      gap(`checkout: ${plan}`, `key present but STRIPE_${plan.toUpperCase()}_PRICE_ID missing`);
+      gap(`checkout: ${plan}`, `key present but ${PRICE_ENV_VAR[plan]} missing`);
     } else if (
       co.status === 503 ||
       err.includes('not configured') ||
