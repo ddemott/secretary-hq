@@ -65,8 +65,13 @@ dashboard/dist/
 improvement-ideas.md
 .remember/
 
-# Claude Code harness state (per-machine, not source-controlled)
-.claude/
+# Claude Code harness state (per-machine, not source-controlled) — except the
+# shared `remember` skill, its memory, and the Stop hook that fills it — cloud sessions need these.
+.claude/*
+!.claude/skills/
+!.claude/memory/
+!.claude/hooks/
+!.claude/settings.json
 
 # continuously-improve loop state (per-machine, session-scoped)
 .improve/
