@@ -852,8 +852,8 @@ const LANDING_HTML = `
 
       <div class="feat-card reveal">
         <div class="feat-icon amber"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div>
-        <div class="feat-h">Instant Proof in Their Pocket</div>
-        <p class="feat-p">The moment they hang up, their phone buzzes. Date, time, service — confirmed. They&apos;re confident. You skip the follow-up call.</p>
+        <div class="feat-h">Instant Proof in Their Inbox</div>
+        <p class="feat-p">The moment they hang up, a confirmation email lands. Date, time, service — confirmed. They&apos;re confident. You skip the follow-up call.</p>
         <span class="feat-tag blue">Instant</span>
       </div>
 
@@ -976,16 +976,16 @@ const LANDING_HTML = `
       <button class="cap-tile" type="button" aria-expanded="false" aria-controls="cap-panel-6">
         <span class="cap-ic" aria-hidden="true">🔔</span>
         <span class="cap-title">Reminders</span>
-        <span class="cap-hook">Cuts no-shows with automatic text/email reminders.</span>
+        <span class="cap-hook">Cuts no-shows with automatic email reminders.</span>
         <span class="cap-more">See all <span class="cap-caret" aria-hidden="true">▾</span></span>
       </button>
       <div class="cap-panel" id="cap-panel-6" role="region" aria-label="Reminders" hidden>
         <div class="cap-panel-h">🔔 Reminders</div>
         <div class="val-layers">
-          <div class="val-layer"><div class="val-layer-dot blue"></div>Automatic reminders and confirmations by text or email</div>
+          <div class="val-layer"><div class="val-layer-dot blue"></div>Automatic reminders and confirmations by email — text arrives once SMS carrier registration completes</div>
           <div class="val-layer"><div class="val-layer-dot green"></div>Only to customers who agreed to be contacted — no spam risk</div>
           <div class="val-layer"><div class="val-layer-dot green"></div>Fewer no-shows and last-minute gaps</div>
-          <div class="val-layer"><div class="val-layer-dot blue"></div>Retries automatically if a text doesn't go through</div>
+          <div class="val-layer"><div class="val-layer-dot blue"></div>Retries automatically if a send doesn't go through</div>
         </div>
       </div>
 
@@ -1060,7 +1060,7 @@ const LANDING_HTML = `
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 staff member</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 station or workspace</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Phone number included</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Text message confirmations</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Email confirmations</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Customer records</li>
         </ul>
         <a href="/register" class="price-btn outline">Start free trial</a>
