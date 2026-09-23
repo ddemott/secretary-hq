@@ -702,20 +702,24 @@ POST /billing/checkout { tenant_id, plan }
       mode: 'subscription',
       success_url + cancel_url (uses DASHBOARD_URL)
     })
-  → returns { checkout_url }
+  → returns { url }
 
 Client → redirects to checkout_url
 ```
 
 ### 15.3 Webhook (`POST /billing/webhook`)
 
-The route exists and verifies Stripe signatures via `STRIPE_WEBHOOK_SECRET`, but **no Stripe webhook endpoint is registered yet**, so production has not received these events. When wired, it handles three events:
+The route exists and verifies Stripe signatures via `STRIPE_WEBHOOK_SECRET`, but **no Stripe webhook endpoint is registered yet**, so production has not received these events. When wired, it handles:
 
-| Event                           | Action                                                                                                         |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `checkout.session.completed`    | `UPDATE tenants SET stripe_subscription_id, subscription_status = 'active', subscription_plan = $plan`         |
-| `invoice.payment_failed`        | `UPDATE tenants SET subscription_status = 'past_due'`                                                          |
-| `customer.subscription.deleted` | `UPDATE tenants SET subscription_status = 'canceled', stripe_subscription_id = NULL, subscription_plan = NULL` |
+| Event | Action |
+| ----- | ------ |
+| `checkout.session.completed` | Activate the tenant (`subscription_status = active`, plan + subscription id). Skips `payment_status = unpaid`. |
+| `invoice.payment_failed` | `subscription_status = past_due` |
+| `invoice.paid`, `invoice.payment_succeeded` | `past_due` → `active`. Does not resurrect `canceled`. |
+| `customer.subscription.updated` | Sync status and, when the price id matches `STRIPE_*_PRICE_ID`, the plan. `canceled` clears the plan. |
+| `customer.subscription.deleted` | `canceled`, clear subscription id and plan |
+
+`STRIPE_FIXTURE_MODE=true` (ignored when `NODE_ENV=production`) skips Stripe on checkout and writes the same active-plan columns locally. The Customer Portal route stays a 400 in that mode.
 
 ### 15.4 Subscription gate middleware
 
@@ -723,7 +727,7 @@ Tenant-scoped routes behind `subscriptionGateMiddleware` check `tenants.subscrip
 
 ### 15.5 Status endpoint
 
-`GET /billing/status` → `{ subscription_status, subscription_plan }` for the dashboard to decide what to gate.
+`GET /billing/status` → `{ subscription_status, subscription_plan, billing_mode }` (`stripe` or `fixture`) for the dashboard to decide what to gate and whether to say a card was charged.
 
 ---
 

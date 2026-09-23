@@ -29,6 +29,9 @@ function baseCtx(
       TELNYX_PUBLIC_KEY: '9xjFfLcMgNjd22BM2J0J2wsHmWFsLMfGSBlGviIarp8=',
       STRIPE_SECRET_KEY: 'sk_test_fake',
       STRIPE_WEBHOOK_SECRET: 'whsec_fake',
+      STRIPE_SOLO_PRICE_ID: 'price_solo',
+      STRIPE_GROWTH_PRICE_ID: 'price_growth',
+      STRIPE_PRO_PRICE_ID: 'price_pro',
       ...(overrides.env ?? {}),
     } as NodeJS.ProcessEnv,
     TELNYX_API_KEY: overrides.TELNYX_API_KEY ?? 'KEY01fake',
@@ -218,7 +221,9 @@ describe('collectStartupWarnings — .env deprecation + TELNYX_PUBLIC_KEY edges'
     const warnings = collectStartupWarnings(
       baseCtx({ env: { TELNYX_PUBLIC_KEY: '9xjFfLcMgNjd22BM2J0J2wsHmWFsLMfGSBlGviIarp8=' } })
     );
-    expect(warnings.filter((w) => w.includes('PUBLIC_KEY') || w.includes('TELNYX_PUBLIC_KEY'))).toHaveLength(0);
+    expect(
+      warnings.filter((w) => w.includes('PUBLIC_KEY') || w.includes('TELNYX_PUBLIC_KEY'))
+    ).toHaveLength(0);
   });
 
   it('DEPRECATION: old PUBLIC_KEY still present logs migration note (no functional effect)', () => {

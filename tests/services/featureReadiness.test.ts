@@ -48,6 +48,9 @@ function fullCtx(
       DASHBOARD_URL: 'https://app.secretaryhq.com',
       STRIPE_SECRET_KEY: 'sk_test_fake',
       STRIPE_WEBHOOK_SECRET: 'whsec_fake',
+      STRIPE_SOLO_PRICE_ID: 'price_solo',
+      STRIPE_GROWTH_PRICE_ID: 'price_growth',
+      STRIPE_PRO_PRICE_ID: 'price_pro',
       METRICS_TOKEN: 'metrics-token',
       TELNYX_PUBLIC_KEY: '9xjFfLcMgNjd22BM2J0J2wsHmWFsLMfGSBlGviIarp8=',
       SENTRY_DSN: 'https://fake@sentry.io/12345',
@@ -129,6 +132,35 @@ describe('collectFeatureReadiness — statuses flip per condition', () => {
     const rows = collectFeatureReadiness(fullCtx({ env: { STRIPE_WEBHOOK_SECRET: undefined } }));
     expect(statusOf(rows, 'stripe_billing')).toBe('ready');
     expect(statusOf(rows, 'stripe_webhook')).toBe('missing_config');
+  });
+
+  it('SAD: Stripe key without price IDs → stripe_billing missing_config', () => {
+    const rows = collectFeatureReadiness(
+      fullCtx({
+        env: {
+          STRIPE_SOLO_PRICE_ID: undefined,
+          STRIPE_GROWTH_PRICE_ID: 'price_growth',
+          STRIPE_PRO_PRICE_ID: 'price_pro',
+        },
+      })
+    );
+    expect(statusOf(rows, 'stripe_billing')).toBe('missing_config');
+  });
+
+  it('HAPPY: STRIPE_FIXTURE_MODE outside production reports stripe_billing mocked', () => {
+    const rows = collectFeatureReadiness(
+      fullCtx({ env: { STRIPE_FIXTURE_MODE: 'true', NODE_ENV: 'development' } })
+    );
+    expect(statusOf(rows, 'stripe_billing')).toBe('mocked');
+  });
+
+  it('SAD: STRIPE_FIXTURE_MODE in production is ignored and warned', () => {
+    const rows = evaluateCapabilities(
+      fullCtx({ env: { STRIPE_FIXTURE_MODE: 'true', NODE_ENV: 'production' } })
+    );
+    const billing = rows.find((r) => r.feature === 'stripe_billing');
+    expect(billing?.status).toBe('ready');
+    expect(billing?.warnings.join(' ')).toContain('ignored');
   });
 
   it('SAD: no CORS_ORIGIN → cors missing_config (open CORS)', () => {

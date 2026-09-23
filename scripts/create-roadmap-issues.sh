@@ -149,7 +149,7 @@ T004=$(create_issue "[T-004] Stripe Test-Mode Wiring" \
 
 - [ ] T-004a: Decide final tier pricing ($99-129 Solo / $199-249 Growth / $349+ Pro)
 - [ ] T-004b: Create 3 Stripe products + prices in TEST mode — note price IDs
-- [ ] T-004c: Register webhook (TEST): `https://secretary-hq-production.up.railway.app/billing/webhook`, events `checkout.session.completed`, `invoice.payment_failed`, `customer.subscription.deleted` — copy `whsec_`
+- [ ] T-004c: Register webhook (TEST): `https://secretary-hq-production.up.railway.app/billing/webhook`, events `checkout.session.completed`, `invoice.payment_failed`, `invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated`, `customer.subscription.deleted` — copy `whsec_`
 - [ ] T-004d: Set 5 Railway env vars (`STRIPE_WEBHOOK_SECRET`, 3 price IDs, `STRIPE_AUTO_TAX`)
 - [ ] T-004e: Test round-trip — trigger checkout, verify webhook fires + gate activates
 - [ ] T-004f: Run `./scripts/simulate.sh stripe` and confirm clean

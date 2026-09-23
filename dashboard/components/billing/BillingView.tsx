@@ -15,6 +15,8 @@ type SubscriptionStatus = 'inactive' | 'active' | 'past_due' | 'canceled';
 interface BillingStatus {
   subscription_status: SubscriptionStatus;
   subscription_plan: PlanKey | null;
+  /** `fixture` when the backend is activating plans locally, with no Stripe account. */
+  billing_mode?: 'fixture' | 'stripe';
 }
 
 const PLANS: {
@@ -100,18 +102,24 @@ export default function BillingView() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const result = params.get('billing');
-    if (result === 'success') {
-      showToast('Payment successful — your subscription is now active!', 'success');
+    if (result === 'success' || result === 'fixture') {
+      showToast(
+        result === 'fixture'
+          ? 'Plan activated locally. No card was charged.'
+          : 'Payment successful — your subscription is now active!',
+        result === 'fixture' ? 'info' : 'success'
+      );
       params.delete('billing');
       window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-      // Refetch status
       if (tenantId) {
         Api.billing
           .status(tenantId)
           .then((s) => setStatus(s as BillingStatus))
           .catch(() =>
             showToast(
-              'Payment received, but the status refresh failed — reload to see your new plan.',
+              result === 'fixture'
+                ? 'Plan activated, but the status refresh failed — reload to see your new plan.'
+                : 'Payment received, but the status refresh failed — reload to see your new plan.',
               'error'
             )
           );
@@ -169,6 +177,13 @@ export default function BillingView() {
                 <span className="text-2xl font-bold capitalize">{currentPlan ?? 'Free Trial'}</span>
                 {statusBadge(currentStatus)}
               </div>
+            )}
+            {status?.billing_mode === 'fixture' && (
+              <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
+                Local fixture billing is on. Choosing a plan activates it on this machine and does
+                not charge a card. A Stripe account is still required before this business can take
+                money.
+              </p>
             )}
             {currentStatus === 'past_due' && (
               <p className="text-sm text-amber-400 mt-2">
@@ -278,12 +293,14 @@ export default function BillingView() {
                   border: '1px solid rgba(245, 158, 11, 0.35)',
                 }}
               >
-                You&apos;ve used {usage.cap.percent ?? Math.round((usage.cap.warnRatio || 0.8) * 100)}
-                % of this month&apos;s call allowance
-                {usage.cap.limit != null
-                  ? ` (${usage.cap.used} of ${usage.cap.limit})`
-                  : ''}. New calls keep answering until you hit 100%
-                {usage.cap.softCapEnforced ? ', then the line soft-blocks until next month or an upgrade.' : '.'}
+                You&apos;ve used{' '}
+                {usage.cap.percent ?? Math.round((usage.cap.warnRatio || 0.8) * 100)}% of this
+                month&apos;s call allowance
+                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}. New
+                calls keep answering until you hit 100%
+                {usage.cap.softCapEnforced
+                  ? ', then the line soft-blocks until next month or an upgrade.'
+                  : '.'}
               </div>
             )}
             {usage.cap?.status === 'blocked' && (

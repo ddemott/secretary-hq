@@ -231,45 +231,45 @@ describe('BillingView — usage statements', () => {
       subscription_plan: 'solo',
     });
     mockApi.billing.usage.mockResolvedValue({
-    plan: 'solo',
-    quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
-    billableMinSeconds: 15,
-    monthBoundaries: 'utc',
-    cap: {
       plan: 'solo',
-      used: 162,
-      limit: 350,
-      percent: 46,
-      status: 'ok',
-      softCapEnforced: true,
-      warnRatio: 0.8,
-      blocked: false,
-    },
-    statements: [
-      {
-        month: '2026-07',
-        totalCalls: 170,
-        answeredCalls: 162,
-        freeCalls: 8,
-        includedCalls: 350,
-        overageCalls: 0,
-        packsApplied: 0,
-        packChargeUsd: 0,
-        inProgress: true,
+      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+      billableMinSeconds: 15,
+      monthBoundaries: 'utc',
+      cap: {
+        plan: 'solo',
+        used: 162,
+        limit: 350,
+        percent: 46,
+        status: 'ok',
+        softCapEnforced: true,
+        warnRatio: 0.8,
+        blocked: false,
       },
-      {
-        month: '2026-06',
-        totalCalls: 90,
-        answeredCalls: 84,
-        freeCalls: 6,
-        includedCalls: 350,
-        overageCalls: 0,
-        packsApplied: 0,
-        packChargeUsd: 0,
-        inProgress: false,
-      },
-    ],
-  });
+      statements: [
+        {
+          month: '2026-07',
+          totalCalls: 170,
+          answeredCalls: 162,
+          freeCalls: 8,
+          includedCalls: 350,
+          overageCalls: 0,
+          packsApplied: 0,
+          packChargeUsd: 0,
+          inProgress: true,
+        },
+        {
+          month: '2026-06',
+          totalCalls: 90,
+          answeredCalls: 84,
+          freeCalls: 6,
+          includedCalls: 350,
+          overageCalls: 0,
+          packsApplied: 0,
+          packChargeUsd: 0,
+          inProgress: false,
+        },
+      ],
+    });
 
     render(<BillingView />);
 
@@ -388,6 +388,36 @@ describe('BillingView — post-checkout status refetch', () => {
       value: { ...origLocation, search, pathname: '/dashboard' },
     });
   }
+
+  test('HAPPY: billing_mode fixture explains that no card is charged', async () => {
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'solo',
+      billing_mode: 'fixture',
+    });
+    render(<BillingView />);
+    expect(await screen.findByText(/Local fixture billing is on/)).toBeInTheDocument();
+  });
+
+  test('HAPPY: ?billing=fixture refetches and does not claim a payment', async () => {
+    stubLocation('?billing=fixture');
+    mockApi.billing.status
+      .mockResolvedValueOnce({ subscription_status: 'inactive', subscription_plan: null })
+      .mockResolvedValueOnce({
+        subscription_status: 'active',
+        subscription_plan: 'solo',
+        billing_mode: 'fixture',
+      });
+
+    render(<BillingView />);
+
+    expect(await screen.findByText('Active')).toBeInTheDocument();
+    expect(mockToast).toHaveBeenCalledWith('Plan activated locally. No card was charged.', 'info');
+    expect(mockToast).not.toHaveBeenCalledWith(
+      'Payment successful — your subscription is now active!',
+      'success'
+    );
+  });
 
   test('HAPPY: ?billing=success refetches status and shows the new plan', async () => {
     // WHO: tenant owner returning from a successful Stripe checkout

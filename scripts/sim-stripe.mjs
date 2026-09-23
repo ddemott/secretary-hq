@@ -26,7 +26,9 @@ if (!BACKEND) {
   process.exit(2);
 }
 
-let passed = 0, failed = 0, gaps = 0;
+let passed = 0,
+  failed = 0,
+  gaps = 0;
 
 function pass(label, detail = '') {
   console.log(`  ${C.g}[OK]${C.x}   ${label.padEnd(32)} ${C.d}${detail}${C.x}`);
@@ -122,14 +124,20 @@ async function main() {
     }
     const co = await req('/billing/checkout', { method: 'POST', body: { plan }, auth: jwt });
     const err = (co.json?.error ?? '').toString().toLowerCase();
-    if (co.status === 200 && co.json?.url) {
+    if (co.status === 200 && co.json?.fixture) {
+      gap(`checkout: ${plan}`, 'STRIPE_FIXTURE_MODE — local activation, Stripe not called');
+    } else if (co.status === 200 && co.json?.url) {
       pass(`checkout: ${plan}`, 'price wired → session URL ✓');
     } else if (err.includes('price')) {
       // A missing price ID ALSO returns 503 ("Price ID not configured for …"),
       // so check it BEFORE the generic key-missing 503 branch — otherwise one
       // unpriced plan would be misreported as "key missing" and skip the rest.
       gap(`checkout: ${plan}`, `key present but STRIPE_${plan.toUpperCase()}_PRICE_ID missing`);
-    } else if (co.status === 503 || err.includes('not configured') || err.includes('stripe_secret')) {
+    } else if (
+      co.status === 503 ||
+      err.includes('not configured') ||
+      err.includes('stripe_secret')
+    ) {
       keyMissing = true;
       gap(`checkout: ${plan}`, 'STRIPE_SECRET_KEY not set on this env — billing inactive');
     } else if (co.status === 400) {
