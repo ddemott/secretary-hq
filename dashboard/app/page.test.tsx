@@ -33,6 +33,15 @@ class IOStub {
 }
 vi.stubGlobal('IntersectionObserver', IOStub);
 
+// Same problem, same fix, for the top-fixed height-measurement effect: jsdom
+// has no ResizeObserver either.
+class ROStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('ResizeObserver', ROStub);
+
 import LandingPage from './page';
 
 async function renderLanding() {
