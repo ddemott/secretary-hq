@@ -55,14 +55,14 @@ body {
 }
 .announce-bar {
   display: flex; align-items: center; justify-content: center;
-  gap: 6px; flex-wrap: wrap;
-  background: linear-gradient(90deg, rgba(245,158,11,0.14), rgba(37,99,235,0.14));
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 13px; line-height: 1.4;
-  padding: 8px 16px; text-align: center;
+  gap: 8px; flex-wrap: wrap;
+  background: var(--amber);
+  border-bottom: 2px solid #b45309;
+  color: #1a1200;
+  font-size: 14px; font-weight: 600; line-height: 1.4;
+  padding: 10px 16px; text-align: center;
 }
-.announce-bar strong { color: var(--text); font-weight: 600; }
+.announce-bar strong { color: #1a1200; font-weight: 800; }
 nav {
   height: 64px;
   display: flex; align-items: center; padding: 0 48px;
