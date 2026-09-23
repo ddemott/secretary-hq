@@ -544,11 +544,12 @@ footer {
 .nav-mobile-backdrop.open { display: block; }
 .nav-mobile-menu {
   display: none; flex-direction: column;
-  /* Sits above backdrop (z-98) but below nav (z-100). top/max-height
-     assume a single-line announce bar (~40px) + 64px nav; the bar can
-     wrap to two lines on very narrow screens, which just leaves a
-     small gap above the menu rather than an overlap. */
-  position: fixed; top: 104px; left: 0; right: 0; z-index: 99;
+  /* Sits above backdrop (z-98) but below nav (z-100). --top-offset is
+     measured from the real .top-fixed height (announce bar + nav) by a
+     ResizeObserver in LandingPage — the bar can wrap to 2 lines on
+     narrow screens, so a hardcoded guess here would overlap it. 104px
+     is only the pre-JS/no-JS fallback. */
+  position: fixed; top: var(--top-offset, 104px); left: 0; right: 0; z-index: 99;
   background: rgba(8,8,8,0.97); backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
@@ -556,7 +557,7 @@ footer {
   /* iOS Safari scroll isolation — prevents underlying page from
      scrolling through the open menu on iPad */
   overscroll-behavior: contain;
-  max-height: calc(100vh - 104px);
+  max-height: calc(100vh - var(--top-offset, 104px));
   overflow-y: auto;
 }
 .nav-mobile-menu.open { display: flex; }
@@ -1214,6 +1215,26 @@ export default function LandingPage() {
     );
     document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
     return () => observer.disconnect();
+  }, [checked]);
+
+  // Measures the real announce-bar + nav height so the mobile menu's top
+  // offset never has to guess — the bar can wrap to 2 lines on narrow
+  // screens, and a hardcoded px offset would either gap or overlap it.
+  useEffect(() => {
+    if (!checked) return;
+    const topFixed = document.querySelector<HTMLElement>('.top-fixed');
+    if (!topFixed) return;
+    const setOffset = () => {
+      document.documentElement.style.setProperty('--top-offset', `${topFixed.offsetHeight}px`);
+    };
+    setOffset();
+    const observer = new ResizeObserver(setOffset);
+    observer.observe(topFixed);
+    window.addEventListener('resize', setOffset);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', setOffset);
+    };
   }, [checked]);
 
   // Annual/monthly pricing toggle. Wired here (not in an injected <script>,
