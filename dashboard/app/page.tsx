@@ -982,7 +982,7 @@ const LANDING_HTML = `
       <div class="cap-panel" id="cap-panel-6" role="region" aria-label="Reminders" hidden>
         <div class="cap-panel-h">🔔 Reminders</div>
         <div class="val-layers">
-          <div class="val-layer"><div class="val-layer-dot blue"></div>Automatic reminders and confirmations by email — text arrives once SMS carrier registration completes</div>
+          <div class="val-layer"><div class="val-layer-dot blue"></div>Automatic reminders and confirmations by email (text isn&apos;t available yet)</div>
           <div class="val-layer"><div class="val-layer-dot green"></div>Only to customers who agreed to be contacted — no spam risk</div>
           <div class="val-layer"><div class="val-layer-dot green"></div>Fewer no-shows and last-minute gaps</div>
           <div class="val-layer"><div class="val-layer-dot blue"></div>Retries automatically if a send doesn't go through</div>
