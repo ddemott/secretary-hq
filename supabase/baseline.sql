@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 8iYAy5LJsz4MYr90g8KY3KGRz2n6LdJchmwnBETShWr3u6lEyzPJkck4TnAI8Y2
+\restrict Fm1vVw4NZ0hkBPeyfcJhQrHFwsKH8YAeuEsmCulEs7o4dsXIpksKNlc9a1708Ym
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4208,6 +4208,8 @@ CREATE TABLE public.schema_migrations (
     applied_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
+ALTER TABLE ONLY public.schema_migrations FORCE ROW LEVEL SECURITY;
+
 
 --
 -- Name: service_employee; Type: TABLE; Schema: public; Owner: -
@@ -7255,6 +7257,19 @@ CREATE POLICY reminder_schedules_tenant_isolation ON public.reminder_schedules U
 ALTER TABLE public.resources ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: schema_migrations; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: schema_migrations schema_migrations_app_user_all; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY schema_migrations_app_user_all ON public.schema_migrations TO app_user USING (true) WITH CHECK (true);
+
+
+--
 -- Name: service_employee; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -7494,5 +7509,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 8iYAy5LJsz4MYr90g8KY3KGRz2n6LdJchmwnBETShWr3u6lEyzPJkck4TnAI8Y2
+\unrestrict Fm1vVw4NZ0hkBPeyfcJhQrHFwsKH8YAeuEsmCulEs7o4dsXIpksKNlc9a1708Ym
 
