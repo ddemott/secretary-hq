@@ -10,7 +10,7 @@ Completed phases: `docs/planning/RESOLVED.md`. Current tasks: `docs/planning/TOD
 
 ## Memory (works in cloud sessions)
 
-Durable memory lives in `.claude/memory/` in three tiers (short = 3 days, medium = 60 days, long = permanent). At session start run `python3 .claude/skills/remember/remember.py --prune`, then read `.claude/memory/MEMORY.md`; save new memories with the `remember` skill (`.claude/skills/remember/`). The repo is public — no secrets, addresses or caller PII; the script refuses obvious ones.
+Durable memory has three tiers — short (3 days), medium (60 days, renewable), long (permanent). On Dale's machine the shared store is the private repo `~/memory` (Claude, Grok and Hermes all use it and the script auto-syncs it); in a cloud session or fresh clone it falls back to `.claude/memory/` in this repo. At session start run `python3 .claude/skills/remember/remember.py --prune`, then read the index it maintains; save with the `remember` skill (`.claude/skills/remember/`). This repo is public: no secrets, addresses or caller PII — the script refuses the obvious ones. Full guide: `docs/memory/README.md`.
 
 ## Architecture
 

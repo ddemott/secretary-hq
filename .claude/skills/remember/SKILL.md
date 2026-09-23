@@ -5,6 +5,8 @@ description: Save a durable memory (user preference, feedback/correction, projec
 
 # remember
 
+> **Two places memory can live.** On Dale's own machine (Claude Code, Grok, Hermes) memory is the shared private repo `~/memory`, and this skill's script writes there automatically (pull → save → commit → push). Where `~/memory` does not exist — a cloud session, a fresh clone — it falls back to `.claude/memory/` in THIS public repo (details: `docs/memory/README.md`). The Stop hook in `.claude/settings.json` is skipped when `~/memory/memory` exists, so the pass never runs twice.
+
 Memory lives in `.claude/memory/` in this repo (one fact per file, plus a generated `MEMORY.md` index). A cloud session starts with no other memory, so this folder is the memory.
 
 ## At session start

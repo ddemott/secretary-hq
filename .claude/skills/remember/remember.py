@@ -6,6 +6,7 @@
   remember.py --touch NAME     renew a short/medium memory (it was useful again)
   remember.py --prune          delete expired memories and rebuild the index (run at session start)
 
+Memory dir: $MEMORY_DIR, else ~/memory/memory (private repo, auto pull/commit/push), else .claude/memory.
 Tiers: short = forgotten in SHORT_DAYS (3), medium = MEDIUM_DAYS (60), long = permanent.
 Same name = update in place (restarts the clock). The repo is PUBLIC, so anything that looks like a secret
 or a home address is refused (exit 2) rather than written.
@@ -36,6 +37,51 @@ REFUSE = [
     (r"(?i)\b(?:password|passwd|secret|api[_-]?key|token)\s*(?:[:=]|\bis\b)\s*\S{4,}", "credential"),
     (r"\b\d{1,6}\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?\s+(?:Street|St|Ave|Avenue|Rd|Road|Blvd|Drive|Dr|Lane|Ln|Court|Ct)\b", "street address"),
 ]
+
+
+def memory_dir():
+    """env MEMORY_DIR > shared private repo (~/memory/memory) > this repo's .claude/memory (cloud fallback)."""
+    if os.environ.get("MEMORY_DIR"):
+        return Path(os.environ["MEMORY_DIR"])
+    shared = Path.home() / "memory" / "memory"
+    return shared if shared.is_dir() else repo_root() / ".claude" / "memory"
+
+
+def sync_root(mem):
+    """The memory repo root, only when mem lives in it (marker file .memory-repo); else None."""
+    try:
+        top = Path(subprocess.check_output(["git", "-C", str(mem), "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip())
+    except Exception:
+        return None
+    return top if (top / ".memory-repo").exists() else None
+
+
+def git(top, *args):
+    return subprocess.run(["git", "-C", str(top), *args], capture_output=True, text=True, timeout=25)
+
+
+def sync_pull(mem):
+    top = sync_root(mem)
+    if top and git(top, "remote").stdout.strip():
+        try:
+            git(top, "pull", "--rebase", "--autostash", "-q")
+        except Exception:
+            pass
+
+
+def sync_push(mem, msg):
+    top = sync_root(mem)
+    if not top or not git(top, "remote").stdout.strip():
+        return
+    try:
+        git(top, "add", "-A")
+        if git(top, "diff", "--cached", "--quiet").returncode != 0:
+            git(top, "commit", "-q", "-m", msg)
+            r = git(top, "push", "-q")
+            if r.returncode != 0:
+                print("memory saved locally; push failed (will retry next save)", file=sys.stderr)
+    except Exception:
+        print("memory saved locally; sync failed", file=sys.stderr)
 
 
 def repo_root():
@@ -102,12 +148,15 @@ def main():
     ap.add_argument("--touch", metavar="NAME")
     ap.add_argument("--prune", action="store_true")
     a = ap.parse_args()
-    mem = Path(os.environ.get("MEMORY_DIR") or repo_root() / ".claude" / "memory")
+    mem = memory_dir()
     mem.mkdir(parents=True, exist_ok=True)
     if a.prune:
+        sync_pull(mem)
         removed = prune_and_index(mem)
+        sync_push(mem, "memory: prune")
         print("pruned: " + (", ".join(removed) if removed else "nothing"))
         return
+    sync_pull(mem)
     if a.touch:
         path = mem / f"{a.touch}.md"
         if not path.exists():
@@ -121,6 +170,7 @@ def main():
         text = re.sub(r"(?m)^(\s*expires:).*$", rf"\g<1> {expiry(meta['tier'], now)}", text)
         path.write_text(text)
         prune_and_index(mem)
+        sync_push(mem, f"memory: renew {a.touch}")
         print(f"renewed {path} until {expiry(meta['tier'], now)}")
         return
     if not (a.type and a.name and a.description):
@@ -139,6 +189,7 @@ def main():
     verb = "updated" if path.exists() else "created"
     write_memory(path, a.name, a.type, a.tier, a.description, body)
     prune_and_index(mem)
+    sync_push(mem, f"memory: {verb} {a.name} [{a.tier}]")
     print(f"{verb} {path} [{a.tier}, expires {expiry(a.tier, today())}]")
 
 

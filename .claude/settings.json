@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory_pass.py\"",
+            "command": "test -d \"$HOME/memory/memory\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory_pass.py\"",
             "timeout": 10
           }
         ]
