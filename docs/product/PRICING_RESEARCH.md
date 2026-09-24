@@ -86,7 +86,8 @@ off by ~100×.
 | LiveKit WebRTC participant         | $0.0005/min                              |
 | Telnyx local number                | $1.00/number/month                       |
 | LiveKit Ship plan base             | $50/month (platform, not per tenant)     |
-| 10DLC per tenant (once SMS is on)  | ~$12–13/month                            |
+| 10DLC low-volume campaign / tenant | ~$1.50/month + ~$20–60 one-time          |
+| SMS per outbound text (Telnyx)     | ~$0.004 + ~$0.003–0.005 carrier fee      |
 
 Per-minute telephony + LiveKit: **~$0.018/min**.
 
@@ -94,16 +95,41 @@ Per-minute telephony + LiveKit: **~$0.018/min**.
 
 **~$0.072/min → ~$0.16/call at the measured 2.3-min average.** Budget
 **~$0.18/call** to cover longer real-world calls. Fixed per tenant: ~$1/month
-(number), ~$14/month once 10DLC lands. Not included: Railway / Supabase platform
-cost, OpenAI embeddings for KB ingestion (fractions of a cent).
+(number); once SMS is on, ~$1.50/month (low-volume 10DLC campaign) plus ~$0.008
+per text, plus a one-time ~$20–60 registration. Not included: Railway / Supabase
+platform cost, OpenAI embeddings for KB ingestion (fractions of a cent), Stripe
+fees (~2.9% + $0.30 per charge).
 
-### Margin on today's placeholders (at $0.18/call + $14/tenant)
+### SMS / 10DLC cost (corrected 2026-09-24)
+
+An earlier figure of **~$12–13/tenant/month** (root `CLAUDE.md`, and the first
+version of this doc) is the **standard** campaign price. 10DLC fees are set by
+The Campaign Registry and the carriers and passed through at nearly the same
+price by every provider, so switching provider does not change them — the
+campaign **type** does:
+
+| Campaign type    | One-time | Monthly | Fits                                        |
+| ---------------- | -------- | ------- | ------------------------------------------- |
+| Standard         | ~$20–60  | ~$10    | High-volume senders                         |
+| Low-volume mixed | ~$20–60  | ~$1.50  | Small business confirmations and reminders  |
+| Sole proprietor  | ~$4      | ~$2     | One person with no EIN, lower sending limit |
+
+Some providers add a $0–20 per-campaign fee; Verizon's per-message carrier fee
+rises from $0.0045 to $0.005 on 2026-10-01. The tenant's existing Telnyx voice
+number sends the texts, so no second number is needed. Twilio as an SMS-only
+provider was priced and is dearer (~$0.0083/segment + $1.15/month number, ~$3.40
+vs ~$2.00/month for 60 texts). **Confirm against Telnyx's own 10DLC fee article
+before billing on these.** Sources: support.telnyx.com/en/articles/5634625,
+tychron.com/the-campaign-registry, readysms.io/blog/10dlc-registration-cost,
+twilio.com/en-us/sms/pricing/us.
+
+### Margin on today's placeholders (SMS on: $0.18/call + 2 texts/call + $2.50/tenant; before Stripe)
 
 | Tier         | Price | Calls | Cost at full use | Gross margin |
 | ------------ | ----- | ----- | ---------------- | ------------ |
-| Solo         | $129  | 150   | ~$41             | ~68%         |
-| Growth       | $279  | 500   | ~$104            | ~63%         |
-| Professional | $449  | 2,000 | ~$374            | **~17%**     |
+| Solo         | $129  | 150   | ~$32             | ~75%         |
+| Growth       | $279  | 500   | ~$101            | ~64%         |
+| Professional | $449  | 2,000 | ~$395            | **~12%**     |
 
 Professional is underpriced for its cap unless the LLM cost comes down.
 
@@ -123,7 +149,7 @@ Professional is underpriced for its cap unless the LLM cost comes down.
 **A. Volume bands, full product on every tier.** E.g. $99 / 100 calls,
 $199 / 350, $349 / 800; overage ~$0.60/call, or a hard cap that falls back to
 taking a message. Easy to compare against Rosie/Goodcall; "the full receptionist
-from day one". Margins at $0.18/call: ~68% / ~61% / ~55%. Differentiators no
+from day one". Margins with SMS on: ~78% / ~64% / ~54%. Differentiators no
 longer drive upgrades.
 
 **B. Priced by business size (staff + resources), fair-use calls.** E.g. Solo $129
