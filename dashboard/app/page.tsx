@@ -454,11 +454,6 @@ nav {
 .price-btn.filled:hover { background: var(--blue-lt); box-shadow: 0 0 50px rgba(59,130,246,0.4); }
 .trial-note { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 24px; }
 .trial-note span { color: var(--text); font-weight: 500; }
-.price-toggle-wrap { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:32px; }
-.billing-opt { background:none; border:1px solid transparent; cursor:pointer; font-size:14px; color:var(--text-muted); padding:7px 20px; border-radius:8px; transition:all 0.2s; font-family:var(--ff-body); }
-.billing-opt.active { color:var(--text); background:var(--bg3); border-color:var(--border-md); }
-.billing-save { font-size:11px; font-weight:700; color:var(--green); background:rgba(34,197,94,0.12); border-radius:20px; padding:2px 7px; letter-spacing:0.5px; margin-left:4px; }
-.price-annual-note { text-align:center; font-size:12px; color:var(--text-muted); margin-top:8px; display:none; }
 
 /* ── INDUSTRIES ── */
 .biz-grid { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -776,7 +771,7 @@ const LANDING_HTML = `
           <div class="problem-card-divider"></div>
           <div class="problem-card-row">
             <div class="problem-card-row-item">
-              <div class="problem-card-row-num amber">\$279</div>
+              <div class="problem-card-row-num amber">\$59.95</div>
               <div class="problem-card-row-label">Growth plan<br>per month</div>
             </div>
             <div class="problem-card-row-item">
@@ -1045,18 +1040,15 @@ const LANDING_HTML = `
     <div class="section-eyebrow reveal">Simple pricing</div>
     <h2 class="section-h2 reveal reveal-delay-1">PAY FOR WHAT<br>YOU NEED</h2>
     <p class="section-sub reveal reveal-delay-2">Phone number included on every plan. 14-day free trial for new accounts. Card required — cancel before day 14 and you pay nothing. No setup fee.</p>
-    <div class="price-toggle-wrap reveal">
-      <button class="billing-opt active" id="billing-monthly">Monthly</button>
-      <button class="billing-opt" id="billing-annual">Annual <span class="billing-save">Save 20%</span></button>
-    </div>
     <div class="pricing-grid">
       <div class="price-card reveal">
         <div class="price-name">Solo</div>
-        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="129" data-annual="103">129</span><span class="price-period">/mo</span></div>
+        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="29.95">29.95</span><span class="price-period">/mo</span></div>
         <p class="price-desc">The solo operator's secret weapon. Captures every call, books every job.</p>
         <hr class="price-divider">
         <ul class="price-features">
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>150 AI-handled calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>30 AI-handled calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$1.00 per extra call — your line never stops answering</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 staff member</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 station or workspace</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Phone number included</li>
@@ -1067,11 +1059,12 @@ const LANDING_HTML = `
       </div>
       <div class="price-card featured reveal reveal-delay-1">
         <div class="price-name">Growth</div>
-        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="279" data-annual="223">279</span><span class="price-period">/mo</span></div>
+        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="59.95">59.95</span><span class="price-period">/mo</span></div>
         <p class="price-desc">Your full front desk. Staff matching, visual schedule, calendar sync, and FAQ library — all included.</p>
         <hr class="price-divider">
         <ul class="price-features">
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>500 AI-handled calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>100 AI-handled calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$0.75 per extra call</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Up to 5 staff members</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Up to 3 stations or workspaces</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Everything in Solo</li>
@@ -1083,11 +1076,12 @@ const LANDING_HTML = `
       </div>
       <div class="price-card reveal reveal-delay-2">
         <div class="price-name">Professional</div>
-        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="449" data-annual="359">449</span><span class="price-period">/mo</span></div>
+        <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="149.95">149.95</span><span class="price-period">/mo</span></div>
         <p class="price-desc">High-volume teams. Unlimited staff, detailed reports, and custom words for your trade.</p>
         <hr class="price-divider">
         <ul class="price-features">
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>2,000 calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>300 AI-handled calls/month</li>
+          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$0.60 per extra call</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Unlimited staff members</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Unlimited stations</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Everything in Growth</li>
@@ -1113,7 +1107,6 @@ const LANDING_HTML = `
         <a href="mailto:sales@secretaryhq.com" class="price-btn outline" style="border-color:rgba(245,158,11,0.3);color:var(--amber)">Talk to us</a>
       </div>
     </div>
-    <p class="price-annual-note" id="price-annual-note">Monthly equivalent — billed as one annual payment.</p>
     <p class="trial-note reveal">New accounts get a <span>14-day free trial</span> on any plan. A card is required to start it, and you are not charged until the trial ends. No setup fee. Cancel anytime.</p>
   </div>
 </section>
@@ -1234,34 +1227,6 @@ export default function LandingPage() {
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', setOffset);
-    };
-  }, [checked]);
-
-  // Annual/monthly pricing toggle. Wired here (not in an injected <script>,
-  // which never executes under dangerouslySetInnerHTML — the toggle was DEAD
-  // in production until moved into this effect).
-  useEffect(() => {
-    if (!checked) return;
-    const monthlyBtn = document.getElementById('billing-monthly');
-    const annualBtn = document.getElementById('billing-annual');
-    if (!monthlyBtn || !annualBtn) return;
-    const setBilling = (mode: 'monthly' | 'annual') => () => {
-      const isAnnual = mode === 'annual';
-      monthlyBtn.classList.toggle('active', !isAnnual);
-      annualBtn.classList.toggle('active', isAnnual);
-      document.querySelectorAll<HTMLElement>('.price-num[data-monthly]').forEach((el) => {
-        el.textContent = (isAnnual ? el.dataset.annual : el.dataset.monthly) ?? el.textContent;
-      });
-      const note = document.getElementById('price-annual-note');
-      if (note) note.style.display = isAnnual ? 'block' : 'none';
-    };
-    const onMonthly = setBilling('monthly');
-    const onAnnual = setBilling('annual');
-    monthlyBtn.addEventListener('click', onMonthly);
-    annualBtn.addEventListener('click', onAnnual);
-    return () => {
-      monthlyBtn.removeEventListener('click', onMonthly);
-      annualBtn.removeEventListener('click', onAnnual);
     };
   }, [checked]);
 
