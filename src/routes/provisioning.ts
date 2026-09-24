@@ -66,7 +66,7 @@ export function registerProvisioningRoutes(
       // in billing.ts). Super-admin provisioning for a tenant is exempt.
       if (req.auth?.tenant_id !== SUPER_ADMIN_TENANT_ID) {
         const sub = await pool.query<{ subscription_status: string | null }>(
-          'SELECT subscription_status FROM tenants WHERE tenant_id = $1',
+          'SELECT subscription_status FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
           [tenant_id]
         );
         if (sub.rows.length > 0 && sub.rows[0].subscription_status !== 'active') {

@@ -1044,7 +1044,7 @@ const LANDING_HTML = `
   <div class="section-inner">
     <div class="section-eyebrow reveal">Simple pricing</div>
     <h2 class="section-h2 reveal reveal-delay-1">PAY FOR WHAT<br>YOU NEED</h2>
-    <p class="section-sub reveal reveal-delay-2">Phone number included on every plan. 14-day free trial. Card required — cancel before day 14 and you pay nothing. No setup fee.</p>
+    <p class="section-sub reveal reveal-delay-2">Phone number included on every plan. 14-day free trial for new accounts. Card required — cancel before day 14 and you pay nothing. No setup fee.</p>
     <div class="price-toggle-wrap reveal">
       <button class="billing-opt active" id="billing-monthly">Monthly</button>
       <button class="billing-opt" id="billing-annual">Annual <span class="billing-save">Save 20%</span></button>
@@ -1114,7 +1114,7 @@ const LANDING_HTML = `
       </div>
     </div>
     <p class="price-annual-note" id="price-annual-note">Monthly equivalent — billed as one annual payment.</p>
-    <p class="trial-note reveal">All plans include a <span>14-day free trial</span>. A card is required to start it, and you are not charged until the trial ends. No setup fee. Cancel anytime.</p>
+    <p class="trial-note reveal">New accounts get a <span>14-day free trial</span> on any plan. A card is required to start it, and you are not charged until the trial ends. No setup fee. Cancel anytime.</p>
   </div>
 </section>
 

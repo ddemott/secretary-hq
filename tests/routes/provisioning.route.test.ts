@@ -210,6 +210,8 @@ describe('POST /provisioning/activate — configured', () => {
     expect(mockTelnyx.client.searchAvailable).not.toHaveBeenCalled();
     expect(mockTelnyx.client.orderNumber).not.toHaveBeenCalled();
     expect(handle.queries).toHaveLength(1);
+    // Same tenant read as activatePhone: a deleted tenant falls through to its 404.
+    expect(handle.queries[0].text).toContain('is_deleted = false');
   });
 
   it('SAD: a past_due tenant is refused 402 too', async () => {
