@@ -92,8 +92,7 @@ describe('billingUsage — the answered-call definition', () => {
     expect(m.freeCalls).toBe(4);
     expect(m.inProgress).toBe(true);
     expect(m.overageCalls).toBe(0);
-    expect(m.packsApplied).toBe(0);
-    expect(m.packChargeUsd).toBe(0);
+    expect(m.overageChargeUsd).toBe(0);
   });
 
   it('HAPPY: exactly BILLABLE_MIN_SECONDS bills (boundary is inclusive)', async (ctx) => {
@@ -109,9 +108,9 @@ describe('billingUsage — the answered-call definition', () => {
     expect(after.statements[0].answeredCalls).toBe(before.statements[0].answeredCalls + 1);
   });
 
-  it('C1: null-plan tenant under soft-cap gets free-tier quota (finite, not pack-billed)', async (ctx) => {
+  it('C1: null-plan tenant under soft-cap gets free-tier quota (finite, never overage-billed)', async (ctx) => {
     // WHO: inactive/beta tenant with subscription_plan NULL.
-    // WHAT: free-tier finite includedCalls; no pack overage charges.
+    // WHAT: free-tier finite includedCalls; no overage charges.
     // WHEN: soft-cap enforce on (default).
     // WHERE: computeUsageStatements() free-tier fallback.
     // WHY: silent unlimited was the unpaid-tenant margin hole.
@@ -127,9 +126,9 @@ describe('billingUsage — the answered-call definition', () => {
     const m = res.statements[0];
     expect(m.answeredCalls).toBe(1);
     expect(m.includedCalls).toBe(res.quota!.includedCalls);
+    expect(res.quota!.overagePerCallUsd).toBeNull();
     expect(m.overageCalls).toBeNull();
-    expect(m.packsApplied).toBeNull();
-    expect(m.packChargeUsd).toBeNull();
+    expect(m.overageChargeUsd).toBeNull();
   });
 
   it('SAD: unknown tenant throws Tenant not found', async (ctx) => {
@@ -146,55 +145,89 @@ describe('billingUsage — the answered-call definition', () => {
 });
 
 
-describe('billingUsage — pack math', () => {
-  it('HAPPY: overage rounds UP to whole packs, priced at packPriceUsd each', async (ctx) => {
-    // WHO: a solo-plan tenant who goes over quota.
-    // WHAT: overage rounds up to whole packs at flat pack pricing.
-    // WHEN: answeredCalls exceed includedCalls by 31 (env Solo cap 50 + 31).
-    // WHERE: computeUsageStatements() pack math.
-    // WHY: undercharging leaks revenue; overcharging torches trust.
+describe('billingUsage — per-call overage', () => {
+  async function seedLastMonth(tid: string, answered: number) {
+    const lastMonth = new Date();
+    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+    lastMonth.setUTCDate(3);
+    await client.query(
+      `INSERT INTO voice_sessions (tenant_id, call_id, status, started_at, duration_seconds, transcript)
+       SELECT $1, 'overage-test-' || g, 'completed', $2::timestamptz, 60,
+              'Assistant: hello' || E'\n' || 'Caller: booking please'
+         FROM generate_series(1, $3) g`,
+      [tid, lastMonth.toISOString(), answered]
+    );
+  }
+
+  it('HAPPY: each answered call past the allowance bills at the plan rate', async (ctx) => {
+    // WHO: a solo (tier 1) tenant who goes 31 calls over the allowance.
+    // WHAT: overageCalls = 31, overageChargeUsd = 31 × $1.00 — per call, no packs.
+    // WHEN: last month's answered calls exceed includedCalls (env Solo cap 50).
+    // WHERE: computeUsageStatements() overage math.
+    // WHY: owner decision 2026-09-24 — tier 1 bills $1.00 per extra call; the old
+    //      model rounded up to $25 packs of 30, which overcharged a 1-call overage.
     skipIfDbDown(ctx, () => dbAvailable);
     const prev = process.env.PLAN_CAP_SOLO;
     process.env.PLAN_CAP_SOLO = '50';
-    const packTenant = await createTenant(client, 'Billing Usage Pack Tenant', 'salon');
+    const overTenant = await createTenant(client, 'Billing Usage Overage Tenant', 'salon');
     try {
-      await client.query(`UPDATE tenants SET subscription_plan = 'solo' WHERE tenant_id = $1`, [packTenant]);
-      const lastMonth = new Date();
-      lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
-      lastMonth.setUTCDate(3);
-      const soloCap = 50;
-      const answered = soloCap + 31;
-      await client.query(
-        `INSERT INTO voice_sessions (tenant_id, call_id, status, started_at, duration_seconds, transcript)
-         SELECT $1, 'pack-test-' || g, 'completed', $2::timestamptz, 60,
-                'Assistant: hello' || E'\n' || 'Caller: booking please'
-           FROM generate_series(1, $3) g`,
-        [packTenant, lastMonth.toISOString(), answered]
-      );
+      await client.query(`UPDATE tenants SET subscription_plan = 'solo' WHERE tenant_id = $1`, [overTenant]);
+      await seedLastMonth(overTenant, 81);
 
-      const res = await computeUsageStatements(pool, packTenant, 3);
-      const m = res.statements.find((s) => !s.inProgress && s.answeredCalls === answered);
+      const res = await computeUsageStatements(pool, overTenant, 3);
+      const m = res.statements.find((s) => !s.inProgress && s.answeredCalls === 81);
       expect(m).toBeDefined();
       expect(m!.overageCalls).toBe(31);
-      expect(m!.packsApplied).toBe(2);
-      expect(m!.packChargeUsd).toBe(2 * PLAN_QUOTAS.solo.packPriceUsd);
+      expect(m!.overageChargeUsd).toBe(31);
       expect(m!.inProgress).toBe(false);
     } finally {
-      await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [packTenant]);
-      await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [packTenant]);
+      await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [overTenant]);
+      await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [overTenant]);
       if (prev === undefined) delete process.env.PLAN_CAP_SOLO;
       else process.env.PLAN_CAP_SOLO = prev;
+    }
+  });
+
+  it('HAPPY: the charge is rounded to cents on the total (3 × $0.60 = $1.80)', async (ctx) => {
+    // WHO: a professional (tier 3) tenant 3 calls over.
+    // WHAT: overageChargeUsd is exactly 1.8, not 1.7999999999999998.
+    // WHEN: rate 0.6 × 3 overage calls — a product that is inexact in binary floats.
+    // WHERE: computeUsageStatements() overage math.
+    // WHY: a statement that shows $1.7999999999999998 reads as a billing bug.
+    skipIfDbDown(ctx, () => dbAvailable);
+    const prev = process.env.PLAN_CAP_PROFESSIONAL;
+    process.env.PLAN_CAP_PROFESSIONAL = '5';
+    const proTenant = await createTenant(client, 'Billing Usage Rounding Tenant', 'salon');
+    try {
+      await client.query(
+        `UPDATE tenants SET subscription_plan = 'professional' WHERE tenant_id = $1`,
+        [proTenant]
+      );
+      await seedLastMonth(proTenant, 8);
+
+      const res = await computeUsageStatements(pool, proTenant, 3);
+      const m = res.statements.find((s) => !s.inProgress && s.answeredCalls === 8);
+      expect(m).toBeDefined();
+      expect(m!.overageCalls).toBe(3);
+      expect(m!.overageChargeUsd).toBe(1.8);
+    } finally {
+      await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [proTenant]);
+      await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [proTenant]);
+      if (prev === undefined) delete process.env.PLAN_CAP_PROFESSIONAL;
+      else process.env.PLAN_CAP_PROFESSIONAL = prev;
     }
   });
 });
 
 describe('billingUsage — soft cap evaluation', () => {
-  it('HAPPY: evaluateUsageCap blocks when answered >= Solo limit', async (ctx) => {
-    // WHO: Solo tenant at monthly cap calling again.
-    // WHAT: cap.blocked true; status blocked.
+  it('REGRESSION: a paid Solo tenant at its allowance keeps answering (overage, not blocked)', async (ctx) => {
+    // WHO: Solo tenant whose allowance is used up, with a caller on the line.
+    // WHAT: cap.status 'overage', cap.blocked false — the next call is answered and billed.
     // WHEN: answeredCallsThisMonth === includedCalls (env-capped to 3 for speed).
-    // WHERE: evaluateUsageCap().
-    // WHY: soft-cap gate on voice-session-start must refuse the next call.
+    // WHERE: evaluateUsageCap(), which both voice-session-start gates consult.
+    // WHY: before this, status was 'blocked' and the gate told the business's own
+    //      customer "we're at capacity, try again next month". Owner ruled that out
+    //      2026-09-24: paid plans bill per extra call instead.
     skipIfDbDown(ctx, () => dbAvailable);
     const prev = process.env.PLAN_CAP_SOLO;
     process.env.PLAN_CAP_SOLO = '3';
@@ -215,8 +248,8 @@ describe('billingUsage — soft cap evaluation', () => {
       const cap = await evaluateUsageCap(client, capTenant);
       expect(cap.limit).toBe(3);
       expect(cap.used).toBe(3);
-      expect(cap.status).toBe('blocked');
-      expect(cap.blocked).toBe(true);
+      expect(cap.status).toBe('overage');
+      expect(cap.blocked).toBe(false);
       expect(cap.percent).toBe(100);
     } finally {
       await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [capTenant]);
@@ -226,8 +259,14 @@ describe('billingUsage — soft cap evaluation', () => {
     }
   });
 
-  it('HAPPY: professional plan never blocks (unlimited)', async (ctx) => {
+  it('HAPPY: professional plan past its allowance reports overage and never blocks', async (ctx) => {
+    // WHO: tier-3 tenant beyond its allowance (env-capped to 1 for speed).
+    // WHAT: status 'overage', blocked false.
+    // WHY: tier 3 is no longer unlimited (300 calls) but, like every paid tier,
+    //      never refuses a call.
     skipIfDbDown(ctx, () => dbAvailable);
+    const prev = process.env.PLAN_CAP_PROFESSIONAL;
+    process.env.PLAN_CAP_PROFESSIONAL = '1';
     const proTenant = await createTenant(client, 'Billing Usage Pro Tenant', 'salon');
     try {
       await client.query(
@@ -235,13 +274,17 @@ describe('billingUsage — soft cap evaluation', () => {
         [proTenant]
       );
       await insertSession(proTenant, {});
+      await insertSession(proTenant, {});
       const cap = await evaluateUsageCap(client, proTenant);
-      expect(cap.limit).toBeNull();
-      expect(cap.status).toBe('unlimited');
+      expect(cap.limit).toBe(1);
+      expect(cap.used).toBe(2);
+      expect(cap.status).toBe('overage');
       expect(cap.blocked).toBe(false);
     } finally {
       await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [proTenant]);
       await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [proTenant]);
+      if (prev === undefined) delete process.env.PLAN_CAP_PROFESSIONAL;
+      else process.env.PLAN_CAP_PROFESSIONAL = prev;
     }
   });
 
@@ -315,7 +358,8 @@ describe('billingUsage — soft cap evaluation', () => {
   it('C2: soft-delete of billable sessions does not drop the meter', async (ctx) => {
     // WHO: Solo owner at/near cap deleting this month's answered calls.
     // WHAT: used stays after is_deleted=true (metering ignores soft-delete).
-    // WHY: owner delete must not be a billing-integrity bypass.
+    // WHY: owner delete must not be a billing-integrity bypass — it would erase
+    //      billable overage calls from the statement.
     skipIfDbDown(ctx, () => dbAvailable);
     const prev = process.env.PLAN_CAP_SOLO;
     process.env.PLAN_CAP_SOLO = '2';
@@ -333,7 +377,7 @@ describe('billingUsage — soft cap evaluation', () => {
       );
       const before = await evaluateUsageCap(client, delTenant);
       expect(before.used).toBe(2);
-      expect(before.blocked).toBe(true);
+      expect(before.status).toBe('overage');
 
       await client.query(
         `UPDATE voice_sessions SET is_deleted = true, deleted_at = now()
@@ -342,7 +386,7 @@ describe('billingUsage — soft cap evaluation', () => {
       );
       const after = await evaluateUsageCap(client, delTenant);
       expect(after.used).toBe(2);
-      expect(after.blocked).toBe(true);
+      expect(after.status).toBe('overage');
     } finally {
       await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [delTenant]);
       await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [delTenant]);
@@ -352,15 +396,16 @@ describe('billingUsage — soft cap evaluation', () => {
   });
 
   it('C3: active in-flight sessions count toward cap (TOCTOU reserve)', async (ctx) => {
-    // WHO: concurrent starts when used = limit - 1 completed.
+    // WHO: concurrent starts on a free-tier (no plan) tenant when used = limit - 1.
     // WHAT: one active session fills the last slot → further starts blocked.
-    // WHY: completed-only counting allowed N concurrent overshoots.
+    // WHY: completed-only counting allowed N concurrent overshoots. Only the free
+    //      tier still blocks, so that is where the reservation matters.
     skipIfDbDown(ctx, () => dbAvailable);
-    const prev = process.env.PLAN_CAP_SOLO;
-    process.env.PLAN_CAP_SOLO = '2';
+    const prev = process.env.PLAN_CAP_FREE;
+    process.env.PLAN_CAP_FREE = '2';
     const raceTenant = await createTenant(client, 'Billing Usage Race Cap', 'salon');
     try {
-      await client.query(`UPDATE tenants SET subscription_plan = 'solo' WHERE tenant_id = $1`, [
+      await client.query(`UPDATE tenants SET subscription_plan = NULL WHERE tenant_id = $1`, [
         raceTenant,
       ]);
       await client.query(
@@ -381,8 +426,8 @@ describe('billingUsage — soft cap evaluation', () => {
     } finally {
       await client.query(`DELETE FROM voice_sessions WHERE tenant_id = $1`, [raceTenant]);
       await client.query(`DELETE FROM tenants WHERE tenant_id = $1`, [raceTenant]);
-      if (prev === undefined) delete process.env.PLAN_CAP_SOLO;
-      else process.env.PLAN_CAP_SOLO = prev;
+      if (prev === undefined) delete process.env.PLAN_CAP_FREE;
+      else process.env.PLAN_CAP_FREE = prev;
     }
   });
 });

@@ -1,6 +1,7 @@
 /**
  * HTTP gate: blocked soft-cap returns error_code=usage_limit_exceeded
- * on both voice-session-start entrypoints.
+ * on both voice-session-start entrypoints. Only the free tier (no paid plan)
+ * can be blocked; a paid plan past its allowance is 'overage' and proceeds.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fastify from 'fastify';
@@ -17,21 +18,33 @@ const TENANT_ID = 'f234e471-0e60-4163-86c9-93cfd9338e3a';
 const SECRET = 'test-agent-secret';
 
 const blockedCap: UsageCapEvaluation = {
-  plan: 'solo',
-  used: 350,
-  limit: 350,
+  plan: null,
+  used: 50,
+  limit: 50,
   percent: 100,
   status: 'blocked',
   softCapEnforced: true,
   warnRatio: 0.8,
   blocked: true,
+  freeTierApplied: true,
+};
+
+const overageCap: UsageCapEvaluation = {
+  plan: 'solo',
+  used: 42,
+  limit: 30,
+  percent: 100,
+  status: 'overage',
+  softCapEnforced: true,
+  warnRatio: 0.8,
+  blocked: false,
   freeTierApplied: false,
 };
 
 const okCap: UsageCapEvaluation = {
   plan: 'solo',
   used: 1,
-  limit: 350,
+  limit: 30,
   percent: 0,
   status: 'ok',
   softCapEnforced: true,
@@ -185,5 +198,29 @@ describe('HTTP soft-cap gate — error_code=usage_limit_exceeded', () => {
     const body = res.json();
     expect(body.success).toBe(true);
     expect(body.error_code).toBeUndefined();
+  });
+
+  it('HAPPY: a paid plan past its allowance (overage) is answered, not refused', async () => {
+    // WHO: tier-1 tenant 12 calls past its 30-call allowance, with a caller on the line.
+    // WHAT: voice-session-start opens the session; no usage_limit_exceeded.
+    // WHY: owner decision 2026-09-24 — paid plans bill each extra call instead of
+    //      turning the business's customer away.
+    evaluateUsageCapMock.mockResolvedValue(overageCap);
+    const app = buildAgentApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/agent-tools/voice-session-start',
+      headers: { 'x-agent-secret': SECRET },
+      payload: {
+        tenant_id: TENANT_ID,
+        call_id: 'SCL_cap_overage',
+        caller_phone: null,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(body.error_code).toBeUndefined();
+    expect(counterValue('errors_total', { event: 'call_rejected_usage_limit_exceeded' })).toBe(0);
   });
 });

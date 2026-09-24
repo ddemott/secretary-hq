@@ -49,18 +49,26 @@ function setEnv(key: (typeof ENV_KEYS)[number], value: string | undefined) {
 }
 
 describe('resolvePlanQuota / planCallLimit — configurable tier caps', () => {
-  it('HAPPY: defaults Solo ~350, Growth ~1000, Professional unlimited', () => {
-    // WHO: operator shipping before Dale finalizes Stripe prices
-    // WHAT: env-free defaults match TODO P2 placeholder bands
-    // WHY: uncapped Solo burns margin; Pro is the unlimited tier
-    expect(planCallLimit('solo')).toBe(350);
-    expect(planCallLimit('growth')).toBe(1000);
-    expect(planCallLimit('professional')).toBeNull();
-    expect(resolvePlanQuota('solo')?.includedCalls).toBe(350);
-    expect(resolvePlanQuota('growth')?.includedCalls).toBe(1000);
-    expect(resolvePlanQuota('professional')?.includedCalls).toBeNull();
-    expect(PLAN_QUOTAS.solo.includedCalls).toBe(350);
-    expect(PLAN_QUOTAS.growth.includedCalls).toBe(1000);
+  it('HAPPY: defaults match the owner-decided tiers (30 / 100 / 300 calls)', () => {
+    // WHO: operator with no PLAN_CAP_* env set
+    // WHAT: env-free defaults are the 2026-09-24 decision — tier 1 $29.95 / 30,
+    //       tier 2 $59.95 / 100, tier 3 $149.95 / 300 (docs/planning/TODO.md P0 §2)
+    // WHY: the old 350 / 1000 / unlimited placeholders no longer match what is sold
+    expect(planCallLimit('solo')).toBe(30);
+    expect(planCallLimit('growth')).toBe(100);
+    expect(planCallLimit('professional')).toBe(300);
+    expect(resolvePlanQuota('solo')?.includedCalls).toBe(30);
+    expect(resolvePlanQuota('growth')?.includedCalls).toBe(100);
+    expect(resolvePlanQuota('professional')?.includedCalls).toBe(300);
+  });
+
+  it('HAPPY: extra-call rate falls by tier ($1.00 / $0.75 / $0.60)', () => {
+    // WHO: a tenant who goes past the allowance on each tier
+    // WHAT: each tier bills its own per-call overage rate, cheapest at the top
+    // WHY: the falling rate is what makes upgrading the cheaper path
+    expect(PLAN_QUOTAS.solo.overagePerCallUsd).toBe(1.0);
+    expect(PLAN_QUOTAS.growth.overagePerCallUsd).toBe(0.75);
+    expect(PLAN_QUOTAS.professional.overagePerCallUsd).toBe(0.6);
   });
 
   it('HAPPY: PLAN_CAP_* env overrides defaults without code change', () => {
@@ -72,7 +80,7 @@ describe('resolvePlanQuota / planCallLimit — configurable tier caps', () => {
     expect(planCallLimit('professional')).toBe(5000);
   });
 
-  it('HAPPY: PLAN_CAP_PROFESSIONAL=0 or unlimited stays unlimited', () => {
+  it('HAPPY: PLAN_CAP_PROFESSIONAL=0 or unlimited makes it unlimited', () => {
     setEnv('PLAN_CAP_PROFESSIONAL', '0');
     expect(planCallLimit('professional')).toBeNull();
     setEnv('PLAN_CAP_PROFESSIONAL', 'unlimited');
@@ -81,8 +89,8 @@ describe('resolvePlanQuota / planCallLimit — configurable tier caps', () => {
 
   it('HAPPY: plan keys normalize case/whitespace', () => {
     expect(normalizePlanKey(' Solo ')).toBe('solo');
-    expect(planCallLimit('Growth')).toBe(1000);
-    expect(planCallLimit('PROFESSIONAL')).toBeNull();
+    expect(planCallLimit('Growth')).toBe(100);
+    expect(planCallLimit('PROFESSIONAL')).toBe(300);
   });
 
   it('C1: null/unknown plan under soft-cap → free-tier finite cap (never unlimited)', () => {
@@ -116,8 +124,8 @@ describe('resolvePlanQuota / planCallLimit — configurable tier caps', () => {
   });
 });
 
-describe('usageCapStatus — 80% warn + soft block', () => {
-  it('HAPPY: under warn ratio is ok; at 80% warns; at limit blocks', () => {
+describe('usageCapStatus — 80% warn, overage for paid plans, block for free tier', () => {
+  it('HAPPY: under warn ratio is ok; at 80% warns; at limit blocks when overage is not billed', () => {
     expect(USAGE_WARN_RATIO).toBe(0.8);
     expect(usageCapStatus(0, 100)).toBe('ok');
     expect(usageCapStatus(79, 100)).toBe('ok');
@@ -125,6 +133,15 @@ describe('usageCapStatus — 80% warn + soft block', () => {
     expect(usageCapStatus(99, 100)).toBe('warn');
     expect(usageCapStatus(100, 100)).toBe('blocked');
     expect(usageCapStatus(150, 100)).toBe('blocked');
+  });
+
+  it('HAPPY: a plan that bills overage reports overage at and past the limit, never blocked', () => {
+    // WHO: paid tenant whose allowance is used up
+    // WHAT: status is 'overage' — the line keeps answering and each call bills
+    // WHY: owner decision 2026-09-24 — a paying customer's caller is never turned away
+    expect(usageCapStatus(99, 100, 0.8, true)).toBe('warn');
+    expect(usageCapStatus(100, 100, 0.8, true)).toBe('overage');
+    expect(usageCapStatus(250, 100, 0.8, true)).toBe('overage');
   });
 
   it('HAPPY: null limit is unlimited regardless of used', () => {
