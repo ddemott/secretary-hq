@@ -585,3 +585,77 @@ describe('POST /communications/telnyx/status — with the PRODUCTION content-typ
     expect(upsert!.params).toContain('msg_prod1');
   });
 });
+
+describe('POST /communications/consent (owner-only)', () => {
+  const body = {
+    customer_phone: '+15551234567',
+    consent_type: 'sms',
+    consent_given: true,
+    consent_method: 'verbal',
+  };
+  const consentRow = {
+    consent_record_id: 1,
+    tenant_id: TENANT_ID,
+    customer_phone: '+15551234567',
+    consent_type: 'sms',
+    consent_given: true,
+    consent_method: 'verbal',
+  };
+  const insertedConsent = (): boolean =>
+    handle.queries.some((q) => /INSERT INTO consent_records/i.test(q.text));
+
+  it('HAPPY: an owner can record consent', async () => {
+    // WHO: tenant owner recording a customer's SMS consent
+    // WHAT: INSERT INTO consent_records, 200 with the row
+    // WHEN: POST /communications/consent
+    // WHERE: communications route
+    // WHY: owners are the ones allowed to attest consent on a customer's behalf
+    // createConsentRecord runs inside withTenantClient: set_tenant_context first, then the INSERT.
+    handle.queryResponses.push({ rows: [] }, { rows: [consentRow] });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/communications/consent',
+      headers: { 'content-type': 'application/json' },
+      payload: body,
+    });
+
+    expect(res.statusCode, res.body).toBe(200);
+    expect(JSON.parse(res.body).success).toBe(true);
+    expect(insertedConsent()).toBe(true);
+  });
+
+  it('SAD: a front_desk login is refused with 403 and nothing is written', async () => {
+    // WHO: front-desk (receptionist) login with a valid JWT
+    // WHAT: 403, no consent_records INSERT
+    // WHY: a consent row is what currently stops reminder/confirmation texts per number,
+    //      so a front-desk account must not be able to fabricate one (2026-09-20 audit)
+    handle.auth.current = { ...handle.auth.current!, role: 'front_desk' };
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/communications/consent',
+      headers: { 'content-type': 'application/json' },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body)).toEqual({
+      success: false,
+      error: 'Forbidden: owner role required',
+    });
+    expect(insertedConsent()).toBe(false);
+  });
+
+  it('SAD: validation still runs for owners (bad consent_type -> 400, nothing written)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/communications/consent',
+      headers: { 'content-type': 'application/json' },
+      payload: { ...body, consent_type: 'carrier-pigeon' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(insertedConsent()).toBe(false);
+  });
+});
