@@ -1123,6 +1123,10 @@ export const Api = {
         tenant_id: tenantId,
         months: String(months),
       }),
+
+    /** Email a fresh signup-verification link to the signed-in user. */
+    resendVerification: () =>
+      apiMutate<{ sent_to?: string; already_verified?: boolean }>(`/verify-email/resend`, 'POST'),
   },
 
   // --- PHONE PROVISIONING ---

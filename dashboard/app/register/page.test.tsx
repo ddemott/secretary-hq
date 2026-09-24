@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock the API module: API_BASE_URL is read by the page's direct fetch, and
@@ -126,6 +126,8 @@ describe('RegisterPage — self-serve signup', () => {
     expect(localStorage.getItem('authToken')).toBe('jwt-abc');
     expect(localStorage.getItem('tenantId')).toBe('tenant-9');
     expect(localStorage.getItem('userName')).toBe('Dale Demott');
+    // A verification link was just emailed — Billing prompts until it's clicked.
+    expect(localStorage.getItem('emailVerified')).toBe('false');
   });
 
   test('duplicate-email (409) shows an inline error, does NOT store auth or redirect', async () => {
@@ -144,6 +146,56 @@ describe('RegisterPage — self-serve signup', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('already exists'));
     expect(localStorage.getItem('authToken')).toBeNull();
     expect(window.location.href).toBe('');
+  });
+
+  test('duplicate email: says they already have an account and links to Sign in and Forgot password', async () => {
+    // WHO: someone signing up with an email that already has an account
+    // WHAT: the backend's "You already have an account" message, plus two links
+    // WHERE: RegisterPage 409 branch
+    // WHY: owner decision 2026-09-24 — one account per email; tell them plainly
+    //      and give them the way back in rather than a dead end
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        success: false,
+        error:
+          "You already have an account with this email. Sign in instead — or use 'Forgot password' if you don't remember it.",
+      }),
+    });
+
+    render(<RegisterPage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/you already have an account/i);
+    // The page already has a footer "Sign in" link; these two live inside the alert.
+    expect(within(alert).getByRole('link', { name: /^sign in$/i })).toHaveAttribute(
+      'href',
+      '/dashboard'
+    );
+    expect(within(alert).getByRole('link', { name: /forgot password/i })).toHaveAttribute(
+      'href',
+      '/forgot-password'
+    );
+  });
+
+  test('a non-409 error shows no Sign in / Forgot password links', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ success: false, error: 'Validation failed' }),
+    });
+
+    render(<RegisterPage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('link', { name: /forgot password/i })).not.toBeInTheDocument();
   });
 
   test('connection failure shows a retry message and does not redirect', async () => {

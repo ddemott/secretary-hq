@@ -99,6 +99,15 @@ Found while working through the backlog. Each says exactly what was and was not 
 
 ---
 
+## 🔐 Signup identity — 2026-09-24 (Dale)
+
+- [x] **(code) Email verification at signup** — branch `feat/email-verification`. `/register` emails a single-use `/verify-email?token=` link (48 h, SHA-256-hashed in `email_verifications`); `POST /billing/checkout` answers 403 `email_not_verified` until `users.email_verified_at` is set, so no trial and no phone line on an unproven address. Resend: `POST /verify-email/resend` (signed-in, 3/hour) + a "Confirm your email" notice with **Resend email** on the Billing page. A completed password reset or admin-tenant consent confirmation also verifies (both are clicks on a link we emailed). **Every user that existed when migration `20260924000000` ran is backfilled as verified** — nobody is locked out; seed users are marked verified too. Tests: `tests/integration/emailVerification.realdb.test.ts` (real DB end to end) + route/unit/dashboard tests.
+- [x] **(code) One account per email, platform-wide, case-insensitive** — `/register`, admin `POST /tenants/create`, and `POST /users/invite` all refuse an email that already signs in anywhere; `/register` says "You already have an account with this email. Sign in instead — or use 'Forgot password'…" and the signup page shows **Sign in** / **Forgot password** links. Emails are stored lowercased; `/login` matches case-insensitively. "Forgot password" already existed (`/forgot-password`, linked from sign-in).
+  - [ ] **(Dale, decision) Add a database-level unique index on `LOWER(users.email)`?** Today the rule is enforced in app code on every create path, but the DB's own constraint is still per-tenant (`users_email_tenant_unique`). A DB index is the real guarantee, and needs a one-time check that prod has no case-insensitive duplicates first (I did not query prod).
+- [x] **(code) FOUND + FIXED: self-serve `/register` 500'd under the RLS-enforced role** for every business type with a template. The `on_tenant_created_resources` trigger's resources INSERT had no tenant context and violated RLS; prod runs as `app_user`, so this most likely affects prod signups (not confirmed against prod — no prod query was run). Migration `20260924000100` makes the trigger `SECURITY DEFINER` (writes only for `NEW.tenant_id`). Found by the new real-DB test — the first to drive `/register` against a non-bypass role.
+
+---
+
 ## 📣 Landing-page / pricing accuracy — found 2026-09-23, not yet acted on
 
 The public landing page (`dashboard/app/page.tsx`) makes specific, repeated customer-facing

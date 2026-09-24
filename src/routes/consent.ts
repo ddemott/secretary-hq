@@ -112,6 +112,12 @@ export function registerConsentRoutes(app: AppFastifyInstance, pool: Pool) {
             'UPDATE tenant_consent_invites SET used_at = NOW() WHERE tenant_consent_invite_id = $1',
             [inviteId]
           );
+          // The invite was emailed to this owner, so clicking it also proves
+          // they own the address (users.email_verified_at gates checkout).
+          await client.query(
+            'UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE user_id = $1',
+            [userId]
+          );
 
           await client.query('COMMIT');
           return {

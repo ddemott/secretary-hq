@@ -24,6 +24,7 @@ import {
   PG_URL,
   registerFreshTenant,
   startSubscriptionViaFixture,
+  markEmailVerified,
   cleanTenantData,
   type RegisteredTenant,
 } from './helpers/fixtures';
@@ -94,6 +95,7 @@ test.describe('GoLivePanel — Stage B (verify the raw number)', () => {
     try {
       tenant = await registerFreshTenant(request);
       // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await markEmailVerified(pool, tenant.userId);
       await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
 
@@ -141,6 +143,7 @@ test.describe('GoLivePanel — Stage C fork', () => {
     try {
       tenant = await registerFreshTenant(request);
       // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await markEmailVerified(pool, tenant.userId);
       await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
       await reachStageC(page, tenant);
@@ -163,6 +166,7 @@ test.describe('GoLivePanel — Stage C fork', () => {
     try {
       tenant = await registerFreshTenant(request);
       // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await markEmailVerified(pool, tenant.userId);
       await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
       await reachStageC(page, tenant);

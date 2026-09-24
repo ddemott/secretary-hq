@@ -127,6 +127,23 @@ export function registerUserRoutes(
       }
       const businessName = tenantRow.rows[0].name as string;
 
+      // One account per email, platform-wide (owner decision 2026-09-24): an
+      // address that already signs in anywhere cannot be invited again, here
+      // or into another business.
+      const emailTaken = await withPoolClient(pool, async (client) => {
+        const res = await client.query(
+          'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [normalizedEmail]
+        );
+        return res.rows.length > 0;
+      });
+      if (emailTaken) {
+        return reply.status(409).send({
+          success: false,
+          error: 'That email already has a SecretaryHQ account, so it cannot be invited.',
+        });
+      }
+
       const bcrypt = await import('bcrypt');
       // The user never types this password — they set their own via the
       // reset link. We bcrypt-hash a random string anyway so the column is

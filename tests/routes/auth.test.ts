@@ -8,6 +8,7 @@ import type { AppRequest } from '../../src/middleware/fastify-middleware';
 // Mock the email sender so route tests don't try to send real mail
 vi.mock('../../src/services/communications/systemEmail', () => ({
   sendPasswordResetEmail: vi.fn(async () => undefined),
+  sendEmailVerificationEmail: vi.fn(async () => undefined),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -688,7 +689,44 @@ describe('Auth Routes — Handler-Level', () => {
       await route.handler(req, reply);
 
       expect(reply.statusCode).toBe(409);
-      expect(reply.body.error).toContain('already exists');
+      // Owner decision 2026-09-24: tell them plainly they already have an account.
+      expect(reply.body.error).toMatch(/^You already have an account with this email/);
+      expect(reply.body.error).toMatch(/Forgot password/);
+      // The lookup is case-insensitive and platform-wide.
+      const check = client.query.mock.calls.find((c) =>
+        (c[0] as string).includes('LOWER(email) = LOWER($1)')
+      );
+      expect(check).toBeDefined();
+    });
+
+    it('treats a differently-cased email as the same account (WHO: returning user typing Dupe@Test.com | WHAT: 409, and the lookup is sent the lowercased address | WHERE: /register | WHY: one account per email regardless of capitals)', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [{ user_id: 'existing' }] }); // email check — FOUND
+      queryResponses.push({ rows: [] }); // ROLLBACK
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'Shop',
+        business_type: 'salon',
+        owner_name: 'Owner',
+        email: 'Dupe@Test.COM',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(409);
+      const check = client.query.mock.calls.find((c) =>
+        (c[0] as string).includes('LOWER(email) = LOWER($1)')
+      );
+      expect((check![1] as unknown[])[0]).toBe('dupe@test.com');
     });
 
     it('creates tenant+user and returns 201 (WHO: new business | WHAT: full registration | WHERE: /register | WHY: self-service onboarding)', async () => {

@@ -130,6 +130,7 @@ describe('Consent Routes — Handler-Level', () => {
         rows: [{ name: 'Sharp Salon', legal_consent_attested_at: attestedAt }],
       }); // UPDATE tenants ... RETURNING
       queryResponses.push({ rows: [] }); // UPDATE tenant_consent_invites used_at
+      queryResponses.push({ rows: [] }); // UPDATE users email_verified_at
       queryResponses.push({ rows: [] }); // COMMIT
 
       const route = findRoute(routes, '/consent/confirm');
@@ -146,6 +147,11 @@ describe('Consent Routes — Handler-Level', () => {
 
       const markUsed = queries.find((q) => /UPDATE tenant_consent_invites/i.test(q.text));
       expect(markUsed?.params).toEqual([INVITE_ID_MOCK]);
+
+      // The invite was emailed to this owner, so confirming it also verifies
+      // their email (email_verified_at gates checkout — 2026-09-24).
+      const verify = queries.find((q) => /UPDATE users SET email_verified_at/i.test(q.text));
+      expect(verify?.params).toEqual([USER_ID_MOCK]);
 
       expect(queries[queries.length - 1].text).toBe('COMMIT');
 

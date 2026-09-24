@@ -23,6 +23,7 @@ const { mockApi } = vi.hoisted(() => ({
       checkout: vi.fn(),
       portal: vi.fn(),
       usage: vi.fn(),
+      resendVerification: vi.fn(),
     },
   },
 }));
@@ -524,5 +525,61 @@ describe('BillingView — subdirectory pin', () => {
     const setup = fs.readFileSync(path.join(__dirname, '..', 'business', 'SetupView.tsx'), 'utf-8');
     expect(setup).toContain("import BillingView from '../billing/BillingView'");
     expect(setup).not.toContain("import BillingView from './BillingView'");
+  });
+});
+
+describe('BillingView — email verification notice', () => {
+  test('SAD: a checkout refused as email_not_verified shows the notice and the server message', async () => {
+    // WHO: an owner who signed up but never clicked the verification link
+    // WHAT: Upgrade → backend 403 "Confirm your email first…" → notice with Resend
+    // WHY: owner decision 2026-09-24 — no trial until the email is proven
+    localStorage.removeItem('emailVerified');
+    mockApi.billing.checkout.mockRejectedValue(
+      new Error('Confirm your email first — we sent a link to owner@test.com.')
+    );
+    render(<BillingView />);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /upgrade/i })).toHaveLength(3)
+    );
+    expect(screen.queryByRole('button', { name: /resend email/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /upgrade/i })[0]);
+
+    expect(await screen.findByRole('button', { name: /resend email/i })).toBeInTheDocument();
+    expect(mockToast).toHaveBeenCalledWith(
+      'Confirm your email first — we sent a link to owner@test.com.',
+      'error'
+    );
+  });
+
+  test('HAPPY: the notice shows up front when login said the email is unverified, and Resend sends a new link', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockResolvedValue({
+      success: true,
+      sent_to: 'owner@test.com',
+    });
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() => expect(mockApi.billing.resendVerification).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith('We sent a new link to owner@test.com.', 'success')
+    );
+    localStorage.removeItem('emailVerified');
+  });
+
+  test('HAPPY: if the email turns out to be verified already, the notice goes away', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockResolvedValue({ success: true, already_verified: true });
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /resend email/i })).not.toBeInTheDocument()
+    );
+    expect(localStorage.getItem('emailVerified')).toBe('true');
+    localStorage.removeItem('emailVerified');
   });
 });

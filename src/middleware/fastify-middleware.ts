@@ -653,6 +653,10 @@ const PUBLIC_ROUTES = [
   // against). /consent/resend additionally requires the login password.
   '/consent/confirm',
   '/consent/resend',
+  // Signup email verification — the token is the credential, same trust
+  // model as /reset-password. (/verify-email/resend is NOT public: it needs
+  // the signed-in user's JWT.)
+  '/verify-email',
   '/',
   '/demo',
   '/demo/start',

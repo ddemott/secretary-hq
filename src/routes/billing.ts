@@ -146,6 +146,26 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
           .send({ success: false, error: 'plan must be "solo", "growth", or "professional"' });
       }
 
+      // Email-verification gate (owner decision 2026-09-24): no trial, and so
+      // no phone line (provisioning.ts requires an active subscription),
+      // until the owner has proven they own their signup email. Super-admin
+      // acting on a tenant is exempt. Runs before fixture mode on purpose so
+      // local/E2E exercise the same gate.
+      if (req.auth && req.auth.tenant_id !== SUPER_ADMIN_TENANT_ID) {
+        const userRes = await pool.query<{ email: string; email_verified_at: Date | null }>(
+          'SELECT email, email_verified_at FROM users WHERE user_id = $1',
+          [req.auth.user_id]
+        );
+        if (userRes.rows.length > 0 && userRes.rows[0].email_verified_at === null) {
+          logEvent(req, 'checkout_refused_email_unverified', { tenantId: tenant_id });
+          return reply.status(403).send({
+            success: false,
+            error_code: 'email_not_verified',
+            error: `Confirm your email first — we sent a link to ${userRes.rows[0].email}. Didn't get it? Use "Resend email" on this page.`,
+          });
+        }
+      }
+
       // No Stripe account required. Writes the same columns the webhook would
       // after checkout.session.completed, then sends the owner back to Billing.
       if (stripeFixtureMode()) {

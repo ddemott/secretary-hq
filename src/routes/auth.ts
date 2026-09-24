@@ -16,12 +16,16 @@ import {
   type AppRequest,
   type UserRole,
 } from '../middleware/fastify-middleware';
-import { sendPasswordResetEmail } from '../services/communications/systemEmail';
+import {
+  sendPasswordResetEmail,
+  sendEmailVerificationEmail,
+} from '../services/communications/systemEmail';
 import { errorsTotal } from '../services/metrics';
 import { createTenantWithOwner } from '../services/tenants/bootstrap';
 import { isHipaaVertical } from '../../shared/hipaaVerticalDenylist';
 
 const RESET_TTL_MINUTES = 30;
+export const EMAIL_VERIFY_TTL_HOURS = 48;
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -61,6 +65,41 @@ const ResetSchema = z.object({
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+const VerifyEmailSchema = z.object({ token: z.string().min(20).max(200) });
+
+/**
+ * Write a fresh email-verification token for a user and send the link.
+ * The token row is durable before the send starts; the send is
+ * FIRE-AND-FORGET for the same reason as /forgot-password (an awaited SMTP
+ * send hung production once) — a failure is metered and logged, and the
+ * owner can use POST /verify-email/resend.
+ */
+async function issueEmailVerification(
+  pool: Pool,
+  req: AppRequest,
+  opts: { tenantId: string; userId: string; email: string }
+): Promise<void> {
+  const rawToken = randomBytes(32).toString('base64url');
+  await withPoolClient(pool, async (client) => {
+    await client.query(
+      `INSERT INTO email_verifications (tenant_id, user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::interval)`,
+      [opts.tenantId, opts.userId, hashToken(rawToken), EMAIL_VERIFY_TTL_HOURS]
+    );
+  });
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+  const verifyLink = `${dashboardUrl}/verify-email?token=${rawToken}`;
+  void sendEmailVerificationEmail(opts.email, verifyLink, EMAIL_VERIFY_TTL_HOURS).catch(
+    (err: unknown) => {
+      errorsTotal.inc({ event: 'email_verification_email_failed' });
+      req.log.error(
+        { err, user_id: opts.userId },
+        'email verification email FAILED — the token row exists but the owner never got a link; they can resend from Billing'
+      );
+    }
+  );
 }
 
 /**
@@ -132,7 +171,7 @@ export function registerAuthRoutes(
           `SELECT u.*, t.consent_gate_required, t.legal_consent_attested_at
              FROM users u
              JOIN tenants t ON t.tenant_id = u.tenant_id AND t.is_deleted = false
-            WHERE u.email = $1
+            WHERE LOWER(u.email) = LOWER($1)
             ORDER BY u.created_at ASC NULLS LAST, u.user_id ASC`,
           [email]
         );
@@ -182,6 +221,7 @@ export function registerAuthRoutes(
         user_name: user.full_name,
         role,
         token,
+        email_verified: user.email_verified_at != null,
       });
     }, 'Login failed')
   );
@@ -201,7 +241,10 @@ export function registerAuthRoutes(
           .status(400)
           .send({ success: false, error: 'Validation failed', details: parsed.error.issues });
       }
-      const { business_name, business_type, owner_name, email, password } = parsed.data;
+      const { business_name, business_type, owner_name, password } = parsed.data;
+      // One account per email, platform-wide and case-insensitive: store it
+      // normalized so Dale@x.com and dale@x.com can never be two accounts.
+      const email = parsed.data.email.trim().toLowerCase();
 
       // Best-effort audit trail for the consent attestation — same
       // x-forwarded-for-first-hop convention as /forgot-password above and
@@ -231,6 +274,14 @@ export function registerAuthRoutes(
         role: 'owner',
       });
 
+      // Prove the address before anything costs money: checkout (and so the
+      // trial and the phone line) stays locked until this link is clicked.
+      await issueEmailVerification(pool, req, {
+        tenantId: result.tenantId,
+        userId: result.userId,
+        email,
+      });
+
       return reply.status(201).send({
         success: true,
         tenant_id: result.tenantId,
@@ -238,6 +289,7 @@ export function registerAuthRoutes(
         user_name: owner_name,
         role: 'owner',
         token,
+        email_verified: false,
       });
     }, 'Registration failed')
   );
@@ -350,7 +402,11 @@ export function registerAuthRoutes(
           const bcrypt = await import('bcrypt');
           const hash = await bcrypt.hash(new_password, 10);
           await client.query(
-            'UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE user_id = $2',
+            // Clicking an emailed single-use link proves inbox ownership, so a
+            // completed reset also verifies the email (see email_verified_at).
+            `UPDATE users SET password_hash = $1, password_changed_at = NOW(),
+                    email_verified_at = COALESCE(email_verified_at, NOW())
+              WHERE user_id = $2`,
             [hash, userId]
           );
           await client.query(
@@ -376,5 +432,85 @@ export function registerAuthRoutes(
       }
       return reply.send({ success: true });
     }, 'Reset password failed')
+  );
+
+  // POST /verify-email - Consume a signup verification token (public: the
+  // token itself is the credential, same trust model as /reset-password).
+  app.post(
+    '/verify-email',
+    { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } },
+    withHandler(async (req: AppRequest, reply) => {
+      const parsed = VerifyEmailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ success: false, error: 'Invalid request' });
+      }
+      const tokenHash = hashToken(parsed.data.token);
+      const result = await withPoolClient(pool, async (client) => {
+        await client.query('BEGIN');
+        try {
+          const r = await client.query(
+            `SELECT email_verification_id, user_id FROM email_verifications
+              WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+              FOR UPDATE`,
+            [tokenHash]
+          );
+          if (r.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { invalid: true as const };
+          }
+          const userId = r.rows[0].user_id as string;
+          await client.query(
+            'UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE user_id = $1',
+            [userId]
+          );
+          // Burn every outstanding link for this user, not just this one.
+          await client.query(
+            'UPDATE email_verifications SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL',
+            [userId]
+          );
+          await client.query('COMMIT');
+          return { ok: true as const };
+        } catch (err) {
+          await client.query('ROLLBACK');
+          throw err;
+        }
+      });
+      if ('invalid' in result) {
+        return reply
+          .status(400)
+          .send({ success: false, error: 'This link is invalid or has expired' });
+      }
+      return reply.send({ success: true });
+    }, 'Email verification failed')
+  );
+
+  // POST /verify-email/resend - Send a fresh link to the signed-in user.
+  app.post(
+    '/verify-email/resend',
+    { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } },
+    withHandler(async (req: AppRequest, reply) => {
+      if (!req.auth) {
+        return reply.status(401).send({ success: false, error: 'Authentication required' });
+      }
+      const user = await withPoolClient(pool, async (client) => {
+        const res = await client.query(
+          'SELECT user_id, tenant_id, email, email_verified_at FROM users WHERE user_id = $1',
+          [req.auth!.user_id]
+        );
+        return res.rows[0];
+      });
+      if (!user) {
+        return reply.status(404).send({ success: false, error: 'User not found' });
+      }
+      if (user.email_verified_at != null) {
+        return reply.send({ success: true, already_verified: true });
+      }
+      await issueEmailVerification(pool, req, {
+        tenantId: user.tenant_id,
+        userId: user.user_id,
+        email: user.email,
+      });
+      return reply.send({ success: true, sent_to: user.email });
+    }, 'Resend verification failed')
   );
 }

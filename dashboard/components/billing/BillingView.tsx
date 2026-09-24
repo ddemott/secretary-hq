@@ -80,6 +80,19 @@ export default function BillingView() {
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<PlanKey | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  // Signup email not yet confirmed — checkout (so the trial and the phone line)
+  // is refused until it is. Seeded from login/register, and also set when a
+  // checkout attempt comes back email_not_verified.
+  const [emailUnverified, setEmailUnverified] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    try {
+      setEmailUnverified(localStorage.getItem('emailVerified') === 'false');
+    } catch {
+      // localStorage unavailable — the checkout 403 still surfaces the notice.
+    }
+  }, []);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -138,13 +151,41 @@ export default function BillingView() {
       try {
         const { url } = await Api.billing.checkout(tenantId, plan);
         window.location.href = url;
-      } catch {
-        showToast('Could not start checkout — try again.', 'error');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.startsWith('Confirm your email')) {
+          setEmailUnverified(true);
+          showToast(msg, 'error');
+        } else {
+          showToast('Could not start checkout — try again.', 'error');
+        }
         setCheckingOut(null);
       }
     },
     [tenantId]
   );
+
+  const handleResendVerification = useCallback(async () => {
+    setResending(true);
+    try {
+      const res = await Api.billing.resendVerification();
+      if (res.already_verified) {
+        setEmailUnverified(false);
+        try {
+          localStorage.setItem('emailVerified', 'true');
+        } catch {
+          // ignore — purely a UI hint
+        }
+        showToast('Your email is already confirmed — you can choose a plan.', 'success');
+      } else {
+        showToast(`We sent a new link to ${res.sent_to ?? 'your email'}.`, 'success');
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not resend the email.', 'error');
+    } finally {
+      setResending(false);
+    }
+  }, []);
 
   const handleManageBilling = useCallback(async () => {
     if (!tenantId) return;
@@ -165,6 +206,26 @@ export default function BillingView() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {emailUnverified && (
+        <div
+          role="status"
+          className="rounded-md px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-3"
+          style={{
+            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            color: 'var(--warning)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+          }}
+        >
+          <span>
+            Confirm your email to start your free trial. We sent a link to your inbox when you
+            signed up.
+          </span>
+          <Button variant="secondary" onClick={handleResendVerification} disabled={resending}>
+            {resending ? 'Sending…' : 'Resend email'}
+          </Button>
+        </div>
+      )}
+
       {/* Current plan summary */}
       <Card className="p-6" style={{ backgroundColor: 'var(--bg-raised)' }}>
         <div className="flex items-start justify-between gap-4 flex-wrap">

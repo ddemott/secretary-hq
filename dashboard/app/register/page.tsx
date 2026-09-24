@@ -38,6 +38,9 @@ export default function RegisterPage() {
   const [templates, setTemplates] = useState<BusinessTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 409 from /register means the email already has an account (one account
+  // per email, platform-wide) — show sign-in and forgot-password links.
+  const [accountExists, setAccountExists] = useState(false);
   const [agreedToLegal, setAgreedToLegal] = useState(false);
 
   // Populate the business-type picker from the public templates endpoint —
@@ -70,6 +73,7 @@ export default function RegisterPage() {
     if (loading) return;
     setLoading(true);
     setError(null);
+    setAccountExists(false);
 
     try {
       const res = await fetch(`${API_BASE_URL}/register`, {
@@ -107,9 +111,15 @@ export default function RegisterPage() {
         // immediately rather than falling back to the default.
         localStorage.setItem('userRole', data.role || 'owner');
         if (data.token) localStorage.setItem('authToken', data.token);
+        // A verification link was just emailed; Billing prompts until it's clicked.
+        localStorage.setItem('emailVerified', 'false');
         window.location.href = '/dashboard';
       } else if (res.status === 409) {
-        setError(data.error || 'An account with that email already exists. Try signing in.');
+        setAccountExists(true);
+        setError(
+          data.error ||
+            'You already have an account with this email. Sign in instead — or use "Forgot password" if you don\'t remember it.'
+        );
       } else {
         setError(data.error || 'Could not create your account. Please try again.');
       }
@@ -157,6 +167,16 @@ export default function RegisterPage() {
               className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 text-sm rounded-r-md"
             >
               {error}
+              {accountExists && (
+                <div className="mt-2 flex gap-4 font-semibold">
+                  <a href="/dashboard" className="underline">
+                    Sign in
+                  </a>
+                  <a href="/forgot-password" className="underline">
+                    Forgot password
+                  </a>
+                </div>
+              )}
             </div>
           )}
 

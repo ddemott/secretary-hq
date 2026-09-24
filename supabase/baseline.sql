@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Fm1vVw4NZ0hkBPeyfcJhQrHFwsKH8YAeuEsmCulEs7o4dsXIpksKNlc9a1708Ym
+\restrict dVSdHSS4buxWse3hmxcGe3yCsK3sTkhq69w3s9lCyUzKry6xjifCNlScFNBbXJr
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -1565,7 +1565,8 @@ COMMENT ON FUNCTION public.copy_question_tree_templates_to_tenant(p_tenant_id uu
 --
 
 CREATE FUNCTION public.create_default_resources() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
     AS $$
 DECLARE
     v_template business_templates%ROWTYPE;
@@ -1580,6 +1581,13 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+
+--
+-- Name: FUNCTION create_default_resources(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.create_default_resources() IS 'AFTER INSERT ON tenants: create the business type''s default resource. SECURITY DEFINER because tenant creation has no tenant context yet, and resources RLS would otherwise refuse the row (2026-09-24 fix — /register 500''d under app_user). Writes only for NEW.tenant_id.';
 
 
 --
@@ -3633,6 +3641,37 @@ CREATE VIEW public.deleted_customers AS
 
 
 --
+-- Name: email_verifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.email_verifications (
+    email_verification_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.email_verifications FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: TABLE email_verifications; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.email_verifications IS 'Single-use, hashed-token links emailed at signup (and on resend) so a new user can prove they own their email. 48-hour expiry. Consumed by POST /verify-email.';
+
+
+--
+-- Name: COLUMN email_verifications.token_hash; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.email_verifications.token_hash IS 'SHA-256 of the raw token mailed to the user; the raw token is never persisted (same convention as password_resets / tenant_consent_invites).';
+
+
+--
 -- Name: employee_schedule; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4824,10 +4863,18 @@ CREATE TABLE public.users (
     last_name text,
     password_changed_at timestamp with time zone DEFAULT now() NOT NULL,
     role text DEFAULT 'owner'::text NOT NULL,
+    email_verified_at timestamp with time zone,
     CONSTRAINT users_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'front_desk'::text])))
 );
 
 ALTER TABLE ONLY public.users FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: COLUMN users.email_verified_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.users.email_verified_at IS 'When this user proved they own users.email by clicking an emailed single-use link. NULL = unverified; POST /billing/checkout refuses until set. Every row that existed on 2026-09-24 was backfilled to its created_at so no existing login is gated.';
 
 
 --
@@ -5045,6 +5092,22 @@ ALTER TABLE ONLY public.customers
 
 ALTER TABLE ONLY public.customers
     ADD CONSTRAINT customers_tenant_id_phone_key UNIQUE (tenant_id, phone);
+
+
+--
+-- Name: email_verifications email_verifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verifications
+    ADD CONSTRAINT email_verifications_pkey PRIMARY KEY (email_verification_id);
+
+
+--
+-- Name: email_verifications email_verifications_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verifications
+    ADD CONSTRAINT email_verifications_token_hash_key UNIQUE (token_hash);
 
 
 --
@@ -5549,6 +5612,20 @@ CREATE INDEX idx_customers_is_deleted ON public.customers USING btree (tenant_id
 --
 
 CREATE INDEX idx_customers_updated_at ON public.customers USING btree (tenant_id, updated_at);
+
+
+--
+-- Name: idx_email_verifications_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_email_verifications_expires_at ON public.email_verifications USING btree (expires_at);
+
+
+--
+-- Name: idx_email_verifications_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_email_verifications_user_id ON public.email_verifications USING btree (user_id);
 
 
 --
@@ -6352,6 +6429,22 @@ ALTER TABLE ONLY public.customers
 
 
 --
+-- Name: email_verifications email_verifications_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verifications
+    ADD CONSTRAINT email_verifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(tenant_id) ON DELETE CASCADE;
+
+
+--
+-- Name: email_verifications email_verifications_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.email_verifications
+    ADD CONSTRAINT email_verifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+
+--
 -- Name: employee_schedule_pattern employee_schedule_pattern_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7040,6 +7133,26 @@ CREATE POLICY customer_preferences_tenant_isolation ON public.customer_preferenc
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: email_verifications; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.email_verifications ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: email_verifications email_verifications_admin_bypass; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY email_verifications_admin_bypass ON public.email_verifications USING ((public.tenant_ctx() = ''::text)) WITH CHECK ((public.tenant_ctx() = ''::text));
+
+
+--
+-- Name: email_verifications email_verifications_tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY email_verifications_tenant_isolation ON public.email_verifications USING ((tenant_id = public.tenant_ctx_uuid())) WITH CHECK ((tenant_id = public.tenant_ctx_uuid()));
+
+
+--
 -- Name: employee_schedule; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -7509,5 +7622,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Fm1vVw4NZ0hkBPeyfcJhQrHFwsKH8YAeuEsmCulEs7o4dsXIpksKNlc9a1708Ym
+\unrestrict dVSdHSS4buxWse3hmxcGe3yCsK3sTkhq69w3s9lCyUzKry6xjifCNlScFNBbXJr
 

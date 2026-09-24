@@ -329,3 +329,8 @@ SET default_service_id = (
   LIMIT 1
 )
 WHERE t.default_service_id IS NULL;
+
+-- Seeded logins are known-good addresses: mark them email-verified so a
+-- fresh local/E2E database behaves like prod, where every account that
+-- existed on 2026-09-24 was backfilled by 20260924000000_user_email_verification.
+UPDATE users SET email_verified_at = COALESCE(email_verified_at, created_at, NOW());

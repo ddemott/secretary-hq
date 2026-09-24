@@ -89,12 +89,27 @@ function buildApp(opts: {
   poolResponses: Array<{ rows: unknown[]; rowCount?: number }>;
   injectTenantId?: boolean; // default true
   role?: 'owner' | 'front_desk'; // default 'owner'
+  /** Answer for the checkout email-verification gate's users read (default: verified). */
+  emailVerified?: boolean;
 }): { app: FastifyInstance; queries: MockQuery[] } {
   const queries: MockQuery[] = [];
   const responses = [...opts.poolResponses];
   const mockPool = {
     query: vi.fn(async (text: string, params?: unknown[]) => {
       queries.push({ text, params: params ?? [] });
+      // The checkout email gate (billing.ts) reads the caller's user row first.
+      // Answer it here so each test's scripted responses stay about the tenant.
+      if (text.includes('SELECT email, email_verified_at FROM users')) {
+        return {
+          rows: [
+            {
+              email: 'owner@test.com',
+              email_verified_at: opts.emailVerified === false ? null : new Date(),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
       return responses.shift() ?? { rows: [], rowCount: 0 };
     }),
   } as unknown as Pool;
@@ -180,8 +195,8 @@ describe('POST /billing/checkout', () => {
     expect(mockCheckoutCreate).toHaveBeenCalledWith(
       expect.objectContaining({ customer: STRIPE_CUSTOMER_ID, mode: 'subscription' })
     );
-    // DB: only one query (lookup), no customer_id UPDATE
-    expect(queries).toHaveLength(1);
+    // DB: email gate read + tenant lookup, no customer_id UPDATE
+    expect(queries).toHaveLength(2);
   });
 
   it('HAPPY: first subscription gets a 14-day trial and Checkout must collect a card', async () => {
@@ -340,8 +355,25 @@ describe('POST /billing/checkout', () => {
       expect.objectContaining({ metadata: { tenant_id: TENANT_ID } })
     );
     // DB: lookup + UPDATE with new customer id
-    expect(queries[1].text).toContain('UPDATE tenants SET stripe_customer_id');
-    expect(queries[1].params[0]).toBe('cus_brand_new');
+    expect(queries[2].text).toContain('UPDATE tenants SET stripe_customer_id');
+    expect(queries[2].params[0]).toBe('cus_brand_new');
+  });
+
+  it('SAD: an owner who has not verified their email cannot check out (403 email_not_verified)', async () => {
+    // WHO: a new owner who signed up but never clicked the verification link.
+    // WHAT: 403 error_code=email_not_verified naming their address; Stripe is never called.
+    // WHERE: email gate at the top of POST /billing/checkout.
+    // WHY: owner decision 2026-09-24 — no trial (and so no phone line) on an
+    //      address nobody has proven they own.
+    const { app } = buildApp({ poolResponses: [], emailVerified: false });
+
+    const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ success: false, error_code: 'email_not_verified' });
+    expect(res.json().error).toContain('owner@test.com');
+    expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    expect(mockCustomersCreate).not.toHaveBeenCalled();
   });
 
   it('SAD: invalid plan name → 400', async () => {
@@ -393,9 +425,9 @@ describe('POST /billing/checkout', () => {
     expect(body.url).toContain('billing=fixture');
     expect(mockCheckoutCreate).not.toHaveBeenCalled();
     expect(mockCustomersCreate).not.toHaveBeenCalled();
-    expect(queries[1].text).toContain("subscription_status = 'active'");
-    expect(queries[1].params).toContain('growth');
-    expect(queries[1].params[0]).toBe(`cus_fixture_${TENANT_ID}`);
+    expect(queries[2].text).toContain("subscription_status = 'active'");
+    expect(queries[2].params).toContain('growth');
+    expect(queries[2].params[0]).toBe(`cus_fixture_${TENANT_ID}`);
   });
 
   it('SECURITY: STRIPE_FIXTURE_MODE is ignored when NODE_ENV=production', async () => {
