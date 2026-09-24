@@ -436,6 +436,10 @@ jobs:
           # /provisioning/activate "configured" (past the telnyx-null 503
           # guard) with zero real credentials.
           PROVISIONING_E2E_STUB: '1'
+          # Buying a number now requires a started subscription (card-required
+          # trial). Fixture mode lets the Go Live specs start one via
+          # POST /billing/checkout without Stripe. Ignored when NODE_ENV=production.
+          STRIPE_FIXTURE_MODE: 'true'
           # Browser caller pickup spec exercises the page + backend route in CI,
           # but runners do not have LiveKit credentials. This opt-in backend stub
           # returns deterministic session metadata so the page can execute the

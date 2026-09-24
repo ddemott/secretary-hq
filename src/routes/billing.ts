@@ -17,7 +17,7 @@ import {
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { computeUsageStatements } from '../services/billingUsage';
-import { webhookSignatureFailuresTotal } from '../services/metrics';
+import { webhookSignatureFailuresTotal, errorsTotal } from '../services/metrics';
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -57,9 +57,45 @@ function planFromPriceId(priceId: string | null): string | null {
 
 const ALLOWED_PLANS = ['solo', 'growth', 'professional'];
 
+/**
+ * Free-trial length. The trial runs inside a real Stripe subscription, and
+ * Checkout always collects a card first (owner decision 2026-09-24: no-card
+ * trials invite abuse). A tenant gets the trial once — see checkout below.
+ */
+export const TRIAL_DAYS = 14;
+
 /** Checkout-session metadata is ours, but a webhook payload is still external input — validate before writing. */
 function validPlan(plan: unknown): string | null {
   return typeof plan === 'string' && ALLOWED_PLANS.includes(plan) ? plan : null;
+}
+
+/**
+ * One trial per tenant. Our own tenants.stripe_subscription_id is NOT enough:
+ * the cancel webhooks NULL it, so subscribe → cancel on day 13 → subscribe again
+ * would look like a first subscription and chain free trials forever. Stripe's
+ * own history for the customer survives cancellation, so a customer with ANY
+ * past subscription (status 'all' includes canceled) gets no second trial.
+ * A lookup failure fails CLOSED on the trial (no free days) — checkout itself
+ * still proceeds, the owner just pays from day one.
+ */
+async function isFirstSubscription(
+  stripe: Stripe,
+  existingCustomerId: string | null,
+  existingSubscriptionId: string | null
+): Promise<boolean> {
+  if (existingSubscriptionId) return false;
+  if (!existingCustomerId) return true; // brand-new Stripe customer: no history
+  try {
+    const history = await stripe.subscriptions.list({
+      customer: existingCustomerId,
+      status: 'all',
+      limit: 1,
+    });
+    return history.data.length === 0;
+  } catch {
+    errorsTotal.inc({ event: 'trial_history_lookup_failed' });
+    return false;
+  }
 }
 
 /** Map a Stripe subscription status onto the three statuses the gate understands. */
@@ -160,7 +196,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       // a business that has been deleted. Taking money from a tenant that cannot log
       // in or answer a call is the worst shape a zombie-tenant leak could take.
       const tenantRes = await pool.query(
-        'SELECT tenant_id, name, stripe_customer_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+        'SELECT tenant_id, name, stripe_customer_id, stripe_subscription_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
         [tenant_id]
       );
       if (tenantRes.rows.length === 0) {
@@ -183,10 +219,18 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       }
 
       const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+      const firstSubscription = await isFirstSubscription(
+        stripe,
+        stripeId(tenant.stripe_customer_id),
+        stripeId(tenant.stripe_subscription_id)
+      );
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
+        // Card up front even when the first charge is 14 days away.
+        payment_method_collection: 'always',
+        ...(firstSubscription && { subscription_data: { trial_period_days: TRIAL_DAYS } }),
         success_url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=success`,
         cancel_url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=cancel`,
         metadata: { tenant_id, plan },

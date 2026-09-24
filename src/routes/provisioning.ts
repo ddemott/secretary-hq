@@ -15,6 +15,7 @@ import {
 } from '../middleware/fastify-middleware';
 import { type TelnyxNumbersClient } from '../services/telnyxNumbers';
 import { activatePhone, deactivatePhone } from '../services/provisioningService';
+import { SUPER_ADMIN_TENANT_ID } from '../constants';
 import { sendPortRequestEmail } from '../services/communications/systemEmail';
 
 const ActivateSchema = z.object({
@@ -57,6 +58,35 @@ export function registerProvisioningRoutes(
           .send({ success: false, error: 'Validation failed', details: parsed.error.issues });
       }
       const { tenant_id, area_code } = parsed.data;
+
+      // Card-required gate (owner decision 2026-09-24): a real number costs real
+      // money every month, so a tenant must have started a subscription — the
+      // 14-day trial counts, and Checkout always takes a card — before it can
+      // buy one. Stripe's 'trialing' is stored as 'active' (localStatusForStripe
+      // in billing.ts). Super-admin provisioning for a tenant is exempt.
+      if (req.auth?.tenant_id !== SUPER_ADMIN_TENANT_ID) {
+        const sub = await pool.query<{ subscription_status: string | null }>(
+          'SELECT subscription_status FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+          [tenant_id]
+        );
+        if (sub.rows.length > 0 && sub.rows[0].subscription_status !== 'active') {
+          logEvent(req, 'phone_provisioning_refused_no_subscription', {
+            tenant_id,
+            subscription_status: sub.rows[0].subscription_status,
+          });
+          const pastDue = sub.rows[0].subscription_status === 'past_due';
+          return reply.status(402).send({
+            success: false,
+            error_code: 'subscription_required',
+            // Worded per status: only a never-subscribed tenant gets a trial
+            // (billing.ts isFirstSubscription), so only that message may
+            // promise "no charge until the trial ends".
+            error: pastDue
+              ? 'Your last payment did not go through. Update your card on the Billing page before getting a phone number.'
+              : 'Choose a plan on the Billing page before getting a phone number. A card is required; new accounts get a 14-day free trial and are not charged until it ends.',
+          });
+        }
+      }
 
       const result = await activatePhone(pool, telnyx, tenant_id, area_code);
 

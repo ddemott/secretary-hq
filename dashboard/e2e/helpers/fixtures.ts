@@ -104,6 +104,25 @@ export async function registerFreshTenant(req: APIRequestContext): Promise<Regis
 }
 
 /**
+ * Start a subscription for a fresh tenant through POST /billing/checkout in
+ * STRIPE_FIXTURE_MODE (no Stripe call; the plan is activated locally). Buying a
+ * phone number requires a started subscription — the card-required trial gate
+ * on POST /provisioning/activate — so Go Live specs call this first.
+ */
+export async function startSubscriptionViaFixture(
+  req: APIRequestContext,
+  token: string,
+  plan: 'solo' | 'growth' | 'professional' = 'solo'
+): Promise<void> {
+  const res = await req.post(`${BACKEND_URL}/billing/checkout`, {
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    data: { plan },
+  });
+  expect(res.status(), 'fixture checkout needs STRIPE_FIXTURE_MODE=true on the backend').toBe(200);
+  expect((await res.json()).fixture).toBe(true);
+}
+
+/**
  * Create an employee via POST /employees/create. Splits a full name into
  * first + last; if no space, last_name defaults to 'Tech' so the API's
  * required-field validation passes.

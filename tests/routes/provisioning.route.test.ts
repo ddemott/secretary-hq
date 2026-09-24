@@ -15,9 +15,13 @@
  *   - GET  /provisioning/status    — tenant not found → 404
  *   - GET  /provisioning/status    — happy path → phone fields
  */
+/* eslint-disable @typescript-eslint/unbound-method -- mock method-reference assertions (mockTelnyx.client.*) are a deliberate test pattern; same precedent as tests/services/provisioningService.test.ts */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { registerProvisioningRoutes, type TelnyxProvisioningConfig } from '../../src/routes/provisioning';
+import {
+  registerProvisioningRoutes,
+  type TelnyxProvisioningConfig,
+} from '../../src/routes/provisioning';
 import { buildRouteTestApp, type RouteTestAppHandle } from '../mock';
 
 const TENANT_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -141,6 +145,7 @@ describe('POST /provisioning/activate — configured', () => {
     // WHERE: `if (tenant.phone_status === 'active')` guard
     // WHY: without the guard, provisioning would try to buy a second number
     //      without releasing the first — wasting Telnyx budget
+    handle.queryResponses.push({ rows: [{ subscription_status: 'active' }] }); // card gate
     handle.queryResponses.push({
       rows: [{ tenant_id: TENANT_ID, name: 'Test Biz', phone_status: 'active' }],
     });
@@ -165,6 +170,7 @@ describe('POST /provisioning/activate — configured', () => {
     // WHERE: `if (tenant.phone_status === 'provisioning')` guard
     // WHY: two concurrent provisions would race for the same SIP connection slot
     //      and potentially leave the tenant with two purchased numbers
+    handle.queryResponses.push({ rows: [{ subscription_status: 'active' }] }); // card gate
     handle.queryResponses.push({
       rows: [{ tenant_id: TENANT_ID, name: 'Test Biz', phone_status: 'provisioning' }],
     });
@@ -180,6 +186,75 @@ describe('POST /provisioning/activate — configured', () => {
       error: 'Phone provisioning is already in progress',
       current_status: 'provisioning',
     });
+  });
+
+  it('SAD: an owner with no subscription is refused 402 before any number is bought', async () => {
+    // WHO: a freshly registered owner who has not started the trial (no card on file).
+    // WHAT: 402 error_code=subscription_required; Telnyx search/order never called.
+    // WHEN: tenants.subscription_status is the signup default 'inactive'.
+    // WHERE: card-required gate at the top of POST /provisioning/activate.
+    // WHY: owner decision 2026-09-24 — a real number costs real money every month;
+    //      without this, anyone could register and buy a line with no card.
+    handle.queryResponses.push({ rows: [{ subscription_status: 'inactive' }] });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/activate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(402);
+    expect(res.json()).toMatchObject({ success: false, error_code: 'subscription_required' });
+    expect(res.json().error).toMatch(/14-day free trial/);
+    expect(res.json().error).toMatch(/card is required/i);
+    expect(mockTelnyx.client.searchAvailable).not.toHaveBeenCalled();
+    expect(mockTelnyx.client.orderNumber).not.toHaveBeenCalled();
+    expect(handle.queries).toHaveLength(1);
+    // Same tenant read as activatePhone: a deleted tenant falls through to its 404.
+    expect(handle.queries[0].text).toContain('is_deleted = false');
+  });
+
+  it('SAD: a past_due tenant is refused 402 too', async () => {
+    // WHO: an owner whose card failed after the trial.
+    // WHAT: 402 — only 'active' (which includes Stripe 'trialing') may buy a number.
+    // WHY: a failed payment must not keep buying numbers.
+    handle.queryResponses.push({ rows: [{ subscription_status: 'past_due' }] });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/activate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(402);
+    expect(res.json().error).toMatch(/update your card/i);
+    expect(res.json().error).not.toMatch(/free trial/i);
+    expect(mockTelnyx.client.orderNumber).not.toHaveBeenCalled();
+  });
+
+  it('HAPPY: super-admin provisioning for a tenant skips the card gate', async () => {
+    // WHO: the platform super-admin setting up a tenant by hand.
+    // WHAT: no subscription lookup; the first query is activatePhone's tenant read
+    //       (here it returns phone_status='active', so the route answers 409).
+    // WHY: admin-provisioned tenants are set up before their owner has logged in.
+    handle.auth.current = {
+      user_id: '00000000-0000-0000-0000-000000000009',
+      tenant_id: '00000000-0000-0000-0000-000000000000',
+      email: 'admin@test.local',
+      role: 'owner',
+    };
+    handle.queryResponses.push({
+      rows: [{ tenant_id: TENANT_ID, name: 'Test Biz', phone_status: 'active' }],
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/provisioning/activate',
+      payload: { tenant_id: TENANT_ID },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(handle.queries[0].text).not.toContain('subscription_status');
   });
 
   it('SECURITY: a front-desk user is rejected 403 before any query runs', async () => {
@@ -376,7 +451,9 @@ describe('GET /provisioning/status', () => {
       url: `/provisioning/status?tenant_id=${TENANT_ID}`,
     });
 
-    const selectQuery = handle.queries.find((q) => q.text.trim().toUpperCase().startsWith('SELECT'));
+    const selectQuery = handle.queries.find((q) =>
+      q.text.trim().toUpperCase().startsWith('SELECT')
+    );
     expect(selectQuery?.text).toContain('is_deleted = false');
   });
 });

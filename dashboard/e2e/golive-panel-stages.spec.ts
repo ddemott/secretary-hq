@@ -23,6 +23,7 @@ import { Pool } from 'pg';
 import {
   PG_URL,
   registerFreshTenant,
+  startSubscriptionViaFixture,
   cleanTenantData,
   type RegisteredTenant,
 } from './helpers/fixtures';
@@ -92,6 +93,8 @@ test.describe('GoLivePanel — Stage B (verify the raw number)', () => {
     let tenant: RegisteredTenant | null = null;
     try {
       tenant = await registerFreshTenant(request);
+      // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
 
       await switchToFreshTenant(page, tenant.tenantId, `StageB ${tenant.tenantId.slice(0, 6)}`);
@@ -137,6 +140,8 @@ test.describe('GoLivePanel — Stage C fork', () => {
     let tenant: RegisteredTenant | null = null;
     try {
       tenant = await registerFreshTenant(request);
+      // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
       await reachStageC(page, tenant);
 
@@ -157,6 +162,8 @@ test.describe('GoLivePanel — Stage C fork', () => {
     let tenant: RegisteredTenant | null = null;
     try {
       tenant = await registerFreshTenant(request);
+      // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await startSubscriptionViaFixture(request, tenant.token);
       await activateViaStub(request, tenant.token, tenant.tenantId);
       await reachStageC(page, tenant);
 

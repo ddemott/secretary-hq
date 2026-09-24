@@ -146,7 +146,7 @@ export default function RegisterPage() {
           </div>
           <h1 className="text-2xl font-display tracking-tight">Create your account</h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            14-day free trial · No credit card
+            14-day free trial · Card required to go live
           </p>
         </div>
 
