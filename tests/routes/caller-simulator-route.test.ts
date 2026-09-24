@@ -5,14 +5,19 @@ import type { FastifyInstance } from 'fastify';
 import { jsonContentTypeParser } from '../../src/jsonContentTypeParser';
 import { registerCallerSimulatorRoutes } from '../../src/routes/callerSimulator';
 
-function buildApp(startSession = vi.fn()): {
+const TENANT = 'd5e3c6a1-7b9f-4e2a-bf30-8c11a5d8e9f0';
+
+function buildApp(
+  startSession = vi.fn(),
+  tenantExists = vi.fn(async (id: string) => id === TENANT)
+): {
   app: FastifyInstance;
   startSession: ReturnType<typeof vi.fn>;
 } {
   const app = Fastify({ logger: false });
   app.removeContentTypeParser('application/json');
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonContentTypeParser);
-  registerCallerSimulatorRoutes(app as never, startSession as never);
+  registerCallerSimulatorRoutes(app as never, startSession as never, tenantExists);
   return { app, startSession };
 }
 
@@ -42,7 +47,7 @@ describe('caller simulator routes', () => {
       livekit_url: 'wss://example.livekit.cloud',
       access_token: 'abc123',
       room: 'sim-call-1750000000000',
-      tenant: 'tenant-123',
+      tenant: TENANT,
       agent: 'secretary-hq-agent',
       expires_in_minutes: 30,
     }));
@@ -52,18 +57,18 @@ describe('caller simulator routes', () => {
       method: 'POST',
       url: '/call-simulator/start',
       headers: { 'content-type': 'application/json' },
-      payload: { tenant_id: 'tenant-123', agent_name: 'secretary-hq-agent' },
+      payload: { tenant_id: TENANT, agent_name: 'secretary-hq-agent' },
     });
 
     expect(res.statusCode).toBe(200);
     expect(startSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-123',
+      tenantId: TENANT,
       agentName: 'secretary-hq-agent',
     });
     expect(JSON.parse(res.body)).toMatchObject({
       success: true,
       room: 'sim-call-1750000000000',
-      tenant: 'tenant-123',
+      tenant: TENANT,
       agent: 'secretary-hq-agent',
     });
   });
@@ -132,5 +137,75 @@ describe('caller simulator routes', () => {
 
     expect(res.statusCode).toBe(200);
     expect(startSession).toHaveBeenCalledWith({ tenantId: undefined, agentName: undefined });
+  });
+
+  // SAD: the public route spawns a real, billable agent session — it must not
+  // dispatch to an arbitrary worker name or an arbitrary/unknown tenant.
+  it('refuses an agent_name that is not the configured or local-dev worker', async () => {
+    const { app, startSession } = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/call-simulator/start',
+      headers: { 'content-type': 'application/json' },
+      payload: { agent_name: 'someone-elses-worker' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({ success: false, error: 'Unknown agent_name' });
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it('accepts the local-dev worker name', async () => {
+    const startSession = vi.fn(async () => ({
+      room: 'r',
+      tenant: TENANT,
+      agent: 'secretary-hq-agent-dev',
+    }));
+    const { app } = buildApp(startSession);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/call-simulator/start',
+      headers: { 'content-type': 'application/json' },
+      payload: { agent_name: 'secretary-hq-agent-dev' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(startSession).toHaveBeenCalledWith({
+      tenantId: undefined,
+      agentName: 'secretary-hq-agent-dev',
+    });
+  });
+
+  it('refuses a tenant_id that is not a UUID', async () => {
+    const { app, startSession } = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/call-simulator/start',
+      headers: { 'content-type': 'application/json' },
+      payload: { tenant_id: 'tenant-123' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown or deleted tenant with 404', async () => {
+    const tenantExists = vi.fn(async () => false);
+    const { app, startSession } = buildApp(vi.fn(), tenantExists);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/call-simulator/start',
+      headers: { 'content-type': 'application/json' },
+      payload: { tenant_id: '11111111-2222-4333-8444-555555555555' },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body)).toEqual({ success: false, error: 'Tenant not found' });
+    expect(tenantExists).toHaveBeenCalledWith('11111111-2222-4333-8444-555555555555');
+    expect(startSession).not.toHaveBeenCalled();
   });
 });
