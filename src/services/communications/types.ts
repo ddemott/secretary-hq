@@ -18,6 +18,8 @@ export interface CommunicationResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  /** Set when the send was refused by the platform SMS kill switch (ENABLE_SMS off). */
+  smsDisabled?: boolean;
 }
 
 export interface AppointmentData {
