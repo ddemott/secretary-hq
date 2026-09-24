@@ -74,11 +74,16 @@ export function registerProvisioningRoutes(
             tenant_id,
             subscription_status: sub.rows[0].subscription_status,
           });
+          const pastDue = sub.rows[0].subscription_status === 'past_due';
           return reply.status(402).send({
             success: false,
             error_code: 'subscription_required',
-            error:
-              'Start your 14-day free trial on the Billing page before getting a phone number. A card is required; you will not be charged until the trial ends.',
+            // Worded per status: only a never-subscribed tenant gets a trial
+            // (billing.ts isFirstSubscription), so only that message may
+            // promise "no charge until the trial ends".
+            error: pastDue
+              ? 'Your last payment did not go through. Update your card on the Billing page before getting a phone number.'
+              : 'Choose a plan on the Billing page before getting a phone number. A card is required; new accounts get a 14-day free trial and are not charged until it ends.',
           });
         }
       }

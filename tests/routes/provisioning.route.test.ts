@@ -206,6 +206,7 @@ describe('POST /provisioning/activate — configured', () => {
     expect(res.statusCode).toBe(402);
     expect(res.json()).toMatchObject({ success: false, error_code: 'subscription_required' });
     expect(res.json().error).toMatch(/14-day free trial/);
+    expect(res.json().error).toMatch(/card is required/i);
     expect(mockTelnyx.client.searchAvailable).not.toHaveBeenCalled();
     expect(mockTelnyx.client.orderNumber).not.toHaveBeenCalled();
     expect(handle.queries).toHaveLength(1);
@@ -224,6 +225,8 @@ describe('POST /provisioning/activate — configured', () => {
     });
 
     expect(res.statusCode).toBe(402);
+    expect(res.json().error).toMatch(/update your card/i);
+    expect(res.json().error).not.toMatch(/free trial/i);
     expect(mockTelnyx.client.orderNumber).not.toHaveBeenCalled();
   });
 
