@@ -14,7 +14,12 @@
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
-import { withHandler, requireTenantId, type AppRequest } from '../middleware/fastify-middleware';
+import {
+  withHandler,
+  requireTenantId,
+  requireOwnerRole,
+  type AppRequest,
+} from '../middleware/fastify-middleware';
 import { CommunicationService } from '../services/communications/index.js';
 import { ConsentService } from '../services/consentService.js';
 import { createDatabaseService } from '../database/index.js';
@@ -327,6 +332,10 @@ export function registerCommunicationRoutes(
     withHandler(async (req: AppRequest, reply) => {
       const tenantId = requireTenantId(req, reply);
       if (!tenantId) return;
+      // Owner-only: a consent row is what currently stops reminder/confirmation
+      // texts (SMSService checks it per number), so a front-desk login must not
+      // be able to fabricate one. The dashboard never calls this route.
+      if (!requireOwnerRole(req, reply)) return;
 
       const parsed = RecordConsentSchema.safeParse(req.body);
       if (!parsed.success) {
