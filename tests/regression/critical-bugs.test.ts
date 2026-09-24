@@ -203,20 +203,19 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
   // BUG-002: users.email per-tenant uniqueness
   // =========================================================
   describe('BUG-002: Per-tenant email uniqueness', () => {
-    it('should allow the same email in different tenants', async () => {
-      // WHO: a person who owns/works at multiple tenants on the
-      //      platform (e.g. a contractor who runs two shops)
-      // WHAT: same email address can exist in users rows under
-      //       different tenant_ids without a uniqueness violation
-      // WHEN: any cross-tenant signup or admin-create flow where the
-      //       same person registers more than once
-      // WHERE: users table — UNIQUE constraint on (tenant_id, email)
-      //        rather than email alone
-      // WHY: BUG-002 — pre-fix the constraint was on email globally,
-      //      blocking legitimate multi-tenant identities. The fix
-      //      scoped uniqueness to (tenant_id, email). Pin this so a
-      //      future migration that "tightens" the constraint by
-      //      removing tenant_id from it surfaces immediately
+    it('REVERSED 2026-09-24: the same email is REJECTED in a different tenant (one account per email)', async () => {
+      // WHO: a person who owns/works at multiple tenants on the platform.
+      // WHAT: a second users row with the same address in another tenant is
+      //       refused by users_email_lower_unique (case-insensitive).
+      // WHEN: any cross-tenant signup, admin-create or invite.
+      // WHERE: users table — platform-wide unique index on LOWER(email)
+      //        (migration 20260924000200), alongside (tenant_id, email).
+      // WHY: owner decision 2026-09-24 — "once an email is in the system it
+      //      should be unique". This DELIBERATELY reverses BUG-002, which had
+      //      scoped uniqueness to (tenant_id, email) so one person could hold
+      //      the same email in several businesses; that person now needs a
+      //      separate address per business. This test used to assert the
+      //      opposite and was written to fail loudly on exactly this change.
       if (!dbAvailable) return;
 
       const tenantA = await createTenant(root, 'Shop A', 'auto-shop');
@@ -227,12 +226,12 @@ describe('Critical Bug Fixes (BUG-001, BUG-002, BUG-006)', () => {
         [tenantA]
       );
 
-      const result = await root.query(
-        "INSERT INTO users (tenant_id, email, password_hash, full_name) VALUES ($1, 'admin@example.com', '$2b$10$fakehash', 'Admin B') RETURNING user_id;",
-        [tenantB]
-      );
-
-      expect(result.rows[0].user_id).toBeDefined();
+      await expect(
+        root.query(
+          "INSERT INTO users (tenant_id, email, password_hash, full_name) VALUES ($1, 'Admin@Example.com', '$2b$10$fakehash', 'Admin B');",
+          [tenantB]
+        )
+      ).rejects.toMatchObject({ code: '23505', constraint: 'users_email_lower_unique' });
     });
 
     it('should still reject duplicate email within the same tenant', async () => {

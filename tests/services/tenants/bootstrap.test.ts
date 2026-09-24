@@ -11,7 +11,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Pool } from 'pg';
-import { createTenantWithOwner } from '../../../src/services/tenants/bootstrap';
+import {
+  createTenantWithOwner,
+  ALREADY_HAVE_ACCOUNT_MESSAGE,
+} from '../../../src/services/tenants/bootstrap';
 
 interface MockQuery {
   text: string;
@@ -59,7 +62,7 @@ describe('createTenantWithOwner — happy paths', () => {
     //      a half-registered email block retries.
     const { pool, queries } = buildMockPool([
       { rows: [] }, // BEGIN
-      { rows: [] }, // SELECT user_id FROM users (none)
+      { rows: [] }, // platform-wide email check (none)
       { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant RETURNING tenant_id
       { rows: [{ user_id: USER_ID }] }, // INSERT user RETURNING user_id
       { rows: [] }, // copy_question_tree_templates_to_tenant
@@ -86,7 +89,7 @@ describe('createTenantWithOwner — happy paths', () => {
     });
     expect(queries.map((q) => q.text)).toEqual([
       'BEGIN',
-      'SELECT user_id FROM users WHERE email = $1',
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
       'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
       expect.stringContaining('INSERT INTO users'),
       // A new business gets its OWN copy of its vertical's questions, inside the
@@ -115,6 +118,7 @@ describe('createTenantWithOwner — happy paths', () => {
     //      "create looks like edit" expectation.
     const { pool, queries } = buildMockPool([
       { rows: [] }, // BEGIN
+      { rows: [] }, // platform-wide email check (none)
       { rows: [] }, // SELECT FROM tenants (none)
       { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
       { rows: [{ user_id: USER_ID }] }, // INSERT user RETURNING user_id
@@ -140,14 +144,19 @@ describe('createTenantWithOwner — happy paths', () => {
       // always gates the new tenant behind the consent-invite flow.
       consentGateRequired: true,
     });
-    expect(queries[1].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
-    expect(queries[1].params).toEqual(['Sharp Salon']);
-    expect(queries[2].text).toBe(
+    // The admin path checks the owner's email platform-wide too (2026-09-24).
+    expect(queries[1].text).toBe(
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1'
+    );
+    expect(queries[1].params).toEqual(['owner@sharp.com']);
+    expect(queries[2].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
+    expect(queries[2].params).toEqual(['Sharp Salon']);
+    expect(queries[3].text).toBe(
       'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id'
     );
-    expect(queries[2].params).toEqual(['Sharp Salon', 'salon', true]);
+    expect(queries[3].params).toEqual(['Sharp Salon', 'salon', true]);
     // user INSERT params: tenantId, email, hash, full, first, last
-    const userInsertParams = queries[3].params;
+    const userInsertParams = queries[4].params;
     expect(userInsertParams[0]).toBe(TENANT_ID);
     expect(userInsertParams[1]).toBe('owner@sharp.com');
     expect(userInsertParams[3]).toBe('Jane Doe');
@@ -246,6 +255,7 @@ describe('createTenantWithOwner — happy paths', () => {
     //       anything).
     const { pool, queries } = buildMockPool([
       { rows: [] }, // BEGIN
+      { rows: [] }, // platform-wide email check (none)
       { rows: [] }, // SELECT tenants (none)
       { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
       { rows: [{ user_id: USER_ID }] }, // INSERT user
@@ -266,7 +276,7 @@ describe('createTenantWithOwner — happy paths', () => {
     // legalConsent omitted -> consent_gate_required is true on the INSERT,
     // and the returned result says so too (the admin route uses this to
     // decide whether to send the consent-invite email).
-    expect(queries[2].params).toEqual(['AdminCreated', 'salon', true]);
+    expect(queries[3].params).toEqual(['AdminCreated', 'salon', true]);
     expect(result).toEqual({
       ok: true,
       tenantId: TENANT_ID,
@@ -367,16 +377,138 @@ describe('createTenantWithOwner — duplicate detection', () => {
       duplicateCheck: 'email',
     });
 
+    // Owner decision 2026-09-24: tell them plainly they already have an account.
     expect(result).toEqual({
       ok: false,
-      conflictMessage: 'An account with this email already exists',
+      conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE,
     });
+    expect(ALREADY_HAVE_ACCOUNT_MESSAGE).toMatch(/^You already have an account with this email/);
     expect(queries.map((q) => q.text)).toEqual([
       'BEGIN',
-      'SELECT user_id FROM users WHERE email = $1',
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
       'ROLLBACK',
     ]);
     expect(client.release).toHaveBeenCalled();
+  });
+
+  it('5e. the admin path stores a mixed-case, padded email lowercased and trimmed', async () => {
+    // WHO: platform admin typing " Owner@Sharp.COM " into the create-tenant form.
+    // WHAT: the duplicate check and the users INSERT both use "owner@sharp.com".
+    // WHY: review of PR #567 — only /register normalized, so admin-created rows
+    //      could be stored mixed-case while the rest of the platform assumes lowercase.
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [] }, // email check (none)
+      { rows: [] }, // tenant-name check (none)
+      { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
+      { rows: [{ user_id: USER_ID }] }, // INSERT user
+      { rows: [] }, // COMMIT
+    ]);
+
+    await createTenantWithOwner(pool, {
+      tenantName: 'Sharp Salon',
+      businessType: 'salon',
+      ownerEmail: ' Owner@Sharp.COM ',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Jane Doe',
+      duplicateCheck: 'tenant_name',
+    });
+
+    expect(queries[1].params).toEqual(['owner@sharp.com']);
+    const insertUser = queries.find((q) => q.text.startsWith('INSERT INTO users'));
+    expect(insertUser?.params[1]).toBe('owner@sharp.com');
+  });
+
+  it('5c. RACE: a unique violation on users_email_lower_unique returns the same conflict, not a 500', async () => {
+    // WHO: two people registering the same email at the same instant.
+    // WHAT: both pass the app-level SELECT; the second's user INSERT hits the
+    //       platform-wide unique index → ROLLBACK and the friendly conflict.
+    // WHERE: createTenantWithOwner catch block.
+    // WHY: without the index both would succeed (two accounts, one email); with
+    //      the index but no mapping, the loser would see "Registration failed".
+    const raceErr = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint: 'users_email_lower_unique',
+    });
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text.startsWith('INSERT INTO users')) throw raceErr;
+        if (text.startsWith('INSERT INTO tenants')) return { rows: [{ tenant_id: TENANT_ID }] };
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Parameters<
+      typeof createTenantWithOwner
+    >[0];
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'Race Co',
+      businessType: 'salon',
+      ownerEmail: 'race@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Racer',
+      duplicateCheck: 'email',
+    });
+
+    expect(result).toEqual({ ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE });
+    expect(client.query.mock.calls.map((c) => c[0])).toContain('ROLLBACK');
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it('5d. any OTHER unique violation still throws (only the email index maps to a conflict)', async () => {
+    const otherErr = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint: 'some_other_unique',
+    });
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text.startsWith('INSERT INTO users')) throw otherErr;
+        if (text.startsWith('INSERT INTO tenants')) return { rows: [{ tenant_id: TENANT_ID }] };
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Parameters<
+      typeof createTenantWithOwner
+    >[0];
+
+    await expect(
+      createTenantWithOwner(pool, {
+        tenantName: 'Other Co',
+        businessType: 'salon',
+        ownerEmail: 'other@test.com',
+        ownerPassword: 'secure123',
+        ownerFullName: 'Other',
+        duplicateCheck: 'email',
+      })
+    ).rejects.toBe(otherErr);
+  });
+
+  it('5b. admin (tenant_name) path also refuses an email that already has an account anywhere', async () => {
+    // WHO: platform admin creating a tenant for an owner who already signs in elsewhere.
+    // WHAT: the platform-wide email check runs on this path too → conflict, no INSERTs.
+    // WHY: one account per email across the platform (2026-09-24); before, only
+    //      the self-serve path checked email, so an admin could create a second
+    //      account for the same address in another business.
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [{ user_id: 'existing-user-id' }] }, // email check — FOUND
+      { rows: [] }, // ROLLBACK
+    ]);
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'Second Business',
+      businessType: 'salon',
+      ownerEmail: 'Taken@Test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Same Person',
+      duplicateCheck: 'tenant_name',
+    });
+
+    expect(result).toEqual({ ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE });
+    expect(queries[1].params).toEqual(['taken@test.com']);
+    expect(queries.some((q) => q.text.startsWith('INSERT'))).toBe(false);
   });
 
   it('6. tenant_name policy: conflict message includes the requested name', async () => {
@@ -387,7 +519,8 @@ describe('createTenantWithOwner — duplicate detection', () => {
     //      dashboard — wording matters. The case-insensitivity of the
     //      check is verified separately below.
     const { pool, queries } = buildMockPool([
-      { rows: [] },
+      { rows: [] }, // BEGIN
+      { rows: [] }, // platform-wide email check (none)
       { rows: [{ tenant_id: 'existing-tenant' }] },
       { rows: [] },
     ]);
@@ -405,7 +538,7 @@ describe('createTenantWithOwner — duplicate detection', () => {
       ok: false,
       conflictMessage: 'A business named "DynaTire" already exists.',
     });
-    expect(queries[2].text).toBe('ROLLBACK');
+    expect(queries[3].text).toBe('ROLLBACK');
   });
 
   it('7. tenant_name policy: SELECT uses LOWER() for case-insensitive match', async () => {
@@ -417,7 +550,8 @@ describe('createTenantWithOwner — duplicate detection', () => {
     //      picker — "DynaTire" and "Dynatire" look identical to a user
     //      glancing at the dropdown.
     const { pool, queries } = buildMockPool([
-      { rows: [] },
+      { rows: [] }, // BEGIN
+      { rows: [] }, // platform-wide email check (none)
       { rows: [] },
       { rows: [{ tenant_id: TENANT_ID }] },
       { rows: [{ user_id: USER_ID }] },
@@ -433,7 +567,7 @@ describe('createTenantWithOwner — duplicate detection', () => {
       duplicateCheck: 'tenant_name',
     });
 
-    expect(queries[1].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
+    expect(queries[2].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
   });
 });
 

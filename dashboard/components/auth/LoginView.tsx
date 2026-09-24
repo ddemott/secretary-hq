@@ -58,6 +58,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         error?: string;
         error_code?: string;
         message?: string;
+        email_verified?: boolean;
       };
 
       if (response.ok && data.success && data.tenant_id && data.user_name) {
@@ -71,6 +72,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         // after a fresh login if a prior owner-register left 'owner' in
         // localStorage. 2026-05-28 UX audit #5.
         if (data.role) localStorage.setItem('userRole', data.role);
+        // Billing shows a "confirm your email" notice until this is 'true'.
+        if (typeof data.email_verified === 'boolean') {
+          localStorage.setItem('emailVerified', String(data.email_verified));
+        }
         onLoginSuccess({ tenant_id: data.tenant_id, user_name: data.user_name, role: data.role });
       } else if (data.error_code === 'consent_required') {
         // The password WAS correct — this is not "sign in failed", it's

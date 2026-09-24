@@ -127,6 +127,23 @@ export function registerUserRoutes(
       }
       const businessName = tenantRow.rows[0].name as string;
 
+      // One account per email, platform-wide (owner decision 2026-09-24): an
+      // address that already signs in anywhere cannot be invited again, here
+      // or into another business.
+      const emailTaken = await withPoolClient(pool, async (client) => {
+        const res = await client.query(
+          'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [normalizedEmail]
+        );
+        return res.rows.length > 0;
+      });
+      if (emailTaken) {
+        return reply.status(409).send({
+          success: false,
+          error: 'That email already has a SecretaryHQ account, so it cannot be invited.',
+        });
+      }
+
       const bcrypt = await import('bcrypt');
       // The user never types this password — they set their own via the
       // reset link. We bcrypt-hash a random string anyway so the column is
@@ -150,11 +167,13 @@ export function registerUserRoutes(
           return userRes.rows[0].user_id as string;
         });
       } catch (err: unknown) {
-        // Postgres unique violation on (tenant_id, email) → 409
+        // Postgres unique violation → 409. Either the per-tenant
+        // (tenant_id, email) constraint or, since 2026-09-24, the platform-wide
+        // users_email_lower_unique index (a race past the check above).
         if (err instanceof Error && (err as { code?: string }).code === '23505') {
           return reply.status(409).send({
             success: false,
-            error: 'A user with that email already exists for this business',
+            error: 'That email already has a SecretaryHQ account, so it cannot be invited.',
           });
         }
         throw err;

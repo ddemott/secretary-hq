@@ -29,6 +29,14 @@ import type { Pool } from 'pg';
 import { verticalForBusinessType } from '../../../shared/checklistPresetDerivation';
 import { isHipaaVertical } from '../../../shared/hipaaVerticalDenylist';
 
+/**
+ * Shown when someone signs up with an email that already has an account.
+ * Owner decision 2026-09-24: say so plainly and point them at sign-in, rather
+ * than a vague "conflict". (/register is rate-limited 5 per 5 minutes, which
+ * bounds using this as an email-existence probe.)
+ */
+export const ALREADY_HAVE_ACCOUNT_MESSAGE =
+  "You already have an account with this email. Sign in instead — or use 'Forgot password' if you don't remember it.";
 export interface CreateTenantWithOwnerParams {
   tenantName: string;
   businessType: string;
@@ -72,6 +80,10 @@ export async function createTenantWithOwner(
   pool: Pool,
   params: CreateTenantWithOwnerParams
 ): Promise<CreateTenantWithOwnerResult> {
+  // One canonical form for every caller (self-serve and admin): the duplicate
+  // check and the INSERT must use the same value, and emails are stored
+  // lowercased so the platform-wide LOWER(email) index is never surprised.
+  const ownerEmail = params.ownerEmail.trim().toLowerCase();
   // HIPAA verticals are permanently excluded (root CLAUDE.md Build
   // Principles). RegisterSchema checks this too for the self-serve
   // path, but the admin create flow (POST /tenants/create) has no
@@ -88,18 +100,19 @@ export async function createTenantWithOwner(
   try {
     await client.query('BEGIN');
 
-    if (params.duplicateCheck === 'email') {
-      const existing = await client.query('SELECT user_id FROM users WHERE email = $1', [
-        params.ownerEmail,
-      ]);
-      if (existing.rows.length > 0) {
-        await client.query('ROLLBACK');
-        return {
-          ok: false,
-          conflictMessage: 'An account with this email already exists',
-        };
-      }
-    } else {
+    // One account per email, platform-wide (owner decision 2026-09-24),
+    // case-insensitive. Checked on EVERY path — self-serve and admin-created
+    // alike — not just when duplicateCheck is 'email'.
+    const existingEmail = await client.query(
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [ownerEmail]
+    );
+    if (existingEmail.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return { ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE };
+    }
+
+    if (params.duplicateCheck === 'tenant_name') {
       const existing = await client.query(
         'SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)',
         [params.tenantName]
@@ -144,7 +157,7 @@ export async function createTenantWithOwner(
        RETURNING user_id`,
       [
         tenantId,
-        params.ownerEmail,
+        ownerEmail,
         passwordHash,
         params.ownerFullName,
         params.ownerFirstName ?? null,
@@ -208,6 +221,14 @@ export async function createTenantWithOwner(
     return { ok: true, tenantId, userId, consentGateRequired };
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race: another request registered the same email between our SELECT and
+    // our INSERT. The platform-wide unique index (users_email_lower_unique,
+    // 2026-09-24) catches it — answer the same "already have an account" the
+    // SELECT would have, not a 500.
+    const pgErr = err as { code?: string; constraint?: string };
+    if (pgErr.code === '23505' && pgErr.constraint === 'users_email_lower_unique') {
+      return { ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE };
+    }
     throw err;
   } finally {
     client.release();

@@ -80,6 +80,19 @@ export default function BillingView() {
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<PlanKey | null>(null);
   const [openingPortal, setOpeningPortal] = useState(false);
+  // Signup email not yet confirmed — checkout (so the trial and the phone line)
+  // is refused until it is. Seeded from login/register, and also set when a
+  // checkout attempt comes back email_not_verified.
+  const [emailUnverified, setEmailUnverified] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    try {
+      setEmailUnverified(localStorage.getItem('emailVerified') === 'false');
+    } catch {
+      // localStorage unavailable — the checkout 403 still surfaces the notice.
+    }
+  }, []);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -135,28 +148,69 @@ export default function BillingView() {
     async (plan: PlanKey) => {
       if (!tenantId) return;
       setCheckingOut(plan);
+      // apiMutate RESOLVES { success: false, error, ...body } on a non-2xx — it
+      // does not throw. Only a network failure throws. Before this, any refusal
+      // fell through to `window.location.href = undefined`.
       try {
-        const { url } = await Api.billing.checkout(tenantId, plan);
-        window.location.href = url;
+        const res = await Api.billing.checkout(tenantId, plan);
+        if (res.success && res.url) {
+          window.location.href = res.url;
+          return;
+        }
+        if (res.error_code === 'email_not_verified') {
+          setEmailUnverified(true);
+          showToast(res.error || 'Confirm your email first.', 'error');
+        } else {
+          showToast(res.error || 'Could not start checkout — try again.', 'error');
+        }
       } catch {
         showToast('Could not start checkout — try again.', 'error');
-        setCheckingOut(null);
       }
+      setCheckingOut(null);
     },
     [tenantId]
   );
+
+  const handleResendVerification = useCallback(async () => {
+    setResending(true);
+    try {
+      const res = await Api.billing.resendVerification();
+      if (!res.success) {
+        showToast(res.error || 'Could not resend the email.', 'error');
+        return;
+      }
+      if (res.already_verified) {
+        setEmailUnverified(false);
+        try {
+          localStorage.setItem('emailVerified', 'true');
+        } catch {
+          // ignore — purely a UI hint
+        }
+        showToast('Your email is already confirmed — you can choose a plan.', 'success');
+      } else {
+        showToast(`We sent a new link to ${res.sent_to ?? 'your email'}.`, 'success');
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not resend the email.', 'error');
+    } finally {
+      setResending(false);
+    }
+  }, []);
 
   const handleManageBilling = useCallback(async () => {
     if (!tenantId) return;
     setOpeningPortal(true);
     try {
-      const { url } = await Api.billing.portal(tenantId);
-      window.location.href = url;
+      const res = await Api.billing.portal(tenantId);
+      if (res.success && res.url) {
+        window.location.href = res.url;
+        return;
+      }
+      showToast(res.error || 'Could not open billing portal', 'error');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not open billing portal';
-      showToast(msg, 'error');
-      setOpeningPortal(false);
+      showToast(err instanceof Error ? err.message : 'Could not open billing portal', 'error');
     }
+    setOpeningPortal(false);
   }, [tenantId]);
 
   const currentPlan = status?.subscription_plan ?? null;
@@ -165,6 +219,26 @@ export default function BillingView() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {emailUnverified && (
+        <div
+          role="status"
+          className="rounded-md px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-3"
+          style={{
+            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            color: 'var(--warning)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+          }}
+        >
+          <span>
+            Confirm your email to start your free trial. We sent a link to your inbox when you
+            signed up.
+          </span>
+          <Button variant="secondary" onClick={handleResendVerification} disabled={resending}>
+            {resending ? 'Sending…' : 'Resend email'}
+          </Button>
+        </div>
+      )}
+
       {/* Current plan summary */}
       <Card className="p-6" style={{ backgroundColor: 'var(--bg-raised)' }}>
         <div className="flex items-start justify-between gap-4 flex-wrap">

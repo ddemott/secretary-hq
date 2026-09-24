@@ -440,6 +440,9 @@ jobs:
           # trial). Fixture mode lets the Go Live specs start one via
           # POST /billing/checkout without Stripe. Ignored when NODE_ENV=production.
           STRIPE_FIXTURE_MODE: 'true'
+          # Self-serve /register is CLOSED unless ENABLE_SIGNUP=true (closed in
+          # production until launch). E2E registers fresh tenants, so open it here.
+          ENABLE_SIGNUP: 'true'
           # Browser caller pickup spec exercises the page + backend route in CI,
           # but runners do not have LiveKit credentials. This opt-in backend stub
           # returns deterministic session metadata so the page can execute the

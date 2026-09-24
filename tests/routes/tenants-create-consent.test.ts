@@ -78,6 +78,7 @@ beforeEach(() => {
 
 function scriptHappyCreate() {
   queryResponses.push({ rows: [] }); // BEGIN
+  queryResponses.push({ rows: [] }); // platform-wide email check (no account yet)
   queryResponses.push({ rows: [] }); // SELECT tenants (no dup)
   queryResponses.push({ rows: [{ tenant_id: TENANT_ID }] }); // INSERT tenant
   queryResponses.push({ rows: [{ user_id: USER_ID }] }); // INSERT user

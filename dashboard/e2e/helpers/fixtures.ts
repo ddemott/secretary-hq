@@ -104,6 +104,20 @@ export async function registerFreshTenant(req: APIRequestContext): Promise<Regis
 }
 
 /**
+ * Mark a freshly registered user's email as verified, standing in for the
+ * click on the emailed /verify-email link (the E2E backend's mailer is a stub,
+ * so the link is never readable). POST /billing/checkout refuses unverified
+ * owners — see src/routes/billing.ts and migration 20260924000000.
+ */
+export async function markEmailVerified(pool: Pool, userId: string): Promise<void> {
+  const res = await pool.query(
+    'UPDATE users SET email_verified_at = NOW() WHERE user_id = $1 AND email_verified_at IS NULL',
+    [userId]
+  );
+  expect(res.rowCount, 'fresh signup must start unverified').toBe(1);
+}
+
+/**
  * Start a subscription for a fresh tenant through POST /billing/checkout in
  * STRIPE_FIXTURE_MODE (no Stripe call; the plan is activated locally). Buying a
  * phone number requires a started subscription — the card-required trial gate

@@ -184,6 +184,41 @@ If you did not request this, you can safely ignore this email — your password 
   await sendSystemMail({ to, subject, text, html });
 }
 
+/**
+ * Signup email-verification link. Sent by POST /register and
+ * POST /verify-email/resend (src/routes/auth.ts). Until the owner clicks it,
+ * POST /billing/checkout refuses — so no trial and no phone line start on an
+ * address nobody has proven they own.
+ */
+export async function sendEmailVerificationEmail(
+  to: string,
+  verifyLink: string,
+  ttlHours: number
+): Promise<void> {
+  const subject = 'Confirm your email for SecretaryHQ';
+  const text = `Welcome to SecretaryHQ.
+
+Confirm this is your email address so you can start your free trial and set up your phone line (link expires in ${ttlHours} hours):
+
+${verifyLink}
+
+If you didn't create a SecretaryHQ account, you can ignore this email.`;
+
+  const html = renderEmailShell({
+    heading: 'Confirm your email',
+    preheader: `Confirm your email to start your SecretaryHQ trial — link expires in ${ttlHours} hours.`,
+    bodyHtml:
+      '<p style="margin:0 0 16px">Welcome to SecretaryHQ. Confirm this is your email address so you can start your free trial and set up your phone line.</p>',
+    cta: { label: 'Confirm my email', url: verifyLink },
+    footerHtml:
+      `This link expires in ${ttlHours} hours. If the button doesn't work, paste this URL into your browser:<br>` +
+      `<span style="word-break:break-all">${escapeHtml(verifyLink)}</span>` +
+      `<br><br>If you didn't create a SecretaryHQ account, you can ignore this email.`,
+  });
+
+  await sendSystemMail({ to, subject, text, html });
+}
+
 /** Structured fields captured during a voice job-inquiry intake. */
 export interface JobInquiryFields {
   /** Where the work would actually happen — the end client. */

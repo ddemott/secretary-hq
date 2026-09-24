@@ -208,6 +208,7 @@ describe('POST /users/invite — happy paths', () => {
     vi.mocked(sysmail.sendUserInviteEmail).mockClear();
 
     queryResponses.push({ rows: [{ name: 'DynaTire' }], rowCount: 1 }); // tenants lookup
+    queryResponses.push({ rows: [], rowCount: 0 }); // platform-wide email check — free
     queryResponses.push({ rows: [{ user_id: OTHER_USER_ID }], rowCount: 1 }); // INSERT users
     queryResponses.push({ rows: [], rowCount: 1 }); // INSERT password_resets
 
@@ -298,6 +299,35 @@ describe('POST /users/invite — sad paths', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('SAD: 409 when the email already has an account in ANY business — no user is created', async () => {
+    // WHO: owner inviting someone who already signs in to a different business.
+    // WHAT: platform-wide, case-insensitive email check finds them → 409, and
+    //       the users INSERT never runs.
+    // WHEN: the invite email matches an existing users.email in another tenant.
+    // WHERE: src/routes/users.ts POST /users/invite, before the INSERT.
+    // WHY: owner decision 2026-09-24 — one account per email across the whole
+    //      platform; the DB's own UNIQUE is only per tenant, so it would allow this.
+    queryResponses.push({ rows: [{ name: 'DynaTire' }], rowCount: 1 }); // tenants lookup
+    queryResponses.push({ rows: [{ '?column?': 1 }], rowCount: 1 }); // email taken elsewhere
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/users/invite',
+      payload: {
+        tenant_id: TENANT_ID,
+        email: 'Taken@Elsewhere.com',
+        full_name: 'Already Has One',
+        role: 'front_desk',
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/already has a SecretaryHQ account/);
+    const emailCheck = queries.find((q) => q.text.includes('LOWER(email) = LOWER($1)'));
+    expect(emailCheck?.params[0]).toBe('taken@elsewhere.com');
+    expect(queries.some((q) => q.text.startsWith('INSERT INTO users'))).toBe(false);
+  });
+
   it('SAD: 409 when the user already exists for that tenant', async () => {
     // WHO: owner re-inviting an email already on the team
     // WHAT: the users insert hits the (tenant_id, email) unique
@@ -311,6 +341,11 @@ describe('POST /users/invite — sad paths', () => {
     mockClient.query.mockImplementationOnce(async (text: string, params?: unknown[]) => {
       queries.push({ text, params: params || [] });
       return { rows: [{ name: 'DynaTire' }], rowCount: 1 };
+    });
+    // Platform-wide email check passes (a race lets the INSERT still collide).
+    mockClient.query.mockImplementationOnce(async (text: string, params?: unknown[]) => {
+      queries.push({ text, params: params || [] });
+      return { rows: [], rowCount: 0 };
     });
     const dupErr = Object.assign(new Error('duplicate key'), { code: '23505' });
     mockClient.query.mockImplementationOnce(async (text: string, params?: unknown[]) => {

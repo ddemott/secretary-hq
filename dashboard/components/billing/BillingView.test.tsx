@@ -23,6 +23,7 @@ const { mockApi } = vi.hoisted(() => ({
       checkout: vi.fn(),
       portal: vi.fn(),
       usage: vi.fn(),
+      resendVerification: vi.fn(),
     },
   },
 }));
@@ -166,7 +167,10 @@ describe('BillingView — plan cards', () => {
 
 describe('BillingView — checkout flow', () => {
   test('HAPPY: clicking Upgrade calls Api.billing.checkout with correct plan', async () => {
-    mockApi.billing.checkout.mockResolvedValue({ url: 'https://stripe.example.com/checkout' });
+    mockApi.billing.checkout.mockResolvedValue({
+      success: true,
+      url: 'https://stripe.example.com/checkout',
+    });
     // Delete and redefine so href is writable in jsdom
     delete (window as unknown as Record<string, unknown>).location;
     (window as unknown as Record<string, unknown>).location = { href: '' };
@@ -180,8 +184,8 @@ describe('BillingView — checkout flow', () => {
     );
   });
 
-  test('SAD: checkout failure shows error toast and re-enables button', async () => {
-    mockApi.billing.checkout.mockRejectedValue(new Error('Stripe error'));
+  test('SAD: a network failure (apiMutate throws) shows the generic toast', async () => {
+    mockApi.billing.checkout.mockRejectedValue(new TypeError('Failed to fetch'));
     render(<BillingView />);
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: /upgrade/i })).toHaveLength(3)
@@ -190,6 +194,31 @@ describe('BillingView — checkout flow', () => {
     await waitFor(() =>
       expect(mockToast).toHaveBeenCalledWith('Could not start checkout — try again.', 'error')
     );
+  });
+
+  test('REGRESSION: a refused checkout (resolved success:false) toasts the server error and does NOT redirect', async () => {
+    // WHO: an owner whose checkout the backend refuses (503 price not configured, etc.)
+    // WHAT: apiMutate RESOLVES { success:false, error } — it does not throw. The page
+    //       must read that, show the message, and stay put.
+    // WHY: before this, the code destructured `url` from the resolved error object
+    //      and set window.location.href = undefined (found in review of PR #567).
+    mockApi.billing.checkout.mockResolvedValue({
+      success: false,
+      error: 'Price ID not configured for solo plan',
+    });
+    delete (window as unknown as Record<string, unknown>).location;
+    (window as unknown as Record<string, unknown>).location = { href: '' };
+    render(<BillingView />);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /upgrade/i })).toHaveLength(3)
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /upgrade/i })[0]);
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith('Price ID not configured for solo plan', 'error')
+    );
+    expect(window.location.href).toBe('');
+    expect(screen.getAllByRole('button', { name: /upgrade/i })[0]).not.toBeDisabled();
   });
 });
 
@@ -204,7 +233,10 @@ describe('BillingView — billing portal', () => {
   });
 
   test('HAPPY: clicking Manage Billing opens the Stripe portal', async () => {
-    mockApi.billing.portal.mockResolvedValue({ url: 'https://billing.stripe.com/portal' });
+    mockApi.billing.portal.mockResolvedValue({
+      success: true,
+      url: 'https://billing.stripe.com/portal',
+    });
     render(<BillingView />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /manage billing/i })).toBeInTheDocument()
@@ -213,8 +245,8 @@ describe('BillingView — billing portal', () => {
     await waitFor(() => expect(mockApi.billing.portal).toHaveBeenCalledWith('tenant-test'));
   });
 
-  test('SAD: portal failure shows error toast', async () => {
-    mockApi.billing.portal.mockRejectedValue(new Error('Portal unavailable'));
+  test('SAD: a refused portal request (resolved success:false) shows the server error', async () => {
+    mockApi.billing.portal.mockResolvedValue({ success: false, error: 'Portal unavailable' });
     render(<BillingView />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /manage billing/i })).toBeInTheDocument()
@@ -524,5 +556,83 @@ describe('BillingView — subdirectory pin', () => {
     const setup = fs.readFileSync(path.join(__dirname, '..', 'business', 'SetupView.tsx'), 'utf-8');
     expect(setup).toContain("import BillingView from '../billing/BillingView'");
     expect(setup).not.toContain("import BillingView from './BillingView'");
+  });
+});
+
+describe('BillingView — email verification notice', () => {
+  test('SAD: a checkout refused as email_not_verified shows the notice and the server message', async () => {
+    // WHO: an owner who signed up but never clicked the verification link
+    // WHAT: Upgrade → backend 403 "Confirm your email first…" → notice with Resend
+    // WHY: owner decision 2026-09-24 — no trial until the email is proven
+    localStorage.removeItem('emailVerified');
+    // The real shape: apiMutate resolves the 403 body with success:false.
+    mockApi.billing.checkout.mockResolvedValue({
+      success: false,
+      error_code: 'email_not_verified',
+      error: 'Confirm your email first — we sent a link to owner@test.com.',
+    });
+    render(<BillingView />);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /upgrade/i })).toHaveLength(3)
+    );
+    expect(screen.queryByRole('button', { name: /resend email/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /upgrade/i })[0]);
+
+    expect(await screen.findByRole('button', { name: /resend email/i })).toBeInTheDocument();
+    expect(mockToast).toHaveBeenCalledWith(
+      'Confirm your email first — we sent a link to owner@test.com.',
+      'error'
+    );
+  });
+
+  test('HAPPY: the notice shows up front when login said the email is unverified, and Resend sends a new link', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockResolvedValue({
+      success: true,
+      sent_to: 'owner@test.com',
+    });
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() => expect(mockApi.billing.resendVerification).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith('We sent a new link to owner@test.com.', 'success')
+    );
+    localStorage.removeItem('emailVerified');
+  });
+
+  test('HAPPY: if the email turns out to be verified already, the notice goes away', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockResolvedValue({ success: true, already_verified: true });
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /resend email/i })).not.toBeInTheDocument()
+    );
+    expect(localStorage.getItem('emailVerified')).toBe('true');
+    localStorage.removeItem('emailVerified');
+  });
+});
+
+describe('BillingView — resend failure', () => {
+  test('SAD: a refused resend (e.g. rate limited) shows the error, not a false "sent"', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockResolvedValue({
+      success: false,
+      error: 'Rate limit exceeded, retry in 1 hour',
+    });
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith('Rate limit exceeded, retry in 1 hour', 'error')
+    );
+    expect(mockToast).not.toHaveBeenCalledWith(expect.stringMatching(/sent a new link/), 'success');
+    localStorage.removeItem('emailVerified');
   });
 });

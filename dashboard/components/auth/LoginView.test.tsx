@@ -388,3 +388,55 @@ describe('LoginView accessibility', () => {
     expect(btn).toHaveAttribute('aria-busy', 'true');
   });
 });
+
+describe('LoginView — email verification flag', () => {
+  test.each([
+    [false, 'false'],
+    [true, 'true'],
+  ])(
+    'HAPPY: stores email_verified=%s from /login so Billing knows whether to prompt',
+    async (verified, stored) => {
+      // WHO: an owner signing in
+      // WHAT: /login's email_verified lands in localStorage.emailVerified
+      // WHY: Billing shows "Confirm your email" (with Resend) until it is 'true'
+      const onLoginSuccess = vi.fn();
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            tenant_id: 't1',
+            user_name: 'Owner',
+            role: 'owner',
+            token: 'jwt',
+            email_verified: verified,
+          }),
+      });
+      render(<LoginView onLoginSuccess={onLoginSuccess} />);
+      fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'o@biz.com' } });
+      fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+      fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await vi.waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+      expect(window.localStorage.getItem('emailVerified')).toBe(stored);
+    }
+  );
+
+  test('SAD: an older backend with no email_verified field leaves the flag unset (no false prompt)', async () => {
+    const onLoginSuccess = vi.fn();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ success: true, tenant_id: 't1', user_name: 'Owner', token: 'jwt' }),
+    });
+    render(<LoginView onLoginSuccess={onLoginSuccess} />);
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'o@biz.com' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await vi.waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+    expect(window.localStorage.getItem('emailVerified')).toBeNull();
+  });
+});

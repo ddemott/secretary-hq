@@ -77,8 +77,10 @@ describe('POST /billing/checkout', () => {
       success: false,
       error: 'Billing not configured',
     });
-    // Guard fires before any DB query
-    expect(handle.queries).toHaveLength(0);
+    // The only DB read before the config guard is the email-verification gate
+    // (users row for the caller) — no tenant or Stripe-customer query runs.
+    expect(handle.queries.every((q) => q.text.includes('FROM users WHERE user_id'))).toBe(true);
+    expect(handle.queries.length).toBeLessThanOrEqual(1);
   });
 });
 
