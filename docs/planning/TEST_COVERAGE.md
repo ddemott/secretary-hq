@@ -1,6 +1,6 @@
 # Test Coverage
 
-**Latest verification rerun (suite totals):** 2026-09-20 (recorded in `CLAUDE.md` Project Status). `npm test` at repo root finished **3,365 passing (281 files)**; `cd dashboard && npm test` finished **1,242 passing (113 files)**; `cd agent && npm test` finished **1,085 passing (63 files)**; `tsc --noEmit` clean in all three packages. Measured on the PR #540 branch (= `main` through #539 + #540), so the dashboard figure assumes #540 merges. Playwright e2e was NOT re-run locally (it wipes and rebuilds the local database); CI runs it green on every PR.
+**Latest verification rerun (suite totals):** 2026-09-24 on `main` through #558 (recorded in `CLAUDE.md` Project Status). `npm test` at repo root finished **3,423 passing (286 files)**; `cd dashboard && npx vitest run` finished **1,244 passing (113 files)**; `cd agent && npx vitest run` finished **1,085 passing (63 files)**; `tsc --noEmit` clean in all three packages. Playwright e2e was NOT re-run locally (it wipes and rebuilds the local database); CI runs it green on every PR.
 
 **Prior verification rerun (suite totals):** 2026-09-16. Root **3,205 passing (268 files)**; dashboard **1,173 passing (107 files)**; agent **1,061 passing (61 files)**.
 
@@ -33,12 +33,12 @@ Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pa
 
 | Suite                                                  | Tests                     | Status                                     | Runtime                      |
 | ------------------------------------------------------ | ------------------------- | ------------------------------------------ | ---------------------------- |
-| Root/backend (`npm test`)                              | 3,365 passing (281 files) | ✅                                         | 2026-09-20 rerun             |
-| Dashboard (`cd dashboard && npm test`)                 | 1,242 passing (113 files) | ✅                                         | 2026-09-20 rerun (with #540) |
-| Agent (`cd agent && npm test`)                         | 1,085 passing (63 files)  | ✅                                         | 2026-09-20 rerun             |
+| Root/backend (`npm test`)                              | 3,423 passing (286 files) | ✅                                         | 2026-09-24 rerun             |
+| Dashboard (`cd dashboard && npm test`)                 | 1,244 passing (113 files) | ✅                                         | 2026-09-24 rerun             |
+| Agent (`cd agent && npm test`)                         | 1,085 passing (63 files)  | ✅                                         | 2026-09-24 rerun             |
 | Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped    | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
 
-Current verified total from the three suites re-run on 2026-09-20: **5,692 passing** (3,365 + 1,242 + 1,085). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
+Current verified total from the three suites re-run on 2026-09-24: **5,752 passing** (3,423 + 1,244 + 1,085). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
 
 > **On skipped e2e tests**: `calendar-sync.spec.ts` tests skip without `SYNC_TEST_RECORDER=1` (set it + restart the backend to run them). One test in `full-functional-audit.spec.ts` (Voice Calls) is deferred until Telnyx PSTN clears. Re-run the suite to refresh pass/skip counts.
 
