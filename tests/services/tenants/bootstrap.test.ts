@@ -145,7 +145,9 @@ describe('createTenantWithOwner — happy paths', () => {
       consentGateRequired: true,
     });
     // The admin path checks the owner's email platform-wide too (2026-09-24).
-    expect(queries[1].text).toBe('SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1');
+    expect(queries[1].text).toBe(
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1'
+    );
     expect(queries[1].params).toEqual(['owner@sharp.com']);
     expect(queries[2].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
     expect(queries[2].params).toEqual(['Sharp Salon']);
@@ -381,8 +383,78 @@ describe('createTenantWithOwner — duplicate detection', () => {
       conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE,
     });
     expect(ALREADY_HAVE_ACCOUNT_MESSAGE).toMatch(/^You already have an account with this email/);
-    expect(queries.map((q) => q.text)).toEqual(['BEGIN', 'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', 'ROLLBACK']);
+    expect(queries.map((q) => q.text)).toEqual([
+      'BEGIN',
+      'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      'ROLLBACK',
+    ]);
     expect(client.release).toHaveBeenCalled();
+  });
+
+  it('5c. RACE: a unique violation on users_email_lower_unique returns the same conflict, not a 500', async () => {
+    // WHO: two people registering the same email at the same instant.
+    // WHAT: both pass the app-level SELECT; the second's user INSERT hits the
+    //       platform-wide unique index → ROLLBACK and the friendly conflict.
+    // WHERE: createTenantWithOwner catch block.
+    // WHY: without the index both would succeed (two accounts, one email); with
+    //      the index but no mapping, the loser would see "Registration failed".
+    const raceErr = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint: 'users_email_lower_unique',
+    });
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text.startsWith('INSERT INTO users')) throw raceErr;
+        if (text.startsWith('INSERT INTO tenants')) return { rows: [{ tenant_id: TENANT_ID }] };
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Parameters<
+      typeof createTenantWithOwner
+    >[0];
+
+    const result = await createTenantWithOwner(pool, {
+      tenantName: 'Race Co',
+      businessType: 'salon',
+      ownerEmail: 'race@test.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Racer',
+      duplicateCheck: 'email',
+    });
+
+    expect(result).toEqual({ ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE });
+    expect(client.query.mock.calls.map((c) => c[0])).toContain('ROLLBACK');
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it('5d. any OTHER unique violation still throws (only the email index maps to a conflict)', async () => {
+    const otherErr = Object.assign(new Error('duplicate key value'), {
+      code: '23505',
+      constraint: 'some_other_unique',
+    });
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text.startsWith('INSERT INTO users')) throw otherErr;
+        if (text.startsWith('INSERT INTO tenants')) return { rows: [{ tenant_id: TENANT_ID }] };
+        return { rows: [] };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Parameters<
+      typeof createTenantWithOwner
+    >[0];
+
+    await expect(
+      createTenantWithOwner(pool, {
+        tenantName: 'Other Co',
+        businessType: 'salon',
+        ownerEmail: 'other@test.com',
+        ownerPassword: 'secure123',
+        ownerFullName: 'Other',
+        duplicateCheck: 'email',
+      })
+    ).rejects.toBe(otherErr);
   });
 
   it('5b. admin (tenant_name) path also refuses an email that already has an account anywhere', async () => {

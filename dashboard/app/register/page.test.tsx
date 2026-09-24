@@ -19,6 +19,8 @@ import RegisterPage from './page';
 // stub so the page's success redirect (`window.location.href = '/dashboard'`)
 // is observable instead of throwing.
 let originalLocation: Location;
+let registerFetch: ReturnType<typeof vi.fn<(url: string, opts?: RequestInit) => Promise<unknown>>>;
+let signupStatus: { success: boolean; open: boolean };
 beforeEach(() => {
   originalLocation = window.location;
   Object.defineProperty(window, 'location', {
@@ -31,7 +33,19 @@ beforeEach(() => {
     { business_type: 'salon', display_name: 'Salon' },
     { business_type: 'auto-shop', display_name: 'Auto Shop' },
   ]);
-  vi.stubGlobal('fetch', vi.fn());
+  // The page makes two kinds of fetch: GET /signup-status on mount (answered
+  // "open" here unless a test overrides signupStatus) and POST /register
+  // (scripted per test through registerFetch).
+  registerFetch = vi.fn();
+  signupStatus = { success: true, open: true };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, opts?: RequestInit) =>
+      url.endsWith('/signup-status')
+        ? Promise.resolve({ ok: true, status: 200, json: async () => signupStatus })
+        : registerFetch(url, opts)
+    )
+  );
 });
 afterEach(() => {
   Object.defineProperty(window, 'location', {
@@ -89,7 +103,7 @@ describe('RegisterPage — self-serve signup', () => {
 
   test('successful signup POSTs to /register, stores auth, and redirects to the dashboard', async () => {
     // WHO: a new business owner | WHAT: valid form → POST /register → token stored → land signed-in | WHEN: submit succeeds (201) | WHERE: RegisterPage handleSubmit happy path | WHY: this is the whole feature — the backend endpoint existed for months with no UI; the contract is "fill the form and you're in", so the test pins the request shape, the localStorage keys the dashboard authenticates off, and the redirect
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    registerFetch.mockResolvedValue({
       ok: true,
       status: 201,
       json: async () => ({
@@ -109,7 +123,7 @@ describe('RegisterPage — self-serve signup', () => {
 
     await waitFor(() => expect(window.location.href).toBe('/dashboard'));
 
-    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [url, opts] = registerFetch.mock.calls[0];
     expect(url).toBe('http://test.local/register');
     const body = JSON.parse((opts as RequestInit).body as string);
     expect(body).toMatchObject({
@@ -132,7 +146,7 @@ describe('RegisterPage — self-serve signup', () => {
 
   test('duplicate-email (409) shows an inline error, does NOT store auth or redirect', async () => {
     // WHO: someone who already signed up | WHAT: backend returns 409, UI surfaces it and blocks the redirect | WHEN: email already in the users table | WHERE: RegisterPage handleSubmit 409 branch | WHY: a phantom redirect with no stored token would dump them on the dashboard auth-gate; the failure must keep them on the form with a clear message and never write a half-session to localStorage
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    registerFetch.mockResolvedValue({
       ok: false,
       status: 409,
       json: async () => ({ success: false, error: 'An account with that email already exists.' }),
@@ -154,7 +168,7 @@ describe('RegisterPage — self-serve signup', () => {
     // WHERE: RegisterPage 409 branch
     // WHY: owner decision 2026-09-24 — one account per email; tell them plainly
     //      and give them the way back in rather than a dead end
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    registerFetch.mockResolvedValue({
       ok: false,
       status: 409,
       json: async () => ({
@@ -183,7 +197,7 @@ describe('RegisterPage — self-serve signup', () => {
   });
 
   test('a non-409 error shows no Sign in / Forgot password links', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    registerFetch.mockResolvedValue({
       ok: false,
       status: 400,
       json: async () => ({ success: false, error: 'Validation failed' }),
@@ -200,7 +214,7 @@ describe('RegisterPage — self-serve signup', () => {
 
   test('connection failure shows a retry message and does not redirect', async () => {
     // WHO: a user on a flaky connection | WHAT: fetch rejects → friendly retry copy, no navigation | WHEN: the network throws | WHERE: RegisterPage handleSubmit catch | WHY: an unhandled rejection would leave the button stuck in "Creating account..."; the catch must reset state and tell the user to retry rather than fail silently
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'));
+    registerFetch.mockRejectedValue(new Error('network down'));
 
     render(<RegisterPage />);
     await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
@@ -220,5 +234,60 @@ describe('RegisterPage — self-serve signup', () => {
     render(<RegisterPage />);
     const pw = await screen.findByLabelText('Password');
     expect(pw).toHaveAccessibleDescription(/at least 6 characters/i);
+  });
+});
+
+describe('RegisterPage — signup switch', () => {
+  test('SAD: when signups are closed, the page says so and shows no form', async () => {
+    // WHO: a visitor clicking "Start free trial" before launch
+    // WHAT: GET /signup-status says closed → "Sign-ups aren't open yet" with demo
+    //       and sign-in links; no form, no POST /register
+    // WHY: owner decision 2026-09-24 — signup is not open to the public yet
+    signupStatus = { success: true, open: false };
+    render(<RegisterPage />);
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(/sign-ups aren't open yet/i);
+    expect(within(status).getByRole('link', { name: /try the live demo/i })).toHaveAttribute(
+      'href',
+      '/demo'
+    );
+    expect(within(status).getByRole('link', { name: /sign in/i })).toHaveAttribute(
+      'href',
+      '/dashboard'
+    );
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    expect(registerFetch).not.toHaveBeenCalled();
+  });
+
+  test('SAD: a 403 signup_closed from /register (switch flipped mid-visit) swaps to the closed screen', async () => {
+    registerFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        success: false,
+        error_code: 'signup_closed',
+        error: "Sign-ups aren't open yet.",
+      }),
+    });
+    render(<RegisterPage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    expect(await screen.findByText(/sign-ups aren't open yet/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    expect(localStorage.getItem('authToken')).toBeNull();
+  });
+
+  test('HAPPY: if the status check fails, the form still shows (the backend still enforces)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.endsWith('/signup-status') ? Promise.reject(new Error('down')) : registerFetch(url)
+      )
+    );
+    render(<RegisterPage />);
+    expect(await screen.findByLabelText('Email')).toBeInTheDocument();
   });
 });

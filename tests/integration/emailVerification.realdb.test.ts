@@ -87,6 +87,7 @@ beforeAll(async () => {
     await setup.query('SELECT 1');
     pool = new Pool({ connectionString: API_DB_URL, max: 5 });
     process.env.STRIPE_FIXTURE_MODE = 'true';
+    process.env.ENABLE_SIGNUP = 'true'; // self-serve signup is closed by default
 
     app = Fastify({ logger: false });
     app.addHook('preHandler', async (request: AuthedRequest) => {
@@ -112,6 +113,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   delete process.env.STRIPE_FIXTURE_MODE;
+  delete process.env.ENABLE_SIGNUP;
   if (app) await app.close();
   if (pool) await pool.end();
   if (setup) {
@@ -167,6 +169,26 @@ describe('POST /register → verification email', () => {
     expect(again.json().error).toMatch(/^You already have an account with this email/);
     const count = await setup.query(
       'SELECT COUNT(*)::int AS n FROM users WHERE LOWER(email) = $1',
+      [email]
+    );
+    expect(count.rows[0].n).toBe(1);
+  });
+});
+
+describe('One account per email — concurrency', () => {
+  it('REGRESSION: two simultaneous signups with one email → exactly one account', async () => {
+    // WHO: a double-clicked submit, or two tabs, registering the same address.
+    // WHAT: one 201 and one 409 "already have an account"; one users row.
+    // WHY: both requests can pass the app-level SELECT before either INSERTs;
+    //      only the platform-wide unique index (20260924000200) stops the second.
+    const email = uniqueEmail('race');
+    const [a, b] = await Promise.all([register(email), register(email.toUpperCase())]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    const loser = a.statusCode === 409 ? a : b;
+    expect(loser.json().error).toMatch(/^You already have an account with this email/);
+    const count = await setup.query(
+      'SELECT COUNT(*)::int AS n FROM users WHERE LOWER(email) = LOWER($1)',
       [email]
     );
     expect(count.rows[0].n).toBe(1);
@@ -364,6 +386,23 @@ describe('Other proofs of inbox ownership', () => {
     });
     expect(after.statusCode).toBe(200);
     expect(after.json().email_verified).toBe(true);
+  });
+});
+
+describe('Signup switch', () => {
+  it('SAD: with ENABLE_SIGNUP unset, /register creates nothing and says signups are not open', async () => {
+    const email = uniqueEmail('closed');
+    delete process.env.ENABLE_SIGNUP;
+    try {
+      const res = await register(email);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error_code).toBe('signup_closed');
+      const user = await setup.query('SELECT 1 FROM users WHERE email = $1', [email]);
+      expect(user.rows).toHaveLength(0);
+      expect(sendVerify).not.toHaveBeenCalled();
+    } finally {
+      process.env.ENABLE_SIGNUP = 'true';
+    }
   });
 });
 

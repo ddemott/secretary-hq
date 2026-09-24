@@ -95,7 +95,16 @@ describe('POST /demo/start', () => {
       // 1. Global cap check
       { rows: [{ count: '0' }] },
       // 2. Provision tenant+user CTE
-      { rows: [{ tenant_id: 'demo-uuid-1234', user_id: 'user-uuid-5678' }], rowCount: 1 },
+      {
+        rows: [
+          {
+            tenant_id: 'demo-uuid-1234',
+            user_id: 'user-uuid-5678',
+            email: 'demo+demo-uuid-1234@quicklubedemo.invalid',
+          },
+        ],
+        rowCount: 1,
+      },
       // 3. seedDemoTenant: BEGIN
       // (connect() is called, then multiple queries inside transaction)
     ]);
@@ -132,6 +141,47 @@ describe('POST /demo/start', () => {
     expect(body.tenant_id).toBeDefined();
     expect(body.expires_at).toBeDefined();
     expect(body.ttl_minutes).toBe(30);
+  });
+
+  it('REGRESSION: each demo gets its own owner email, so a second demo cannot collide', async () => {
+    // WHO: two visitors starting demos one after the other.
+    // WHAT: the provisioning INSERT builds the owner email from the new tenant id
+    //       ('demo+' || tenant_id || '@quicklubedemo.invalid'), and the session
+    //       token carries that per-demo address.
+    // WHERE: POST /demo/start provisioning CTE.
+    // WHY: users.email is unique platform-wide since 2026-09-24
+    //      (users_email_lower_unique). The old shared demo@quicklubedemo.invalid
+    //      would make every demo after the first fail with a unique violation.
+    const { app, mockPool } = buildApp([
+      { rows: [{ count: '0' }] },
+      {
+        rows: [
+          {
+            tenant_id: 'demo-uuid-9999',
+            user_id: 'user-uuid-9999',
+            email: 'demo+demo-uuid-9999@quicklubedemo.invalid',
+          },
+        ],
+        rowCount: 1,
+      },
+    ]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/demo/start',
+      headers: { 'x-forwarded-for': nextIp() },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const queryMock = (mockPool as unknown as { query: ReturnType<typeof vi.fn> }).query;
+    const provision = queryMock.mock.calls
+      .map((c) => String(c[0]))
+      .find((sql) => sql.includes('INSERT INTO users'));
+    expect(provision).toContain("'demo+' || tenant_id || '@quicklubedemo.invalid'");
+    expect(provision).not.toContain("'demo@quicklubedemo.invalid'");
+    const secret = process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production';
+    const decoded = jwt.verify(res.json().token as string, secret) as Record<string, unknown>;
+    expect(decoded.email).toBe('demo+demo-uuid-9999@quicklubedemo.invalid');
   });
 
   it('REGRESSION: declares application/json with no body → 200, not 400', async () => {

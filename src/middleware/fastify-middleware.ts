@@ -657,6 +657,8 @@ const PUBLIC_ROUTES = [
   // model as /reset-password. (/verify-email/resend is NOT public: it needs
   // the signed-in user's JWT.)
   '/verify-email',
+  // Signup open/closed flag for the /register page (ENABLE_SIGNUP).
+  '/signup-status',
   '/',
   '/demo',
   '/demo/start',

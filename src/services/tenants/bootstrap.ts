@@ -217,6 +217,14 @@ export async function createTenantWithOwner(
     return { ok: true, tenantId, userId, consentGateRequired };
   } catch (err) {
     await client.query('ROLLBACK');
+    // Race: another request registered the same email between our SELECT and
+    // our INSERT. The platform-wide unique index (users_email_lower_unique,
+    // 2026-09-24) catches it — answer the same "already have an account" the
+    // SELECT would have, not a 500.
+    const pgErr = err as { code?: string; constraint?: string };
+    if (pgErr.code === '23505' && pgErr.constraint === 'users_email_lower_unique') {
+      return { ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE };
+    }
     throw err;
   } finally {
     client.release();

@@ -167,11 +167,13 @@ export function registerUserRoutes(
           return userRes.rows[0].user_id as string;
         });
       } catch (err: unknown) {
-        // Postgres unique violation on (tenant_id, email) → 409
+        // Postgres unique violation → 409. Either the per-tenant
+        // (tenant_id, email) constraint or, since 2026-09-24, the platform-wide
+        // users_email_lower_unique index (a race past the check above).
         if (err instanceof Error && (err as { code?: string }).code === '23505') {
           return reply.status(409).send({
             success: false,
-            error: 'A user with that email already exists for this business',
+            error: 'That email already has a SecretaryHQ account, so it cannot be invited.',
           });
         }
         throw err;

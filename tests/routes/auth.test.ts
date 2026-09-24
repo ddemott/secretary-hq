@@ -74,6 +74,10 @@ function captureRoutes() {
       const opts = args.length > 1 ? (args[0] as RouteOpts) : undefined;
       routes.push({ method: 'POST', path, handler, opts });
     }),
+    get: vi.fn((path: string, ...args: Array<RouteOpts | RouteHandler>) => {
+      const handler = args[args.length - 1] as RouteHandler;
+      routes.push({ method: 'GET', path, handler });
+    }),
   };
   return { app, routes };
 }
@@ -87,15 +91,23 @@ import type * as AuthRoutes from '../../src/routes/auth';
 
 describe('Auth Routes — Handler-Level', () => {
   let registerAuthRoutes: typeof AuthRoutes.registerAuthRoutes;
+  let isSignupOpen: typeof AuthRoutes.isSignupOpen;
   const generateToken = vi.fn().mockReturnValue(TEST_TOKEN);
 
   beforeAll(async () => {
     // Dynamic import to allow bcrypt mock to take effect
     const mod = await import('../../src/routes/auth');
     registerAuthRoutes = mod.registerAuthRoutes;
+    isSignupOpen = mod.isSignupOpen;
   });
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Self-serve signup is closed unless ENABLE_SIGNUP=true (2026-09-24). The
+    // /register tests below exercise the open path; the "signup switch" block
+    // turns it off explicitly.
+    process.env.ENABLE_SIGNUP = 'true';
+  });
 
   // ── /login ──────────────────────────────────────────────────────────
 
@@ -525,6 +537,60 @@ describe('Auth Routes — Handler-Level', () => {
   });
 
   // ── /register ───────────────────────────────────────────────────────
+
+  describe('signup switch (ENABLE_SIGNUP)', () => {
+    it('SAD: /register is refused 403 signup_closed when ENABLE_SIGNUP is unset — before any DB work (WHO: a visitor while signups are closed | WHAT: no tenant or user is created | WHERE: top of /register | WHY: owner decision 2026-09-24 — not open to the public yet)', async () => {
+      delete process.env.ENABLE_SIGNUP;
+      const { mockClient: client } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'Early Bird',
+        business_type: 'salon',
+        owner_name: 'Eager Owner',
+        email: 'eager@test.com',
+        password: 'secure123',
+        consent_attested: true,
+      });
+      const reply = createMockReply();
+
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(403);
+      expect(reply.body).toMatchObject({ success: false, error_code: 'signup_closed' });
+      expect(reply.body.error).toMatch(/aren't open yet/);
+      expect(client.query).not.toHaveBeenCalled();
+    });
+
+    it("SAD: any value other than exactly 'true' keeps signup closed (WHO: operator typo | WHAT: 'TRUE', '1', 'yes' all closed | WHY: fail closed)", () => {
+      for (const v of ['TRUE', '1', 'yes', 'false', '']) {
+        process.env.ENABLE_SIGNUP = v;
+        expect(isSignupOpen()).toBe(false);
+      }
+      process.env.ENABLE_SIGNUP = 'true';
+      expect(isSignupOpen()).toBe(true);
+    });
+
+    it('HAPPY: GET /signup-status reports the switch so the page can say "not open yet" up front', async () => {
+      const { mockClient: client } = createMockClient();
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, createMockPool(client), generateToken);
+      const route = routes.find((r) => r.method === 'GET' && r.path === '/signup-status')!;
+
+      delete process.env.ENABLE_SIGNUP;
+      const closed = createMockReply();
+      await route.handler(createMockRequest(), closed);
+      expect(closed.body).toEqual({ success: true, open: false });
+
+      process.env.ENABLE_SIGNUP = 'true';
+      const open = createMockReply();
+      await route.handler(createMockRequest(), open);
+      expect(open.body).toEqual({ success: true, open: true });
+    });
+  });
 
   describe('POST /register handler', () => {
     it('returns 400 on missing fields (WHO: incomplete form | WHAT: Zod rejects | WHERE: /register | WHY: prevents partial tenant creation)', async () => {
@@ -1383,7 +1449,12 @@ describe('Auth - Database Level', () => {
       ).rejects.toThrow(/unique/i);
     });
 
-    it('should allow same email across different tenants', async () => {
+    it('should REJECT the same email in a different tenant, in any case (users_email_lower_unique)', async () => {
+      // WHO: two businesses trying to hold one address — including a race past the
+      //      app-level check. WHAT: the DB itself refuses the second row, even with
+      //      different capitals. WHY: one account per email platform-wide (owner
+      //      decision 2026-09-24). This test asserted the OPPOSITE before migration
+      //      20260924000200 — that is the intended behaviour change, not a loosening.
       if (!dbAvailable) return;
 
       const t1Id = await createTenant(client, 'T1', 'salon');
@@ -1396,12 +1467,12 @@ describe('Auth - Database Level', () => {
         [t1Id, hash]
       );
 
-      const res = await client.query(
-        "INSERT INTO users (tenant_id, email, password_hash, full_name) VALUES ($1, 'same@email.com', $2, 'User 2') RETURNING user_id",
-        [t2Id, hash]
-      );
-
-      expect(res.rows[0].user_id).toBeTruthy();
+      await expect(
+        client.query(
+          "INSERT INTO users (tenant_id, email, password_hash, full_name) VALUES ($1, 'Same@Email.com', $2, 'User 2')",
+          [t2Id, hash]
+        )
+      ).rejects.toMatchObject({ code: '23505', constraint: 'users_email_lower_unique' });
     });
 
     it('should detect duplicate email across tenants via application-level check', async () => {

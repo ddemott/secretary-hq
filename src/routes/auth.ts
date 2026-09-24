@@ -70,6 +70,19 @@ function hashToken(token: string): string {
 const VerifyEmailSchema = z.object({ token: z.string().min(20).max(200) });
 
 /**
+ * Self-serve signup switch (owner decision 2026-09-24: not open yet).
+ * CLOSED unless ENABLE_SIGNUP is exactly 'true' — so production, where it is
+ * unset, refuses POST /register. Admin-created tenants (POST /tenants/create)
+ * and /demo/start are unaffected. Local dev, CI and E2E set it to 'true'.
+ */
+export function isSignupOpen(): boolean {
+  return process.env.ENABLE_SIGNUP === 'true';
+}
+
+export const SIGNUP_CLOSED_MESSAGE =
+  "Sign-ups aren't open yet. Try the live demo in the meantime, or check back soon.";
+
+/**
  * Write a fresh email-verification token for a user and send the link.
  * The token row is durable before the send starts; the send is
  * FIRE-AND-FORGET for the same reason as /forgot-password (an awaited SMTP
@@ -235,6 +248,14 @@ export function registerAuthRoutes(
     // oracle. Same limit as /login, the other unauthenticated credential route.
     { config: { rateLimit: { max: 5, timeWindow: '5 minutes' } } },
     withHandler(async (req: AppRequest, reply) => {
+      // Checked first, before validation or any DB work.
+      if (!isSignupOpen()) {
+        return reply.status(403).send({
+          success: false,
+          error_code: 'signup_closed',
+          error: SIGNUP_CLOSED_MESSAGE,
+        });
+      }
       const parsed = RegisterSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply
@@ -433,6 +454,10 @@ export function registerAuthRoutes(
       return reply.send({ success: true });
     }, 'Reset password failed')
   );
+
+  // GET /signup-status - Public: lets the /register page say "not open yet"
+  // before someone fills in the form.
+  app.get('/signup-status', (_req, reply) => reply.send({ success: true, open: isSignupOpen() }));
 
   // POST /verify-email - Consume a signup verification token (public: the
   // token itself is the credential, same trust model as /reset-password).

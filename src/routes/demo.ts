@@ -109,7 +109,15 @@ export function registerDemoRoutes(
       const expiresAt = new Date(Date.now() + DEMO_TTL_MINUTES * 60 * 1000);
 
       // Provision tenant + owner user in one transaction.
-      const provisionRes = await pool.query<{ tenant_id: string; user_id: string }>(
+      // Each demo tenant gets its OWN owner address. users.email is unique
+      // platform-wide (users_email_lower_unique, 2026-09-24), so a single shared
+      // demo login would make the second /demo/start fail. The +<tenant_id> tag
+      // keeps every demo address distinct and obviously a demo.
+      const provisionRes = await pool.query<{
+        tenant_id: string;
+        user_id: string;
+        email: string;
+      }>(
         `WITH new_tenant AS (
            INSERT INTO tenants (name, business_type, timezone, is_demo, demo_expires_at)
            VALUES ('Quick Lube Demo', 'automotive', 'America/Chicago', true, $1)
@@ -118,20 +126,20 @@ export function registerDemoRoutes(
          new_user AS (
            INSERT INTO users (tenant_id, email, password_hash, full_name, role)
            SELECT tenant_id,
-                  'demo@quicklubedemo.invalid',
+                  'demo+' || tenant_id || '@quicklubedemo.invalid',
                   -- bcrypt hash of a random 32-char string — no one can log in via password
                   '$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
                   'Demo Owner',
                   'owner'
            FROM new_tenant
-           RETURNING tenant_id, user_id
+           RETURNING tenant_id, user_id, email
          )
-         SELECT new_tenant.tenant_id, new_user.user_id
+         SELECT new_tenant.tenant_id, new_user.user_id, new_user.email
          FROM new_tenant JOIN new_user ON new_tenant.tenant_id = new_user.tenant_id`,
         [expiresAt.toISOString()]
       );
 
-      const { tenant_id: tenantId, user_id: userId } = provisionRes.rows[0];
+      const { tenant_id: tenantId, user_id: userId, email: demoEmail } = provisionRes.rows[0];
 
       // Seed business data.
       await seedDemoTenant(pool, { tenantId, userId });
@@ -151,7 +159,7 @@ export function registerDemoRoutes(
         {
           tenant_id: tenantId,
           user_id: userId,
-          email: 'demo@quicklubedemo.invalid',
+          email: demoEmail,
           role: 'owner',
         },
         ttlSeconds

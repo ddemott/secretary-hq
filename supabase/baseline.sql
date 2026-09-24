@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict dVSdHSS4buxWse3hmxcGe3yCsK3sTkhq69w3s9lCyUzKry6xjifCNlScFNBbXJr
+\restrict nX1MUPeytwPFguxX2cpVCjpZ79b17u8zgNvFTUhsCJAQeTHqqKMHhxWnr8Vdf6z
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -6056,6 +6056,20 @@ CREATE INDEX tenants_live_idx ON public.tenants USING btree (tenant_id) WHERE (i
 
 
 --
+-- Name: users_email_lower_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX users_email_lower_unique ON public.users USING btree (lower(email));
+
+
+--
+-- Name: INDEX users_email_lower_unique; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON INDEX public.users_email_lower_unique IS 'One account per email across the whole platform, case-insensitive (2026-09-24). Also serves /login''s WHERE LOWER(email) = LOWER($1) lookup.';
+
+
+--
 -- Name: appointments appointments_auto_version; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -7622,5 +7636,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict dVSdHSS4buxWse3hmxcGe3yCsK3sTkhq69w3s9lCyUzKry6xjifCNlScFNBbXJr
+\unrestrict nX1MUPeytwPFguxX2cpVCjpZ79b17u8zgNvFTUhsCJAQeTHqqKMHhxWnr8Vdf6z
 

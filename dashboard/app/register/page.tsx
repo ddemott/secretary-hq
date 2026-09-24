@@ -42,6 +42,17 @@ export default function RegisterPage() {
   // per email, platform-wide) — show sign-in and forgot-password links.
   const [accountExists, setAccountExists] = useState(false);
   const [agreedToLegal, setAgreedToLegal] = useState(false);
+  // Self-serve signup is behind ENABLE_SIGNUP on the backend (closed until
+  // launch, 2026-09-24). null = still asking; a failed check leaves the form up
+  // — the backend refuses a closed signup anyway.
+  const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/signup-status`)
+      .then((r) => r.json() as Promise<{ open?: boolean }>)
+      .then((d) => setSignupOpen(d.open !== false))
+      .catch(() => setSignupOpen(true));
+  }, []);
 
   // Populate the business-type picker from the public templates endpoint —
   // same source TenantCreateForm uses, so the values match what the backend
@@ -98,6 +109,7 @@ export default function RegisterPage() {
         role?: string;
         token?: string;
         error?: string;
+        error_code?: string;
       };
 
       if (res.ok && data.success) {
@@ -114,6 +126,8 @@ export default function RegisterPage() {
         // A verification link was just emailed; Billing prompts until it's clicked.
         localStorage.setItem('emailVerified', 'false');
         window.location.href = '/dashboard';
+      } else if (res.status === 403 && data.error_code === 'signup_closed') {
+        setSignupOpen(false);
       } else if (res.status === 409) {
         setAccountExists(true);
         setError(
@@ -136,6 +150,38 @@ export default function RegisterPage() {
     color: 'var(--text-primary)',
     '--tw-ring-color': 'var(--accent-glow)',
   } as React.CSSProperties;
+
+  if (signupOpen === false) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center p-4 font-sans"
+        style={{ backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)' }}
+      >
+        <div
+          role="status"
+          className="w-full max-w-md rounded-2xl shadow-xl border p-8 text-center"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-soft)' }}
+        >
+          <Bot className="w-10 h-10 mx-auto mb-4" style={{ color: 'var(--accent)' }} />
+          <h1 className="text-2xl font-display tracking-tight mb-2">
+            Sign-ups aren&apos;t open yet
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+            We&apos;re not taking new accounts just yet. Try the live demo in the meantime, or check
+            back soon.
+          </p>
+          <div className="flex justify-center gap-6 text-sm font-semibold">
+            <a href="/demo" className="underline" style={{ color: 'var(--accent-soft)' }}>
+              Try the live demo
+            </a>
+            <a href="/dashboard" className="underline" style={{ color: 'var(--accent-soft)' }}>
+              Sign in
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
