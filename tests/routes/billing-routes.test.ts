@@ -44,7 +44,7 @@ vi.mock('stripe', () => ({
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────
-import { registerBillingRoutes, subscriptionGate } from '../../src/routes/billing';
+import { registerBillingRoutes, subscriptionGate, TRIAL_DAYS } from '../../src/routes/billing';
 import { registry, errorsTotal } from '../../src/services/metrics';
 import { jsonContentTypeParser } from '../../src/jsonContentTypeParser';
 
@@ -178,6 +178,72 @@ describe('POST /billing/checkout', () => {
     );
     // DB: only one query (lookup), no customer_id UPDATE
     expect(queries).toHaveLength(1);
+  });
+
+  it('HAPPY: first subscription gets a 14-day trial and Checkout must collect a card', async () => {
+    // WHO: a new tenant owner starting the free trial.
+    // WHAT: the Checkout session carries trial_period_days=14 AND
+    //       payment_method_collection='always', so a card is taken up front.
+    // WHEN: the tenant has never completed checkout (stripe_subscription_id NULL).
+    // WHERE: POST /billing/checkout → stripe.checkout.sessions.create.
+    // WHY: owner decision 2026-09-24 — no-card trials invite abuse; the landing
+    //      page no longer says "no credit card required".
+    mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_trial' });
+    const { app } = buildApp({
+      poolResponses: [
+        {
+          rows: [
+            {
+              tenant_id: TENANT_ID,
+              name: 'Test Biz',
+              stripe_customer_id: STRIPE_CUSTOMER_ID,
+              stripe_subscription_id: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockCheckoutCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_method_collection: 'always',
+        subscription_data: { trial_period_days: TRIAL_DAYS },
+      })
+    );
+    expect(TRIAL_DAYS).toBe(14);
+  });
+
+  it('SAD: a tenant that already subscribed once gets no second trial', async () => {
+    // WHO: an owner who cancelled and is subscribing again.
+    // WHAT: no subscription_data.trial_period_days on the session; card still required.
+    // WHEN: stripe_subscription_id is already set from the earlier checkout.
+    // WHERE: POST /billing/checkout.
+    // WHY: cancel-and-resubscribe must not chain free trials.
+    mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_again' });
+    const { app } = buildApp({
+      poolResponses: [
+        {
+          rows: [
+            {
+              tenant_id: TENANT_ID,
+              name: 'Test Biz',
+              stripe_customer_id: STRIPE_CUSTOMER_ID,
+              stripe_subscription_id: 'sub_earlier_123',
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+    expect(res.statusCode).toBe(200);
+    const params = mockCheckoutCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(params.payment_method_collection).toBe('always');
+    expect(params.subscription_data).toBeUndefined();
   });
 
   it('HAPPY: no Stripe customer yet — creates customer then checkout session', async () => {

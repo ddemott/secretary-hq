@@ -57,6 +57,13 @@ function planFromPriceId(priceId: string | null): string | null {
 
 const ALLOWED_PLANS = ['solo', 'growth', 'professional'];
 
+/**
+ * Free-trial length. The trial runs inside a real Stripe subscription, and
+ * Checkout always collects a card first (owner decision 2026-09-24: no-card
+ * trials invite abuse). A tenant gets the trial once — see checkout below.
+ */
+export const TRIAL_DAYS = 14;
+
 /** Checkout-session metadata is ours, but a webhook payload is still external input — validate before writing. */
 function validPlan(plan: unknown): string | null {
   return typeof plan === 'string' && ALLOWED_PLANS.includes(plan) ? plan : null;
@@ -160,7 +167,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       // a business that has been deleted. Taking money from a tenant that cannot log
       // in or answer a call is the worst shape a zombie-tenant leak could take.
       const tenantRes = await pool.query(
-        'SELECT tenant_id, name, stripe_customer_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+        'SELECT tenant_id, name, stripe_customer_id, stripe_subscription_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
         [tenant_id]
       );
       if (tenantRes.rows.length === 0) {
@@ -183,10 +190,17 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       }
 
       const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+      // One trial per tenant: a tenant that has ever completed checkout
+      // (stripe_subscription_id set) re-subscribes without a second free
+      // trial, so cancel-and-resubscribe cannot chain free months.
+      const firstSubscription = !tenant.stripe_subscription_id;
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         mode: 'subscription',
         line_items: [{ price: priceId, quantity: 1 }],
+        // Card up front even when the first charge is 14 days away.
+        payment_method_collection: 'always',
+        ...(firstSubscription && { subscription_data: { trial_period_days: TRIAL_DAYS } }),
         success_url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=success`,
         cancel_url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=cancel`,
         metadata: { tenant_id, plan },

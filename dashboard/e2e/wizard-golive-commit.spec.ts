@@ -23,6 +23,7 @@ import { Pool } from 'pg';
 import {
   PG_URL,
   registerFreshTenant,
+  startSubscriptionViaFixture,
   cleanTenantData,
   type RegisteredTenant,
 } from './helpers/fixtures';
@@ -71,6 +72,8 @@ test.describe('Setup wizard → real commit → Go Live Stage A/B (browser click
     let tenant: RegisteredTenant | null = null;
     try {
       tenant = await registerFreshTenant(request);
+      // Buying a number needs a started (card-required) trial — see provisioning gate.
+      await startSubscriptionViaFixture(request, tenant.token);
       await switchToFreshTenant(page, tenant.tenantId, `GoLive ${tenant.tenantId.slice(0, 6)}`);
 
       // Welcome auto-opens (fresh tenant, needsSetup=true) → start setup.
