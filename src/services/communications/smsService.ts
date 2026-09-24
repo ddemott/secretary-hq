@@ -48,6 +48,25 @@ function providerName(): string {
   }
 }
 
+/**
+ * THE PLATFORM SMS KILL SWITCH, enforced at the send chokepoint.
+ *
+ * SMS is OFF (`ENABLE_SMS`, only the literal 'true' enables) until 10DLC
+ * registration lands: the number is not registered, carriers drop every text,
+ * and Telnyx still reports success (error 40010). Before this check only two
+ * routes read the flag; the reminder worker and confirmation sends were held
+ * back only by the per-number consent check — one fabricated consent row away
+ * from "sending" texts that never arrive.
+ *
+ * Applies to REAL carriers only: the mock provider reaches no handset, so it
+ * stays usable in tests, sims and local dev without the flag.
+ */
+export const SMS_DISABLED_ERROR = 'SMS is disabled platform-wide (ENABLE_SMS is off)';
+
+export function smsDeliveryDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return providerName() !== 'mock' && env.ENABLE_SMS !== 'true';
+}
+
 export class SMSService {
   private static simulationNoticeLogged = false;
 
@@ -72,6 +91,13 @@ export class SMSService {
     // Hoisted so the send-failure catch can record the same body the success
     // path would have logged (templated when a template is used).
     let body = message.body || '';
+    if (smsDeliveryDisabled()) {
+      log().warn(
+        { event: 'sms_send_refused_disabled', tenant_id: tenantId, provider: providerName() },
+        'SMS send refused: ENABLE_SMS is off (10DLC not registered) — nothing was sent'
+      );
+      return { success: false, error: SMS_DISABLED_ERROR, smsDisabled: true };
+    }
     try {
       const tenantConfig = await this.configService.getTenantConfig(tenantId);
       if (!tenantConfig) {

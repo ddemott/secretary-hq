@@ -38,6 +38,7 @@ import {
   remindersSentTotal,
   remindersSkippedTotal,
 } from '../../../src/services/metrics.js';
+import { providerRegistry } from '../../../src/services/communications/ProviderRegistry.js';
 
 // Valid v4 UUIDs — hex only. `t1111111-…` was not one, and would turn this
 // suite into a false negative the day ReminderService adds uuid validation.
@@ -144,7 +145,10 @@ describe('ReminderService metrics — the labels production actually emits', () 
   it('SAD: a past appointment increments reason=appointment_passed', async () => {
     // Emitted by the live path but absent from the metric description until
     // 2026-08-20 — the mirror image of appointment_not_found.
-    const past = { ...futureAppointment(), dateTime: new Date(Date.now() - 3_600_000).toISOString() };
+    const past = {
+      ...futureAppointment(),
+      dateTime: new Date(Date.now() - 3_600_000).toISOString(),
+    };
     const { service } = buildService({ appointment: past });
     await service.processReminder('1');
 
@@ -157,5 +161,69 @@ describe('ReminderService metrics — the labels production actually emits', () 
 
     expect(readCounter('reminders_skipped_total', { reason: 'no_consent' })).toBe(1);
     expect(readCounter('reminders_sent_total', { type: '24h', outcome: 'success' })).toBe(0);
+  });
+
+  describe('SMS kill switch (ENABLE_SMS off, real carrier)', () => {
+    // WHO: an SMS-only customer (phone on file, no email) with a reminder due
+    // WHAT: reminders_skipped_total{reason=sms_disabled}, row cancelled with that reason, nothing sent
+    // WHEN: ENABLE_SMS is not 'true' and the default provider is a real carrier
+    // WHERE: ReminderService.processReminder
+    // WHY: the send would be refused anyway; treating the refusal as a failure made
+    //      the worker retry it and finally mark it 'failed', hiding a deliberate off switch
+    const OLD = process.env.ENABLE_SMS;
+    const realCarrier = () =>
+      vi
+        .spyOn(providerRegistry, 'getDefaultProvider')
+        .mockReturnValue({ getName: () => 'telnyx' } as never);
+    const restoreEnv = () => {
+      if (OLD === undefined) delete process.env.ENABLE_SMS;
+      else process.env.ENABLE_SMS = OLD;
+    };
+
+    it('SAD: an SMS-only reminder is skipped with reason=sms_disabled and never sent', async () => {
+      realCarrier();
+      delete process.env.ENABLE_SMS;
+      try {
+        const { service, updates } = buildService({ appointment: futureAppointment() });
+        const send = vi.spyOn(service, 'sendReminder');
+        await service.processReminder('1');
+
+        expect(readCounter('reminders_skipped_total', { reason: 'sms_disabled' })).toBe(1);
+        expect(send).not.toHaveBeenCalled();
+        expect(updates.at(-1)).toMatchObject({ status: 'cancelled' });
+      } finally {
+        restoreEnv();
+      }
+    });
+
+    it('HAPPY: with ENABLE_SMS=true the same reminder is sent', async () => {
+      realCarrier();
+      process.env.ENABLE_SMS = 'true';
+      try {
+        const { service } = buildService({ appointment: futureAppointment() });
+        await service.processReminder('1');
+
+        expect(readCounter('reminders_skipped_total', { reason: 'sms_disabled' })).toBe(0);
+        expect(readCounter('reminders_sent_total', { type: '24h', outcome: 'success' })).toBe(1);
+      } finally {
+        restoreEnv();
+      }
+    });
+
+    it('HAPPY: a customer with an email is not skipped — the email channel still works', async () => {
+      realCarrier();
+      delete process.env.ENABLE_SMS;
+      try {
+        const { service } = buildService({
+          appointment: { ...futureAppointment(), customer_email: 'jane@example.com' },
+        });
+        await service.processReminder('1');
+
+        expect(readCounter('reminders_skipped_total', { reason: 'sms_disabled' })).toBe(0);
+        expect(readCounter('reminders_sent_total', { type: '24h', outcome: 'success' })).toBe(1);
+      } finally {
+        restoreEnv();
+      }
+    });
   });
 });

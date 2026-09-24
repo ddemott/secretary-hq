@@ -11,6 +11,7 @@ import type { DatabaseService } from '../../database/index.js';
 import { CommunicationService } from '../communications/index.js';
 import { ConsentService } from '../consentService.js';
 import { remindersSentTotal, remindersSkippedTotal } from '../metrics.js';
+import { smsDeliveryDisabled } from '../communications/smsService.js';
 import type { TenantConfigService } from '../tenants/index.js';
 
 import type { ReminderSchedule } from './types.js';
@@ -348,6 +349,30 @@ export class ReminderService {
           })
         );
         await this.updateReminderStatus(reminderId, 'cancelled', 'No consent for communication');
+        return;
+      }
+
+      // SMS kill switch. A customer reachable ONLY by text cannot be reminded
+      // while ENABLE_SMS is off: SMSService refuses the send, and without this
+      // branch that refusal read as a FAILURE — the worker would retry it
+      // 5m/30m/2h and finally mark it 'failed', dressing a deliberate
+      // platform-wide off switch up as a delivery fault. Skip it, and say why.
+      const reachEmail = appointment.customerEmail || appointment.customer_email;
+      const reachPhone = appointment.customerPhone || appointment.customer_phone;
+      if (!reachEmail && reachPhone && smsDeliveryDisabled()) {
+        remindersSkippedTotal.inc({ reason: 'sms_disabled' });
+        console.warn(
+          JSON.stringify({
+            event: 'reminder_skipped_sms_disabled',
+            reason:
+              'customer is reachable only by SMS and ENABLE_SMS is off (10DLC not registered)',
+            reminder_schedule_id: reminderId,
+            reminder_type: normalizedReminder.reminderType,
+            tenant_id: normalizedReminder.tenantId,
+            appointment_id: normalizedReminder.appointmentId,
+          })
+        );
+        await this.updateReminderStatus(reminderId, 'cancelled', 'SMS disabled (ENABLE_SMS off)');
         return;
       }
 

@@ -365,7 +365,7 @@ export const remindersSkippedTotal = registry.counter(
   // was never emitted by it (a processing failure is rethrown so the worker can
   // classify retry-vs-fail, and lands in errors_total instead), and
   // `appointment_passed` was emitted but undocumented.
-  'Reminders that skipped delivery, partitioned by reason (appointment_not_found, appointment_cancelled, appointment_passed, no_consent)'
+  'Reminders that skipped delivery, partitioned by reason (appointment_not_found, appointment_cancelled, appointment_passed, no_consent, sms_disabled)'
 );
 
 // the SMS provider SMS delivery receipts — the *carrier-confirmed* outcome, distinct
