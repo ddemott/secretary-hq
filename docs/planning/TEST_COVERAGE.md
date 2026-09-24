@@ -9,6 +9,7 @@
 **Latest V8 coverage rerun:** 2026-08-19 (percentages below have NOT been re-measured since; suite totals above have). Root `npx vitest run --coverage` finished **2,805 passing (233 files)** with coverage **74.17% statements / 66.35% branches / 72.64% functions / 76.08% lines**. Dashboard `cd dashboard && npx vitest run --coverage` finished **1,044 passing (97 files)** with coverage **61.99% statements / 58.17% branches / 57.60% functions / 63.97% lines**.
 
 **Warnings seen during the 2026-08-19 reruns, but both commands exited 0:**
+
 - Dashboard test/coverage emits `ReferenceError: closeMobileMenu is not defined` from a jsdom inline click handler.
 - Root coverage emitted `Failed to parse file:///home/dale/projects/secretary-hq/src/templates/auto_bays_v1.yaml. Excluding it from coverage.`
 
@@ -22,7 +23,6 @@
 
 Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pass 2, etc.) has been consolidated in `planning/RESOLVED.md`.
 
-
 > **Maintenance rule:** Refresh this file whenever a commit measurably moves
 > test counts or coverage percentages (added a test suite, deleted a stale
 > test, raised coverage by ≥1pp on a hotspot, etc.). Re-run the commands in
@@ -31,12 +31,12 @@ Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pa
 
 ## Headline counts
 
-| Suite | Tests | Status | Runtime |
-|---|---|---|---|
-| Root/backend (`npm test`) | 3,365 passing (281 files) | ✅ | 2026-09-20 rerun |
-| Dashboard (`cd dashboard && npm test`) | 1,242 passing (113 files) | ✅ | 2026-09-20 rerun (with #540) |
-| Agent (`cd agent && npm test`) | 1,085 passing (63 files) | ✅ | 2026-09-20 rerun |
-| Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
+| Suite                                                  | Tests                     | Status                                     | Runtime                      |
+| ------------------------------------------------------ | ------------------------- | ------------------------------------------ | ---------------------------- |
+| Root/backend (`npm test`)                              | 3,365 passing (281 files) | ✅                                         | 2026-09-20 rerun             |
+| Dashboard (`cd dashboard && npm test`)                 | 1,242 passing (113 files) | ✅                                         | 2026-09-20 rerun (with #540) |
+| Agent (`cd agent && npm test`)                         | 1,085 passing (63 files)  | ✅                                         | 2026-09-20 rerun             |
+| Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped    | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
 
 Current verified total from the three suites re-run on 2026-09-20: **5,692 passing** (3,365 + 1,242 + 1,085). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
 
@@ -44,10 +44,10 @@ Current verified total from the three suites re-run on 2026-09-20: **5,692 passi
 
 ## Unit test coverage (V8)
 
-| Project | Statements | Branches | Functions | Lines |
-|---|---|---|---|---|
+| Project                                   | Statements               | Branches             | Functions            | Lines                |
+| ----------------------------------------- | ------------------------ | -------------------- | -------------------- | -------------------- |
 | Root Vitest (`npx vitest run --coverage`) | **74.17%** (7,051/9,506) | 66.35% (4,503/6,786) | 72.64% (1,062/1,462) | 76.08% (6,620/8,701) |
-| Dashboard (`components/`, `lib/`) | **61.99%** (5,027/8,109) | 58.17% (3,891/6,689) | 57.60% (1,322/2,295) | 63.97% (4,682/7,319) |
+| Dashboard (`components/`, `lib/`)         | **61.99%** (5,027/8,109) | 58.17% (3,891/6,689) | 57.60% (1,322/2,295) | 63.97% (4,682/7,319) |
 
 HTML reports: `coverage_data/index.html` (root), `dashboard/coverage/index.html` (dashboard).
 
@@ -59,38 +59,38 @@ purpose-built coverage build. Track e2e by **workflows covered** instead.
 
 ### Hard-asserted workflows (fail loud on regression)
 
-| File | Workflow | Surface exercised |
-|---|---|---|
-| `workflows.spec.ts` | smoke | Login → tab nav → Schedule → seeded appts |
-| `workflows.spec.ts` | quick book | UI form → POST `/appointments` → GiST exclusion check → DB row |
-| `workflows.spec.ts` | edit appointment | UI list visibility + PUT `/appointments/:id/update` (happy + sad) |
-| `workflows.spec.ts` | create customer | POST `/customers/create` → list refresh → DB row |
-| `workflows.spec.ts` | front-desk role gating | Login as `front_desk` → Advanced tabs hidden |
-| `workflows.spec.ts` | invite teammate | Owner-only POST `/users/invite` → user + password_resets row |
-| `quick-book-shift-overrides.spec.ts` | book against `employee_schedule` | shift override, no weekly pattern |
-| `quick-book-shift-overrides.spec.ts` | validator: end ≤ start | rejected |
-| `quick-book-shift-overrides.spec.ts` | validator: 23-hour appointment | rejected |
-| `quick-book-shift-overrides.spec.ts` | resources/chairs view | renders rows |
-| `calendar-sync.spec.ts` | appointment lifecycle dispatch | create/update/delete each fire calendar + Square via `SYNC_TEST_RECORDER` recorder |
-| `calendar-sync.spec.ts` | customer lifecycle dispatch | create/update/delete each fire Square (no calendar — by contract) |
-| `calendar-sync.spec.ts` | fire-and-forget contract | HTTP returns in <3s even with sync promises in flight |
-| `setup-wizard-to-booking.spec.ts` | wizard finalize → first booking | `/register` → seed services/resource/employee → `/shifts/expand-weekly` → `/appointments/create` succeeds |
-| `setup-wizard-to-booking.spec.ts` | skip-fan-out sad path | same flow minus expand-weekly → booking returns `EMPLOYEE_NOT_SCHEDULED` |
-| `setup-wizard-to-booking.spec.ts` | range coverage | default `weeks_ahead=4` → 28 employee_schedule rows reaching ~27 days out |
-| `workflows.spec.ts` | quick book real-time | submit Quick Book → capture `appointment_id` from POST response → assert `[data-testid="appointment-block-${id}"]` visible in grid without page reload |
-| `appointment-cancel-restore.spec.ts` | reactivate happy round-trip | seed appt → `/cancel` → DB status='canceled' → `/reactivate` → DB status='scheduled' |
-| `appointment-cancel-restore.spec.ts` | slot-rebooked race | cancel A → seed B in A's slot → reactivate A → 409 + TIMESLOT_OCCUPIED + conflict block; A stays canceled, B stays scheduled |
-| `appointment-cancel-restore.spec.ts` | not-canceled guard | reactivate on status='scheduled' → 400 + NOT_CANCELED, no UPDATE issued |
-| `mobile-responsive.spec.ts` | mobile schedule (iPhone 14) | 390×844 viewport → mobile nav renders → Schedule tab → scheduler-view + date display visible, no horizontal overflow |
-| `mobile-responsive.spec.ts` | mobile quick book (iPhone 14) | Resources sub-view → Quick Book panel + customer/resource/confirm inputs visible, no overflow |
-| `mobile-responsive.spec.ts` | mobile customer lookup (iPhone 14) | Customers tab → seeded customer name visible in list, no overflow |
-| `mobile-responsive.spec.ts` | Android smoke (Pixel 7) | 412×915 viewport → mobile nav → Schedule reachable, no overflow (catches breakpoint-specific regressions iPhone width misses) |
-| `tenant-delete-cascade.spec.ts` | full cascade | super-admin DELETE /tenants/:id → every dependent row count drops to 0 across 11 tenant-scoped tables (users / services / resources / employees / customers / employee_schedule / appointments / mappings / audit_log / record_versions) |
-| `tenant-delete-cascade.spec.ts` | cross-tenant isolation | deleting tenant A leaves tenant B's row counts unchanged — cascade is scoped to the deleted tenant_id, not a schema-wide DELETE |
-| `tenant-delete-cascade.spec.ts` | authz | tenant owner token cannot delete its own tenant → 403, tenant row + dependents untouched (gate fires before any SQL) |
-| `version-history-restore.spec.ts` | soft-delete → restore round-trip | create customer → `/soft-delete` → filtered from `/customers` + appears in `/records/customers/deleted` → `/restore` → back in active list + gone from deleted list |
-| `version-history-restore.spec.ts` | restore non-deleted | `/restore` on a record that was never deleted → 404 + `RECORD_NOT_DELETED`; record state unchanged |
-| `version-history-restore.spec.ts` | invalid table whitelist | `/restore` against `foobar` or `tenants` → 400 + `INVALID_TABLE`; pins the SQL-injection-defense boundary on the route's inlined table name |
+| File                                 | Workflow                           | Surface exercised                                                                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflows.spec.ts`                  | smoke                              | Login → tab nav → Schedule → seeded appts                                                                                                                                                                                                |
+| `workflows.spec.ts`                  | quick book                         | UI form → POST `/appointments` → GiST exclusion check → DB row                                                                                                                                                                           |
+| `workflows.spec.ts`                  | edit appointment                   | UI list visibility + PUT `/appointments/:id/update` (happy + sad)                                                                                                                                                                        |
+| `workflows.spec.ts`                  | create customer                    | POST `/customers/create` → list refresh → DB row                                                                                                                                                                                         |
+| `workflows.spec.ts`                  | front-desk role gating             | Login as `front_desk` → Advanced tabs hidden                                                                                                                                                                                             |
+| `workflows.spec.ts`                  | invite teammate                    | Owner-only POST `/users/invite` → user + password_resets row                                                                                                                                                                             |
+| `quick-book-shift-overrides.spec.ts` | book against `employee_schedule`   | shift override, no weekly pattern                                                                                                                                                                                                        |
+| `quick-book-shift-overrides.spec.ts` | validator: end ≤ start             | rejected                                                                                                                                                                                                                                 |
+| `quick-book-shift-overrides.spec.ts` | validator: 23-hour appointment     | rejected                                                                                                                                                                                                                                 |
+| `quick-book-shift-overrides.spec.ts` | resources/chairs view              | renders rows                                                                                                                                                                                                                             |
+| `calendar-sync.spec.ts`              | appointment lifecycle dispatch     | create/update/delete each fire calendar + Square via `SYNC_TEST_RECORDER` recorder                                                                                                                                                       |
+| `calendar-sync.spec.ts`              | customer lifecycle dispatch        | create/update/delete each fire Square (no calendar — by contract)                                                                                                                                                                        |
+| `calendar-sync.spec.ts`              | fire-and-forget contract           | HTTP returns in <3s even with sync promises in flight                                                                                                                                                                                    |
+| `setup-wizard-to-booking.spec.ts`    | wizard finalize → first booking    | `/register` → seed services/resource/employee → `/shifts/expand-weekly` → `/appointments/create` succeeds                                                                                                                                |
+| `setup-wizard-to-booking.spec.ts`    | skip-fan-out sad path              | same flow minus expand-weekly → booking returns `EMPLOYEE_NOT_SCHEDULED`                                                                                                                                                                 |
+| `setup-wizard-to-booking.spec.ts`    | range coverage                     | default `weeks_ahead=4` → 28 employee_schedule rows reaching ~27 days out                                                                                                                                                                |
+| `workflows.spec.ts`                  | quick book real-time               | submit Quick Book → capture `appointment_id` from POST response → assert `[data-testid="appointment-block-${id}"]` visible in grid without page reload                                                                                   |
+| `appointment-cancel-restore.spec.ts` | reactivate happy round-trip        | seed appt → `/cancel` → DB status='canceled' → `/reactivate` → DB status='scheduled'                                                                                                                                                     |
+| `appointment-cancel-restore.spec.ts` | slot-rebooked race                 | cancel A → seed B in A's slot → reactivate A → 409 + TIMESLOT_OCCUPIED + conflict block; A stays canceled, B stays scheduled                                                                                                             |
+| `appointment-cancel-restore.spec.ts` | not-canceled guard                 | reactivate on status='scheduled' → 400 + NOT_CANCELED, no UPDATE issued                                                                                                                                                                  |
+| `mobile-responsive.spec.ts`          | mobile schedule (iPhone 14)        | 390×844 viewport → mobile nav renders → Schedule tab → scheduler-view + date display visible, no horizontal overflow                                                                                                                     |
+| `mobile-responsive.spec.ts`          | mobile quick book (iPhone 14)      | Resources sub-view → Quick Book panel + customer/resource/confirm inputs visible, no overflow                                                                                                                                            |
+| `mobile-responsive.spec.ts`          | mobile customer lookup (iPhone 14) | Customers tab → seeded customer name visible in list, no overflow                                                                                                                                                                        |
+| `mobile-responsive.spec.ts`          | Android smoke (Pixel 7)            | 412×915 viewport → mobile nav → Schedule reachable, no overflow (catches breakpoint-specific regressions iPhone width misses)                                                                                                            |
+| `tenant-delete-cascade.spec.ts`      | full cascade                       | super-admin DELETE /tenants/:id → every dependent row count drops to 0 across 11 tenant-scoped tables (users / services / resources / employees / customers / employee_schedule / appointments / mappings / audit_log / record_versions) |
+| `tenant-delete-cascade.spec.ts`      | cross-tenant isolation             | deleting tenant A leaves tenant B's row counts unchanged — cascade is scoped to the deleted tenant_id, not a schema-wide DELETE                                                                                                          |
+| `tenant-delete-cascade.spec.ts`      | authz                              | tenant owner token cannot delete its own tenant → 403, tenant row + dependents untouched (gate fires before any SQL)                                                                                                                     |
+| `version-history-restore.spec.ts`    | soft-delete → restore round-trip   | create customer → `/soft-delete` → filtered from `/customers` + appears in `/records/customers/deleted` → `/restore` → back in active list + gone from deleted list                                                                      |
+| `version-history-restore.spec.ts`    | restore non-deleted                | `/restore` on a record that was never deleted → 404 + `RECORD_NOT_DELETED`; record state unchanged                                                                                                                                       |
+| `version-history-restore.spec.ts`    | invalid table whitelist            | `/restore` against `foobar` or `tenants` → 400 + `INVALID_TABLE`; pins the SQL-injection-defense boundary on the route's inlined table name                                                                                              |
 
 ### Soft-checked workflows (`if (visible)` guards or `logIssue()`)
 
@@ -120,21 +120,23 @@ the test still passes.
 _Hotspot percentages are from the 2026-08-19 coverage run. Rows for `src/services/reminders/reminderRepository.ts` / `reminderScheduler.ts` (deleted 2026-08-20 as a dead parallel implementation), `dashboard/components/shifts/ShiftScheduleView.tsx` and `dashboard/lib/callerActions.ts` (no longer exist) were removed 2026-09-18; the remaining rows have not been re-measured._
 
 ### Root / backend
-| File | Statements | Notes |
-|---|---|---|
-| `src/index.ts` | 0% | app bootstrap still uncovered by direct tests |
-| `src/routes/vocabulary.ts` | 0% | route file still unexercised |
-| `src/routes/calendar.ts` | 0.99% | calendar route remains mostly uncovered |
-| `src/workers/scheduleExtender.ts` | 0% | worker path still uncovered |
+
+| File                                  | Statements                                 | Notes                                                                                                                                                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                        | 0%                                         | app bootstrap still uncovered by direct tests                                                                                                                                                                                                                                         |
+| `src/routes/vocabulary.ts`            | 0%                                         | route file still unexercised                                                                                                                                                                                                                                                          |
+| `src/routes/calendar.ts`              | 0.99%                                      | calendar route remains mostly uncovered                                                                                                                                                                                                                                               |
+| ~~`src/workers/scheduleExtender.ts`~~ | ~~0%~~ → **100%** (re-measured 2026-09-24) | covered by `tests/workers/scheduleExtender.test.ts` (tenant iteration, per-tenant failure isolation, soft-deleted exclusion, boot run + interval, no double start, overlap skip, both `errors_total` events); the SQL itself stays in `tests/services/extendSchedules.realdb.test.ts` |
 
 ### Dashboard
-| File | Statements | Notes |
-|---|---|---|
-| `components/shifts/ShiftEditorModal.tsx` | 0% | whole shift editor path still dark |
-| `components/shifts/ShiftTimeline.tsx` | 0% | whole shift timeline path still dark |
-| `components/scheduler/SchedulerToolbar.tsx` | 0% | toolbar path still unexercised |
-| `components/knowledge/KnowledgeDocumentsTab.tsx` | 11.76% | document-tab path still thin |
-| `lib/api.ts` | 33.42% | many API helpers still unexercised |
+
+| File                                             | Statements | Notes                                |
+| ------------------------------------------------ | ---------- | ------------------------------------ |
+| `components/shifts/ShiftEditorModal.tsx`         | 0%         | whole shift editor path still dark   |
+| `components/shifts/ShiftTimeline.tsx`            | 0%         | whole shift timeline path still dark |
+| `components/scheduler/SchedulerToolbar.tsx`      | 0%         | toolbar path still unexercised       |
+| `components/knowledge/KnowledgeDocumentsTab.tsx` | 11.76%     | document-tab path still thin         |
+| `lib/api.ts`                                     | 33.42%     | many API helpers still unexercised   |
 
 ## Regenerating
 
