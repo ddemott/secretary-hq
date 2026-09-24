@@ -49,7 +49,7 @@ async function renderLanding() {
   // The landing only renders after the auth check flips `checked` — wait for
   // a stable landmark from LANDING_HTML.
   await waitFor(() => {
-    expect(document.getElementById('billing-annual')).toBeTruthy();
+    expect(document.getElementById('pricing')).toBeTruthy();
   });
   return utils;
 }
@@ -60,37 +60,54 @@ function priceNums(): string[] {
   );
 }
 
-describe('LandingPage pricing toggle', () => {
+describe('LandingPage prices match the owner-decided tiers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     document.body.innerHTML = '';
   });
 
-  it('switches every plan price to the annual rate and back (the dead-toggle bug)', async () => {
-    // WHY: window.setBilling was undefined in prod (inline <script> in
-    // dangerouslySetInnerHTML never runs) — clicking Annual did nothing.
+  it('shows $29.95 / $59.95 / $149.95 with 30 / 100 / 300 calls and the per-call rates', async () => {
+    // WHO: a prospect reading the pricing section
+    // WHAT: the decided tiers (docs/planning/TODO.md P0 §2, 2026-09-24) — price,
+    //       included calls and the extra-call rate on each card
+    // WHY: the page advertised $129 / $279 / $449 with 150 / 500 / 2,000 calls
+    //      while billing (PR #565) charged the new tiers
     await renderLanding();
-    expect(priceNums()).toEqual(['129', '279', '449']);
-
-    fireEvent.click(document.getElementById('billing-annual')!);
-    expect(priceNums()).toEqual(['103', '223', '359']);
-    expect(document.getElementById('billing-annual')).toHaveClass('active');
-    expect(document.getElementById('billing-monthly')).not.toHaveClass('active');
-
-    fireEvent.click(document.getElementById('billing-monthly')!);
-    expect(priceNums()).toEqual(['129', '279', '449']);
-    expect(document.getElementById('billing-monthly')).toHaveClass('active');
+    expect(priceNums()).toEqual(['29.95', '59.95', '149.95']);
+    const text = document.body.textContent ?? '';
+    for (const line of [
+      '30 AI-handled calls/month',
+      '100 AI-handled calls/month',
+      '300 AI-handled calls/month',
+      '$1.00 per extra call',
+      '$0.75 per extra call',
+      '$0.60 per extra call',
+    ]) {
+      expect(text).toContain(line);
+    }
+    for (const stale of [
+      '$129',
+      '$279',
+      '$449',
+      '150 AI-handled',
+      '500 AI-handled',
+      '2,000 calls',
+    ]) {
+      expect(text).not.toContain(stale);
+    }
   });
 
-  it('shows the annual-billing note only in annual mode', async () => {
+  it('shows monthly prices only — no Annual toggle or "Save 20%" (owner: no annual discount)', async () => {
+    // WHY: the page offered Annual at 20% off, but billing has only monthly
+    //      prices, so an "annual" customer would still have been charged
+    //      monthly. Dale, 2026-09-24: no annual option.
     await renderLanding();
-    const note = document.getElementById('price-annual-note')!;
-    expect(note.style.display).not.toBe('block');
-    fireEvent.click(document.getElementById('billing-annual')!);
-    expect(note.style.display).toBe('block');
-    fireEvent.click(document.getElementById('billing-monthly')!);
-    expect(note.style.display).toBe('none');
+    expect(document.getElementById('billing-annual')).toBeNull();
+    expect(document.getElementById('billing-monthly')).toBeNull();
+    expect(document.getElementById('price-annual-note')).toBeNull();
+    expect(document.querySelector('[data-annual]')).toBeNull();
+    expect(document.body.textContent ?? '').not.toMatch(/Save 20%|annual payment/i);
   });
 });
 
@@ -203,7 +220,7 @@ describe('LandingPage auth redirect', () => {
     localStorage.setItem('authToken', 'tok');
     render(<LandingPage />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/dashboard'));
-    expect(document.getElementById('billing-annual')).toBeNull();
+    expect(document.getElementById('pricing')).toBeNull();
   });
 });
 
