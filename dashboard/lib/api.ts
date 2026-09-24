@@ -1107,7 +1107,10 @@ export const Api = {
   // --- BILLING ---
   billing: {
     checkout: (tenantId: string, plan: 'solo' | 'growth' | 'professional') =>
-      apiMutate<{ url: string }>(`/billing/checkout`, 'POST', { tenant_id: tenantId, plan }),
+      apiMutate<{ url?: string; error_code?: string }>(`/billing/checkout`, 'POST', {
+        tenant_id: tenantId,
+        plan,
+      }),
 
     status: (tenantId: string) =>
       apiFetch<{ subscription_status: string; subscription_plan: string | null }>(
@@ -1116,7 +1119,7 @@ export const Api = {
       ),
 
     portal: (tenantId: string) =>
-      apiMutate<{ url: string }>(`/billing/portal`, 'POST', { tenant_id: tenantId }),
+      apiMutate<{ url?: string }>(`/billing/portal`, 'POST', { tenant_id: tenantId }),
 
     usage: (tenantId: string, months = 6) =>
       apiFetch<UsageStatementResult>(`/billing/usage`, {

@@ -148,19 +148,25 @@ export default function BillingView() {
     async (plan: PlanKey) => {
       if (!tenantId) return;
       setCheckingOut(plan);
+      // apiMutate RESOLVES { success: false, error, ...body } on a non-2xx — it
+      // does not throw. Only a network failure throws. Before this, any refusal
+      // fell through to `window.location.href = undefined`.
       try {
-        const { url } = await Api.billing.checkout(tenantId, plan);
-        window.location.href = url;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        if (msg.startsWith('Confirm your email')) {
-          setEmailUnverified(true);
-          showToast(msg, 'error');
-        } else {
-          showToast('Could not start checkout — try again.', 'error');
+        const res = await Api.billing.checkout(tenantId, plan);
+        if (res.success && res.url) {
+          window.location.href = res.url;
+          return;
         }
-        setCheckingOut(null);
+        if (res.error_code === 'email_not_verified') {
+          setEmailUnverified(true);
+          showToast(res.error || 'Confirm your email first.', 'error');
+        } else {
+          showToast(res.error || 'Could not start checkout — try again.', 'error');
+        }
+      } catch {
+        showToast('Could not start checkout — try again.', 'error');
       }
+      setCheckingOut(null);
     },
     [tenantId]
   );
@@ -169,6 +175,10 @@ export default function BillingView() {
     setResending(true);
     try {
       const res = await Api.billing.resendVerification();
+      if (!res.success) {
+        showToast(res.error || 'Could not resend the email.', 'error');
+        return;
+      }
       if (res.already_verified) {
         setEmailUnverified(false);
         try {
@@ -191,13 +201,16 @@ export default function BillingView() {
     if (!tenantId) return;
     setOpeningPortal(true);
     try {
-      const { url } = await Api.billing.portal(tenantId);
-      window.location.href = url;
+      const res = await Api.billing.portal(tenantId);
+      if (res.success && res.url) {
+        window.location.href = res.url;
+        return;
+      }
+      showToast(res.error || 'Could not open billing portal', 'error');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not open billing portal';
-      showToast(msg, 'error');
-      setOpeningPortal(false);
+      showToast(err instanceof Error ? err.message : 'Could not open billing portal', 'error');
     }
+    setOpeningPortal(false);
   }, [tenantId]);
 
   const currentPlan = status?.subscription_plan ?? null;

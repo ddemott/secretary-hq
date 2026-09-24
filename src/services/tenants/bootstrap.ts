@@ -80,6 +80,10 @@ export async function createTenantWithOwner(
   pool: Pool,
   params: CreateTenantWithOwnerParams
 ): Promise<CreateTenantWithOwnerResult> {
+  // One canonical form for every caller (self-serve and admin): the duplicate
+  // check and the INSERT must use the same value, and emails are stored
+  // lowercased so the platform-wide LOWER(email) index is never surprised.
+  const ownerEmail = params.ownerEmail.trim().toLowerCase();
   // HIPAA verticals are permanently excluded (root CLAUDE.md Build
   // Principles). RegisterSchema checks this too for the self-serve
   // path, but the admin create flow (POST /tenants/create) has no
@@ -101,7 +105,7 @@ export async function createTenantWithOwner(
     // alike — not just when duplicateCheck is 'email'.
     const existingEmail = await client.query(
       'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-      [params.ownerEmail]
+      [ownerEmail]
     );
     if (existingEmail.rows.length > 0) {
       await client.query('ROLLBACK');
@@ -153,7 +157,7 @@ export async function createTenantWithOwner(
        RETURNING user_id`,
       [
         tenantId,
-        params.ownerEmail,
+        ownerEmail,
         passwordHash,
         params.ownerFullName,
         params.ownerFirstName ?? null,

@@ -391,6 +391,34 @@ describe('createTenantWithOwner — duplicate detection', () => {
     expect(client.release).toHaveBeenCalled();
   });
 
+  it('5e. the admin path stores a mixed-case, padded email lowercased and trimmed', async () => {
+    // WHO: platform admin typing " Owner@Sharp.COM " into the create-tenant form.
+    // WHAT: the duplicate check and the users INSERT both use "owner@sharp.com".
+    // WHY: review of PR #567 — only /register normalized, so admin-created rows
+    //      could be stored mixed-case while the rest of the platform assumes lowercase.
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [] }, // email check (none)
+      { rows: [] }, // tenant-name check (none)
+      { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
+      { rows: [{ user_id: USER_ID }] }, // INSERT user
+      { rows: [] }, // COMMIT
+    ]);
+
+    await createTenantWithOwner(pool, {
+      tenantName: 'Sharp Salon',
+      businessType: 'salon',
+      ownerEmail: ' Owner@Sharp.COM ',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Jane Doe',
+      duplicateCheck: 'tenant_name',
+    });
+
+    expect(queries[1].params).toEqual(['owner@sharp.com']);
+    const insertUser = queries.find((q) => q.text.startsWith('INSERT INTO users'));
+    expect(insertUser?.params[1]).toBe('owner@sharp.com');
+  });
+
   it('5c. RACE: a unique violation on users_email_lower_unique returns the same conflict, not a 500', async () => {
     // WHO: two people registering the same email at the same instant.
     // WHAT: both pass the app-level SELECT; the second's user INSERT hits the
@@ -479,7 +507,7 @@ describe('createTenantWithOwner — duplicate detection', () => {
     });
 
     expect(result).toEqual({ ok: false, conflictMessage: ALREADY_HAVE_ACCOUNT_MESSAGE });
-    expect(queries[1].params).toEqual(['Taken@Test.com']);
+    expect(queries[1].params).toEqual(['taken@test.com']);
     expect(queries.some((q) => q.text.startsWith('INSERT'))).toBe(false);
   });
 
