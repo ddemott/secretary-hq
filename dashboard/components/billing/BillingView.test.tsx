@@ -89,7 +89,7 @@ describe('BillingView — current plan display', () => {
   test('HAPPY: shows Past Due badge when status is past_due', async () => {
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'past_due',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
     });
     render(<BillingView />);
     await waitFor(() => expect(screen.getByText('Past Due')).toBeInTheDocument());
@@ -142,15 +142,19 @@ describe('BillingView — plan cards', () => {
 
   test('HAPPY: shows plan prices', async () => {
     render(<BillingView />);
-    await waitFor(() => expect(screen.getByText('$129')).toBeInTheDocument());
-    expect(screen.getByText('$279')).toBeInTheDocument();
-    expect(screen.getByText('$449')).toBeInTheDocument();
+    // Owner-decided tiers, 2026-09-24 (docs/planning/TODO.md P0 §2).
+    await waitFor(() => expect(screen.getByText('$29.95')).toBeInTheDocument());
+    expect(screen.getByText('$59.95')).toBeInTheDocument();
+    expect(screen.getByText('$149.95')).toBeInTheDocument();
+    expect(screen.getByText('30 calls/month · $1.00 per extra call')).toBeInTheDocument();
+    expect(screen.getByText('100 calls/month · $0.75 per extra call')).toBeInTheDocument();
+    expect(screen.getByText('300 calls/month · $0.60 per extra call')).toBeInTheDocument();
   });
 
   test('HAPPY: active plan shows "Current Plan" badge and disabled button', async () => {
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
     });
     render(<BillingView />);
     await waitFor(() => expect(screen.getByText('Current')).toBeInTheDocument());
@@ -221,25 +225,25 @@ describe('BillingView — billing portal', () => {
 });
 
 describe('BillingView — usage statements', () => {
-  test('HAPPY: renders the current-month meter, overage packs, and monthly statement rows', async () => {
+  test('HAPPY: renders the current-month meter and monthly statement rows', async () => {
     // WHO: owner checking what this month will cost.
     // WHAT: Billing page should show answered vs included, free-call carveout,
-    //       and the pack overage summary. This card is the online statement.
+    //       and the per-month statement rows. This card is the online statement.
     // WHY: if usage fails silently or looks like $0, billing trust dies first.
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
     });
     mockApi.billing.usage.mockResolvedValue({
-      plan: 'solo',
-      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+      plan: 'growth',
+      quota: { includedCalls: 100, overagePerCallUsd: 0.75 },
       billableMinSeconds: 15,
       monthBoundaries: 'utc',
       cap: {
-        plan: 'solo',
-        used: 162,
-        limit: 350,
-        percent: 46,
+        plan: 'growth',
+        used: 62,
+        limit: 100,
+        percent: 62,
         status: 'ok',
         softCapEnforced: true,
         warnRatio: 0.8,
@@ -248,13 +252,12 @@ describe('BillingView — usage statements', () => {
       statements: [
         {
           month: '2026-07',
-          totalCalls: 170,
-          answeredCalls: 162,
+          totalCalls: 70,
+          answeredCalls: 62,
           freeCalls: 8,
-          includedCalls: 350,
+          includedCalls: 100,
           overageCalls: 0,
-          packsApplied: 0,
-          packChargeUsd: 0,
+          overageChargeUsd: 0,
           inProgress: true,
         },
         {
@@ -262,10 +265,9 @@ describe('BillingView — usage statements', () => {
           totalCalls: 90,
           answeredCalls: 84,
           freeCalls: 6,
-          includedCalls: 350,
+          includedCalls: 100,
           overageCalls: 0,
-          packsApplied: 0,
-          packChargeUsd: 0,
+          overageChargeUsd: 0,
           inProgress: false,
         },
       ],
@@ -274,7 +276,7 @@ describe('BillingView — usage statements', () => {
     render(<BillingView />);
 
     expect(await screen.findByText('Usage & Statements')).toBeInTheDocument();
-    expect(screen.getByText(/162 of 350 answered calls/i)).toBeInTheDocument();
+    expect(screen.getByText(/62 of 100 answered calls/i)).toBeInTheDocument();
     expect(screen.getByText(/8 short\/spam \(free\)/i)).toBeInTheDocument();
     expect(screen.getByText('2026-06')).toBeInTheDocument();
     expect(screen.getAllByText('included').length).toBeGreaterThan(0);
@@ -285,17 +287,17 @@ describe('BillingView — usage statements', () => {
   test('HAPPY: 80% warn banner appears when cap.status is warn', async () => {
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
     });
     mockApi.billing.usage.mockResolvedValue({
-      plan: 'solo',
-      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+      plan: 'growth',
+      quota: { includedCalls: 100, overagePerCallUsd: 0.75 },
       billableMinSeconds: 15,
       monthBoundaries: 'utc',
       cap: {
-        plan: 'solo',
-        used: 280,
-        limit: 350,
+        plan: 'growth',
+        used: 80,
+        limit: 100,
         percent: 80,
         status: 'warn',
         softCapEnforced: true,
@@ -305,13 +307,12 @@ describe('BillingView — usage statements', () => {
       statements: [
         {
           month: '2026-07',
-          totalCalls: 290,
-          answeredCalls: 280,
+          totalCalls: 90,
+          answeredCalls: 80,
           freeCalls: 10,
-          includedCalls: 350,
+          includedCalls: 100,
           overageCalls: 0,
-          packsApplied: 0,
-          packChargeUsd: 0,
+          overageChargeUsd: 0,
           inProgress: true,
         },
       ],
@@ -321,36 +322,39 @@ describe('BillingView — usage statements', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/80% of this month/i);
   });
 
-  test('HAPPY: blocked banner when cap.status is blocked under soft-cap', async () => {
+  test('HAPPY: blocked banner is the free tier only — no plan, calls refused at the cap', async () => {
+    // WHO: a tenant with no paid plan whose free allowance is used up.
+    // WHAT: alert says the cap is reached and new calls are refused until a plan is picked.
+    // WHY: since 2026-09-24 only the free tier can be blocked; paid plans bill overage.
     mockApi.billing.status.mockResolvedValue({
-      subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_status: 'inactive',
+      subscription_plan: null,
     });
     mockApi.billing.usage.mockResolvedValue({
-      plan: 'solo',
-      quota: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
+      plan: null,
+      quota: { includedCalls: 50, overagePerCallUsd: null },
       billableMinSeconds: 15,
       monthBoundaries: 'utc',
       cap: {
-        plan: 'solo',
-        used: 350,
-        limit: 350,
+        plan: null,
+        used: 50,
+        limit: 50,
         percent: 100,
         status: 'blocked',
         softCapEnforced: true,
         warnRatio: 0.8,
         blocked: true,
+        freeTierApplied: true,
       },
       statements: [
         {
           month: '2026-07',
-          totalCalls: 360,
-          answeredCalls: 350,
-          freeCalls: 10,
-          includedCalls: 350,
-          overageCalls: 0,
-          packsApplied: 0,
-          packChargeUsd: 0,
+          totalCalls: 55,
+          answeredCalls: 50,
+          freeCalls: 5,
+          includedCalls: 50,
+          overageCalls: null,
+          overageChargeUsd: null,
           inProgress: true,
         },
       ],
@@ -358,7 +362,58 @@ describe('BillingView — usage statements', () => {
 
     render(<BillingView />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/monthly call cap reached/i);
-    expect(screen.getByRole('alert')).toHaveTextContent(/soft-blocked/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/refused until the next billing month/i);
+  });
+
+  test('HAPPY: a paid plan past its allowance shows the per-call overage, and no blocked alert', async () => {
+    // WHO: a tier-2 owner 12 calls past the 100-call allowance.
+    // WHAT: the card says the line keeps answering and shows 12 × $0.75 = +$9.00;
+    //       the statement row shows the charge; there is no "cap reached" alert.
+    // WHEN: cap.status is 'overage'.
+    // WHERE: BillingView current-month section and statement rows.
+    // WHY: owner decision 2026-09-24 — paid plans are never refused; the owner must see
+    //      what the extra calls will cost before the bill arrives.
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'growth',
+    });
+    mockApi.billing.usage.mockResolvedValue({
+      plan: 'growth',
+      quota: { includedCalls: 100, overagePerCallUsd: 0.75 },
+      billableMinSeconds: 15,
+      monthBoundaries: 'utc',
+      cap: {
+        plan: 'growth',
+        used: 112,
+        limit: 100,
+        percent: 100,
+        status: 'overage',
+        softCapEnforced: true,
+        warnRatio: 0.8,
+        blocked: false,
+        freeTierApplied: false,
+      },
+      statements: [
+        {
+          month: '2026-07',
+          totalCalls: 120,
+          answeredCalls: 112,
+          freeCalls: 8,
+          includedCalls: 100,
+          overageCalls: 12,
+          overageChargeUsd: 9,
+          inProgress: true,
+        },
+      ],
+    });
+
+    render(<BillingView />);
+    expect(
+      await screen.findByText(/12 extra calls this month at \$0\.75 each \(\+\$9\.00\)/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/your line keeps answering/i)).toBeInTheDocument();
+    expect(screen.getByText('+$9.00 extra calls')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   test('SAD: usage endpoint failure shows an honest error, never fake zero usage', async () => {
@@ -369,7 +424,7 @@ describe('BillingView — usage statements', () => {
     // WHY: billing outages must be honest; fake $0 is worse than an error.
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
     });
     mockApi.billing.usage.mockRejectedValue(new Error('boom'));
 
@@ -392,7 +447,7 @@ describe('BillingView — post-checkout status refetch', () => {
   test('HAPPY: billing_mode fixture explains that no card is charged', async () => {
     mockApi.billing.status.mockResolvedValue({
       subscription_status: 'active',
-      subscription_plan: 'solo',
+      subscription_plan: 'growth',
       billing_mode: 'fixture',
     });
     render(<BillingView />);
@@ -405,7 +460,7 @@ describe('BillingView — post-checkout status refetch', () => {
       .mockResolvedValueOnce({ subscription_status: 'inactive', subscription_plan: null })
       .mockResolvedValueOnce({
         subscription_status: 'active',
-        subscription_plan: 'solo',
+        subscription_plan: 'growth',
         billing_mode: 'fixture',
       });
 

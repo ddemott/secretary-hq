@@ -29,15 +29,15 @@ const PLANS: {
   {
     key: 'solo',
     name: 'Solo',
-    price: 129,
-    calls: '350 calls/month',
+    price: 29.95,
+    calls: '30 calls/month · $1.00 per extra call',
     features: ['AI receptionist 24/7', 'Appointment booking', 'SMS reminders', 'Knowledge base'],
   },
   {
     key: 'growth',
     name: 'Growth',
-    price: 279,
-    calls: '1,000 calls/month',
+    price: 59.95,
+    calls: '100 calls/month · $0.75 per extra call',
     features: [
       'Everything in Solo',
       'Call transfer to staff',
@@ -48,8 +48,8 @@ const PLANS: {
   {
     key: 'professional',
     name: 'Professional',
-    price: 449,
-    calls: 'Unlimited calls',
+    price: 149.95,
+    calls: '300 calls/month · $0.60 per extra call',
     features: [
       'Everything in Growth',
       'Custom AI persona',
@@ -237,7 +237,7 @@ export default function BillingView() {
                     {isCurrent && <Badge variant="success">Current</Badge>}
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold">${plan.price}</span>
+                    <span className="text-2xl font-bold">${plan.price.toFixed(2)}</span>
                     <span className="text-sm text-muted">/mo</span>
                   </div>
                   <p className="text-xs text-muted mt-1">{plan.calls}</p>
@@ -296,11 +296,12 @@ export default function BillingView() {
                 You&apos;ve used{' '}
                 {usage.cap.percent ?? Math.round((usage.cap.warnRatio || 0.8) * 100)}% of this
                 month&apos;s call allowance
-                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}. New
-                calls keep answering until you hit 100%
-                {usage.cap.softCapEnforced
-                  ? ', then the line soft-blocks until next month or an upgrade.'
-                  : '.'}
+                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}.
+                {usage.quota?.overagePerCallUsd != null
+                  ? ` Past the allowance your line keeps answering, and each extra call is $${usage.quota.overagePerCallUsd.toFixed(2)}.`
+                  : usage.cap.softCapEnforced
+                    ? ' At 100% new calls are refused until next month — pick a plan to keep answering.'
+                    : ''}
               </div>
             )}
             {usage.cap?.status === 'blocked' && (
@@ -314,10 +315,9 @@ export default function BillingView() {
                 }}
               >
                 Monthly call cap reached
-                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}.
-                {usage.cap.softCapEnforced
-                  ? ' New inbound calls are soft-blocked until the next billing month — upgrade for more capacity.'
-                  : ' Overage packs will apply; your line keeps answering.'}
+                {usage.cap.limit != null ? ` (${usage.cap.used} of ${usage.cap.limit})` : ''}. New
+                inbound calls are refused until the next billing month — pick a plan to keep
+                answering.
               </div>
             )}
             {(() => {
@@ -368,11 +368,14 @@ export default function BillingView() {
 
                   {current.overageCalls !== null &&
                     current.overageCalls > 0 &&
-                    !usage.cap?.softCapEnforced && (
+                    current.overageChargeUsd !== null && (
                       <p className="text-xs mt-2" style={{ color: 'var(--warning)' }}>
-                        {current.overageCalls} calls over your plan this month —{' '}
-                        {current.packsApplied} call pack{current.packsApplied === 1 ? '' : 's'} (+$
-                        {current.packChargeUsd}) will apply. Your line keeps answering either way.
+                        {current.overageCalls} extra call{current.overageCalls === 1 ? '' : 's'}{' '}
+                        this month
+                        {usage.quota?.overagePerCallUsd != null
+                          ? ` at $${usage.quota.overagePerCallUsd.toFixed(2)} each`
+                          : ''}{' '}
+                        (+${current.overageChargeUsd.toFixed(2)}). Your line keeps answering.
                       </p>
                     )}
                 </div>
@@ -395,10 +398,10 @@ export default function BillingView() {
                       {statement.freeCalls > 0 ? ` · ${statement.freeCalls} free` : ''}
                     </span>
                     <span className="ml-3 font-semibold">
-                      {statement.packChargeUsd == null
+                      {statement.overageChargeUsd == null
                         ? '—'
-                        : statement.packChargeUsd > 0
-                          ? `+$${statement.packChargeUsd} packs`
+                        : statement.overageChargeUsd > 0
+                          ? `+$${statement.overageChargeUsd.toFixed(2)} extra calls`
                           : 'included'}
                     </span>
                   </div>

@@ -381,10 +381,10 @@ export interface AiCostBreakdown extends AiCostSummary {
 }
 
 export interface PlanQuota {
-  /** null = unlimited (Professional). */
+  /** null = unlimited (only via a PLAN_CAP_* env override). */
   includedCalls: number | null;
-  packCalls: number;
-  packPriceUsd: number;
+  /** USD billed per answered call past includedCalls; null = not billed (free tier). */
+  overagePerCallUsd: number | null;
 }
 
 export interface MonthlyStatement {
@@ -394,12 +394,16 @@ export interface MonthlyStatement {
   freeCalls: number;
   includedCalls: number | null;
   overageCalls: number | null;
-  packsApplied: number | null;
-  packChargeUsd: number | null;
+  /** overageCalls × the plan's per-call rate, USD; null when not billed. */
+  overageChargeUsd: number | null;
   inProgress: boolean;
 }
 
-export type UsageCapLevel = 'ok' | 'warn' | 'blocked' | 'unlimited';
+/**
+ * 'overage' = a paid plan past its allowance: calls keep answering and bill per call.
+ * 'blocked' = free tier at its limit: new calls are refused.
+ */
+export type UsageCapLevel = 'ok' | 'warn' | 'overage' | 'blocked' | 'unlimited';
 
 export interface UsageCapEvaluation {
   plan: string | null;

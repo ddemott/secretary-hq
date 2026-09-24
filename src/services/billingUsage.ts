@@ -3,20 +3,25 @@
  *
  * Billing model: answered call only. A call bills when it completed, the caller
  * actually spoke, and it lasted at least BILLABLE_MIN_SECONDS. Silent rooms,
- * instant hang-ups, and spam are free. Soft-cap mode (default) warns at 80% and
- * blocks new voice-session starts at the plan limit — see evaluateUsageCap() +
- * voice-session-start.
+ * instant hang-ups, and spam are free.
+ *
+ * Paid plans (decided 2026-09-24, docs/planning/TODO.md P0 §2) include a call
+ * allowance and bill every answered call past it at the plan's per-call overage
+ * rate. A paid plan's line is NEVER refused at the allowance — turning away the
+ * business's own customer is the one outcome the owner ruled out. The meter warns
+ * at 80% and reports 'overage' past 100%.
  *
  * Integrity rules (margin protection):
  * - Null/unknown plan under soft-cap → explicit free-tier finite cap (never
- *   silent unlimited). Professional stays unlimited via PLAN_QUOTAS.
+ *   silent unlimited). This is the only case that still blocks new voice-session
+ *   starts at the limit — see evaluateUsageCap() + voice-session-start.
  * - Soft-delete does NOT wipe the meter: billable counts ignore is_deleted.
  * - In-flight sessions reserve capacity: active rows in the UTC month count
  *   toward the cap alongside completed billable calls (closes TOCTOU overshoot).
  *
- * Cap numbers are Dale-owned placeholders: override via PLAN_CAP_SOLO /
- * PLAN_CAP_GROWTH / PLAN_CAP_PROFESSIONAL / PLAN_CAP_FREE without a deploy of
- * magic numbers.
+ * Allowances are owner-decided (see PLAN_QUOTAS) and can still be retuned via
+ * PLAN_CAP_SOLO / PLAN_CAP_GROWTH / PLAN_CAP_PROFESSIONAL / PLAN_CAP_FREE without
+ * a deploy.
  */
 import type { Pool, PoolClient } from 'pg';
 
@@ -29,20 +34,29 @@ const CALLER_LINE_RE = '(?:^|\\n)Caller(?: \\[\\d+:\\d{2}\\])?: ';
 export const FREE_TIER_INCLUDED_CALLS = 50;
 
 export interface PlanQuota {
-  /** null = unlimited (Professional default). */
+  /** null = unlimited (only via a PLAN_CAP_* env override). */
   includedCalls: number | null;
-  packCalls: number;
-  packPriceUsd: number;
+  /** USD billed per answered call past includedCalls; null = not billed (free tier). */
+  overagePerCallUsd: number | null;
 }
 
-/** Static defaults — env overrides applied by resolvePlanQuota(). */
+/**
+ * Static defaults — env overrides applied by resolvePlanQuota().
+ * Owner decision 2026-09-24: tier 1 (solo) $29.95 / 30 calls + $1.00 each extra,
+ * tier 2 (growth) $59.95 / 100 + $0.75, tier 3 (professional) $149.95 / 300 + $0.60.
+ * The extra-call rate falls by tier on purpose, so upgrading is the cheaper path.
+ */
 export const PLAN_QUOTAS: Record<string, PlanQuota> = {
-  solo: { includedCalls: 350, packCalls: 30, packPriceUsd: 25 },
-  growth: { includedCalls: 1000, packCalls: 30, packPriceUsd: 25 },
-  professional: { includedCalls: null, packCalls: 30, packPriceUsd: 25 },
+  solo: { includedCalls: 30, overagePerCallUsd: 1.0 },
+  growth: { includedCalls: 100, overagePerCallUsd: 0.75 },
+  professional: { includedCalls: 300, overagePerCallUsd: 0.6 },
 };
 
-export type UsageCapLevel = 'ok' | 'warn' | 'blocked' | 'unlimited';
+/**
+ * 'overage' = a paid plan past its allowance: calls keep answering and bill per call.
+ * 'blocked' = free tier at its limit: new calls are refused.
+ */
+export type UsageCapLevel = 'ok' | 'warn' | 'overage' | 'blocked' | 'unlimited';
 
 export interface UsageCapEvaluation {
   plan: string | null;
@@ -65,8 +79,8 @@ export interface MonthlyStatement {
   freeCalls: number;
   includedCalls: number | null;
   overageCalls: number | null;
-  packsApplied: number | null;
-  packChargeUsd: number | null;
+  /** overageCalls × the plan's overagePerCallUsd, in USD (2 dp); null when not billed. */
+  overageChargeUsd: number | null;
   inProgress: boolean;
 }
 
@@ -165,16 +179,18 @@ export function isSoftCapEnforced(): boolean {
 }
 
 /**
- * Map used/limit into ok | warn | blocked | unlimited.
- * warn fires at warnRatio * limit (inclusive); blocked at limit (inclusive).
+ * Map used/limit into ok | warn | overage | blocked | unlimited.
+ * warn fires at warnRatio * limit (inclusive). At limit (inclusive) a plan that
+ * bills overage reports 'overage'; one that does not (free tier) reports 'blocked'.
  */
 export function usageCapStatus(
   used: number,
   limit: number | null,
-  warnRatio: number = getWarnRatio()
+  warnRatio: number = getWarnRatio(),
+  billsOverage = false
 ): UsageCapLevel {
   if (limit === null || limit <= 0) return 'unlimited';
-  if (used >= limit) return 'blocked';
+  if (used >= limit) return billsOverage ? 'overage' : 'blocked';
   if (used >= limit * warnRatio) return 'warn';
   return 'ok';
 }
@@ -238,7 +254,9 @@ function buildCapEvaluation(
   freeTierApplied: boolean
 ): UsageCapEvaluation {
   const warnRatio = getWarnRatio();
-  const status = usageCapStatus(used, limit, warnRatio);
+  // Only a recognized paid plan bills overage; the free-tier fallback does not.
+  const billsOverage = resolvePlanQuota(plan)?.overagePerCallUsd != null;
+  const status = usageCapStatus(used, limit, warnRatio, billsOverage);
   const softCapEnforced = isSoftCapEnforced();
   const percent =
     limit !== null && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null;
@@ -292,15 +310,11 @@ export async function computeUsageStatements(
   const recognizedQuota = resolvePlanQuota(plan);
   const freeTierApplied = isFreeTierPlan(plan);
   // Soft-cap free-tier: synthesize a quota so the dashboard meter has a limit.
-  // Pack math only applies to recognized paid plans (not free-tier fallback).
+  // Overage billing only applies to recognized paid plans (not free-tier fallback).
   const quota: PlanQuota | null = recognizedQuota
     ? recognizedQuota
     : freeTierApplied
-      ? {
-          includedCalls: freeTierCallLimit(),
-          packCalls: PLAN_QUOTAS.solo.packCalls,
-          packPriceUsd: PLAN_QUOTAS.solo.packPriceUsd,
-        }
+      ? { includedCalls: freeTierCallLimit(), overagePerCallUsd: null }
       : null;
 
   // Metering ignores is_deleted (C2). UI lists still filter deleted separately.
@@ -324,15 +338,14 @@ export async function computeUsageStatements(
   const currentMonth = new Date().toISOString().slice(0, 7);
   const included = quota?.includedCalls ?? null;
   const statements: MonthlyStatement[] = usage.rows.map((row) => {
-    // Pack overage only for recognized paid plans when soft-cap is off path;
-    // free-tier under soft-cap is hard-capped, not pack-billed.
-    const packEligible = recognizedQuota != null;
+    // Overage only for recognized paid plans; free-tier under soft-cap is
+    // hard-capped, never billed.
+    const rate = recognizedQuota?.overagePerCallUsd ?? null;
     const overageCalls =
-      packEligible && included !== null ? Math.max(0, row.answered - included) : null;
-    const packsApplied =
-      packEligible && quota && overageCalls !== null && included !== null
-        ? Math.ceil(overageCalls / quota.packCalls)
-        : null;
+      rate !== null && included !== null ? Math.max(0, row.answered - included) : null;
+    // Round to cents once, on the total, so 3 × $0.60 is $1.80 not 1.7999999999999998.
+    const overageChargeUsd =
+      rate !== null && overageCalls !== null ? Math.round(overageCalls * rate * 100) / 100 : null;
     return {
       month: row.month,
       totalCalls: row.total,
@@ -340,8 +353,7 @@ export async function computeUsageStatements(
       freeCalls: row.total - row.answered,
       includedCalls: included,
       overageCalls,
-      packsApplied,
-      packChargeUsd: quota && packsApplied !== null ? packsApplied * quota.packPriceUsd : null,
+      overageChargeUsd,
       inProgress: row.month === currentMonth,
     };
   });
