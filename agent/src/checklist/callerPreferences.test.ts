@@ -71,9 +71,7 @@ function makeKit(
 }
 
 const savedCalls = (fakes: ReturnType<typeof makeKit>['fakes']) =>
-  fakes.save_customer_preference.execute.mock.calls.map(
-    (c) => c[0] as Record<string, string>
-  );
+  fakes.save_customer_preference.execute.mock.calls.map((c) => c[0] as Record<string, string>);
 
 describe('remember_preference — offered on every call, keys from the business catalog', () => {
   it('HAPPY: present before any purpose is set, with the catalog keys as its only choices', () => {
@@ -237,6 +235,41 @@ describe('when the preference is written to the profile', () => {
     expect(savedCalls(fakes)).toEqual([
       { phone: '+15550001111', key: 'preferred_time_of_day', value: 'actually, afternoons' },
     ]);
+  });
+
+  it('REGRESSION: a correction made while the first save is in flight is not lost', async () => {
+    // Found in risk review of this feature's first version: the flush deleted the key
+    // unconditionally after a successful save, so "mornings" (in flight) was
+    // stored and "actually, afternoons" (said meanwhile) vanished.
+    const { toolkit, fakes } = makeKit({
+      knownCallerName: 'Camille',
+      callerPhone: '+15551234567',
+    });
+    let releaseFirst: (v: string) => void = () => {};
+    fakes.save_customer_preference.execute
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            releaseFirst = resolve;
+          })
+      )
+      .mockResolvedValue(ok({ saved: true }));
+
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'preferred_time_of_day',
+      value: 'mornings',
+    });
+    await vi.waitFor(() => expect(fakes.save_customer_preference.execute).toHaveBeenCalledTimes(1));
+    // Caller corrects themselves while "mornings" is still being saved.
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'preferred_time_of_day',
+      value: 'actually, afternoons',
+    });
+    releaseFirst(ok({ saved: true }));
+
+    await vi.waitFor(() =>
+      expect(savedCalls(fakes).map((c) => c.value)).toEqual(['mornings', 'actually, afternoons'])
+    );
   });
 
   it('SAD: a save that does not stick stays in the call’s memory and is retried on the next trigger', async () => {

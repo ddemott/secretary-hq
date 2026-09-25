@@ -871,7 +871,10 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         try {
           const raw = await shape(save).execute({ phone: profilePhone, key, value }, undefined);
           if (parseResult(raw)?.saved === true) {
-            pendingPreferences.delete(key);
+            // Only clear it if it is still the value we just saved. A correction
+            // that arrived WHILE the save was in flight ("actually, afternoons")
+            // stays pending, and the flush it queued writes it next.
+            if (pendingPreferences.get(key) === value) pendingPreferences.delete(key);
           } else {
             getLogger().warn(
               { event: 'caller_preference_not_saved', key, result: String(raw).slice(0, 200) },
