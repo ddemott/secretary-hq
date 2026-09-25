@@ -130,6 +130,33 @@ REVOKE ALL ON FUNCTION seed_business_template(uuid, text, text, text, jsonb) FRO
 -- PR). Do not hand-edit an existing template's rows — templates are read-only;
 -- add a new migration instead.
 
+-- ── Fix the first two templates' default service names ───────────────────────
+-- The fallback service a call books when nothing else matches is picked by the
+-- business type's starter default NAME (defaultServicePolicy): auto-shop
+-- "Diagnostic visit", salon "Haircut". 20260925000100 named them differently,
+-- so no default was set and an unmatched "my car is making a noise" booked a Tire
+-- Rotation; "a haircut" matched the 30-minute men's cut. Renamed here, under the
+-- maintenance flag, so every template carries its type's default by name
+-- (tests/integration/businessTemplates.realdb.test.ts enforces it).
+UPDATE services SET name = 'Diagnostic visit',
+       description = 'Find the cause of a noise, warning light or other problem'
+ WHERE tenant_id = '7e3a0000-0000-4000-8000-00000000a001'
+   AND name = 'Check Engine Light Diagnostic';
+-- ...and the default must be takeable by BOTH placeholders: Mechanic 2 could
+-- not diagnose, so half the shop could never take the most common call.
+UPDATE employees SET skills = array_append(skills, 'Diagnostics')
+ WHERE tenant_id = '7e3a0000-0000-4000-8000-00000000a001'
+   AND name = 'Mechanic 2' AND NOT ('Diagnostics' = ANY (skills));
+INSERT INTO service_employee (tenant_id, service_id, employee_id)
+SELECT s.tenant_id, s.service_id, e.employee_id
+  FROM services s JOIN employees e ON e.tenant_id = s.tenant_id
+ WHERE s.tenant_id = '7e3a0000-0000-4000-8000-00000000a001'
+   AND s.name = 'Diagnostic visit' AND e.name = 'Mechanic 2'
+ON CONFLICT DO NOTHING;
+UPDATE services SET name = 'Haircut', description = 'Cut and style'
+ WHERE tenant_id = '7e3a0000-0000-4000-8000-00000000a002'
+   AND name = 'Women''s Haircut';
+
 -- Answering & Scheduling Service Template (answering-service → owner_for_hire)
 -- Research sources:
 --   https://www.freelancerfaqs.com/plan-effective-discovery-call/
@@ -158,7 +185,11 @@ SELECT seed_business_template(
       "description": "The main place meetings happen, in person or by video."
     },
     {
-      "name": "Phone Line",
+      "name": "Phone Line 1",
+      "description": "The phone or video line used for calls."
+    },
+    {
+      "name": "Phone Line 2",
       "description": "The phone or video line used for calls."
     }
   ],
@@ -188,7 +219,8 @@ SELECT seed_business_template(
         "Discovery calls"
       ],
       "resources": [
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -199,8 +231,9 @@ SELECT seed_business_template(
         "Discovery calls"
       ],
       "resources": [
-        "Phone Line",
-        "Main Office"
+        "Main Office",
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -212,7 +245,8 @@ SELECT seed_business_template(
       ],
       "resources": [
         "Main Office",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -223,7 +257,8 @@ SELECT seed_business_template(
         "Client meetings"
       ],
       "resources": [
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -308,7 +343,8 @@ SELECT seed_business_template(
       "name": "Baker 2",
       "skills": [
         "Order taking",
-        "Tastings"
+        "Tastings",
+        "Custom cakes"
       ]
     }
   ],
@@ -1019,7 +1055,11 @@ SELECT seed_business_template(
       "description": "Space for consults."
     },
     {
-      "name": "On Location",
+      "name": "On Location 1",
+      "description": "Visits to the event location."
+    },
+    {
+      "name": "On Location 2",
       "description": "Visits to the event location."
     }
   ],
@@ -1083,7 +1123,8 @@ SELECT seed_business_template(
         "Site visits"
       ],
       "resources": [
-        "On Location"
+        "On Location 1",
+        "On Location 2"
       ]
     },
     {
@@ -1173,7 +1214,8 @@ SELECT seed_business_template(
     {
       "name": "Cleaner 2",
       "skills": [
-        "Standard cleaning"
+        "Standard cleaning",
+        "Estimates"
       ]
     }
   ],
@@ -1248,7 +1290,7 @@ SELECT seed_business_template(
     {
       "title": "Do I need to be home?",
       "section": "Visit",
-      "content": "No, many clients are not home. You can let us in or tell us how to get in when you book."
+      "content": "No, many clients are not home. Please arrange how we get in directly with the owner rather than sharing door or lockbox codes over the phone."
     },
     {
       "title": "How long does a cleaning take?",
@@ -1389,7 +1431,7 @@ SELECT seed_business_template(
     {
       "title": "How do appointments work?",
       "section": "Booking",
-      "content": "We book an arrival window rather than an exact time, and we set aside enough time to look at the problem and fix it when we can."
+      "content": "We book a time for an electrician to come out, and we set aside enough time to look at the problem and fix it when we can."
     },
     {
       "title": "What can I do to get ready?",
@@ -1528,7 +1570,7 @@ SELECT seed_business_template(
     {
       "title": "My spring broke. Can I still open the door?",
       "section": "Service",
-      "content": "Please don't try to force the door open or fix the spring yourself. Leave it closed and we'll send a technician to handle it."
+      "content": "Please don't try to force the door open or fix the spring yourself. Leave it closed and we can book a technician to look at it."
     },
     {
       "title": "Do you work on all brands?",
@@ -1599,7 +1641,8 @@ SELECT seed_business_template(
       "name": "Technician 2",
       "skills": [
         "Maintenance",
-        "Thermostats"
+        "Thermostats",
+        "Diagnostics and repair"
       ]
     }
   ],
@@ -1711,7 +1754,11 @@ SELECT seed_business_template(
       "description": "Second office for in-person appointments."
     },
     {
-      "name": "Phone Line",
+      "name": "Phone Line 1",
+      "description": "For phone and video appointments."
+    },
+    {
+      "name": "Phone Line 2",
       "description": "For phone and video appointments."
     }
   ],
@@ -1743,7 +1790,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -1756,7 +1804,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -1767,8 +1816,9 @@ SELECT seed_business_template(
         "Policy service"
       ],
       "resources": [
-        "Phone Line",
-        "Office 1"
+        "Office 1",
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -1871,7 +1921,8 @@ SELECT seed_business_template(
       "name": "Crew Lead 2",
       "skills": [
         "Lawn care",
-        "Cleanup"
+        "Cleanup",
+        "Estimates"
       ]
     }
   ],
@@ -1951,7 +2002,7 @@ SELECT seed_business_template(
     {
       "title": "Can I set up regular mowing?",
       "section": "Booking",
-      "content": "Yes, we can put you on a regular schedule for the season, such as weekly or every other week."
+      "content": "Many customers have regular mowing through the season. We can book your first visit and talk about a schedule then."
     },
     {
       "title": "Do you haul away yard waste?",
@@ -2101,11 +2152,6 @@ SELECT seed_business_template(
       "title": "Can I get a fill if another studio did my lashes?",
       "section": "Booking",
       "content": "Please tell us when you book. Depending on how many extensions are left, we may recommend a removal and a new set."
-    },
-    {
-      "title": "What if I have sensitive eyes?",
-      "section": "Policies",
-      "content": "Let us know when you book. We can talk it through at a consultation before your first set."
     }
   ]
 }$spec$::jsonb
@@ -2144,7 +2190,11 @@ SELECT seed_business_template(
       "description": "Second office or conference room."
     },
     {
-      "name": "Phone Line",
+      "name": "Phone Line 1",
+      "description": "For phone and video calls."
+    },
+    {
+      "name": "Phone Line 2",
       "description": "For phone and video calls."
     }
   ],
@@ -2161,7 +2211,8 @@ SELECT seed_business_template(
       "name": "Attorney 2",
       "skills": [
         "Client intake",
-        "Case management"
+        "Case management",
+        "Case evaluation"
       ]
     }
   ],
@@ -2176,7 +2227,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -2187,7 +2239,8 @@ SELECT seed_business_template(
         "Case evaluation"
       ],
       "resources": [
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -2198,8 +2251,9 @@ SELECT seed_business_template(
         "Case management"
       ],
       "resources": [
-        "Phone Line",
-        "Office 1"
+        "Office 1",
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -2899,6 +2953,10 @@ SELECT seed_business_template(
     {
       "name": "Studio 1",
       "description": "The training floor with equipment."
+    },
+    {
+      "name": "Studio 2",
+      "description": "The training floor with equipment."
     }
   ],
   "staff": [
@@ -2926,7 +2984,8 @@ SELECT seed_business_template(
         "Personal training"
       ],
       "resources": [
-        "Studio 1"
+        "Studio 1",
+        "Studio 2"
       ]
     },
     {
@@ -2937,7 +2996,8 @@ SELECT seed_business_template(
         "Personal training"
       ],
       "resources": [
-        "Studio 1"
+        "Studio 1",
+        "Studio 2"
       ]
     },
     {
@@ -2948,7 +3008,8 @@ SELECT seed_business_template(
         "Personal training"
       ],
       "resources": [
-        "Studio 1"
+        "Studio 1",
+        "Studio 2"
       ]
     },
     {
@@ -2959,7 +3020,8 @@ SELECT seed_business_template(
         "Fitness assessment"
       ],
       "resources": [
-        "Studio 1"
+        "Studio 1",
+        "Studio 2"
       ]
     },
     {
@@ -2971,7 +3033,8 @@ SELECT seed_business_template(
         "Small group training"
       ],
       "resources": [
-        "Studio 1"
+        "Studio 1",
+        "Studio 2"
       ]
     }
   ],
@@ -3167,7 +3230,11 @@ SELECT seed_business_template(
       "description": "Second studio or backdrop area."
     },
     {
-      "name": "On Location",
+      "name": "On Location 1",
+      "description": "Sessions held away from the studio."
+    },
+    {
+      "name": "On Location 2",
       "description": "Sessions held away from the studio."
     }
   ],
@@ -3223,7 +3290,8 @@ SELECT seed_business_template(
       "resources": [
         "Studio 1",
         "Studio 2",
-        "On Location"
+        "On Location 1",
+        "On Location 2"
       ]
     },
     {
@@ -3235,7 +3303,8 @@ SELECT seed_business_template(
       ],
       "resources": [
         "Studio 1",
-        "On Location"
+        "On Location 1",
+        "On Location 2"
       ]
     },
     {
@@ -3246,7 +3315,8 @@ SELECT seed_business_template(
         "Events"
       ],
       "resources": [
-        "On Location"
+        "On Location 1",
+        "On Location 2"
       ]
     },
     {
@@ -3337,7 +3407,8 @@ SELECT seed_business_template(
       "name": "Plumber 2",
       "skills": [
         "Drain cleaning",
-        "Fixtures"
+        "Fixtures",
+        "Diagnostics and repair"
       ]
     }
   ],
@@ -3417,7 +3488,7 @@ SELECT seed_business_template(
     {
       "title": "How do appointments work?",
       "section": "Booking",
-      "content": "We book an arrival window rather than an exact time, and set aside enough time to find the problem and fix it when we can."
+      "content": "We book a time for a plumber to come out, and set aside enough time to find the problem and fix it when we can."
     },
     {
       "title": "Can you clear a main sewer line?",
@@ -3460,7 +3531,11 @@ SELECT seed_business_template(
       "description": "Second office or meeting room."
     },
     {
-      "name": "Phone Line",
+      "name": "Phone Line 1",
+      "description": "For phone and video calls."
+    },
+    {
+      "name": "Phone Line 2",
       "description": "For phone and video calls."
     }
   ],
@@ -3492,7 +3567,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -3527,7 +3603,8 @@ SELECT seed_business_template(
         "Seller representation"
       ],
       "resources": [
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -3538,7 +3615,8 @@ SELECT seed_business_template(
         "Buyer representation"
       ],
       "resources": [
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     }
   ],
@@ -3754,7 +3832,11 @@ SELECT seed_business_template(
       "description": "Second office for client appointments."
     },
     {
-      "name": "Phone Line",
+      "name": "Phone Line 1",
+      "description": "For phone and video appointments."
+    },
+    {
+      "name": "Phone Line 2",
       "description": "For phone and video appointments."
     }
   ],
@@ -3786,7 +3868,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -3834,7 +3917,8 @@ SELECT seed_business_template(
       "resources": [
         "Office 1",
         "Office 2",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     },
     {
@@ -3846,7 +3930,8 @@ SELECT seed_business_template(
       ],
       "resources": [
         "Office 1",
-        "Phone Line"
+        "Phone Line 1",
+        "Phone Line 2"
       ]
     }
   ],
@@ -3899,6 +3984,10 @@ SELECT seed_business_template(
     {
       "name": "Assessments",
       "description": "Checking where a student is before tutoring starts."
+    },
+    {
+      "name": "General tutoring",
+      "description": "Homework help and general subject support"
     }
   ],
   "resources": [
@@ -3911,7 +4000,11 @@ SELECT seed_business_template(
       "description": "Tutoring room."
     },
     {
-      "name": "Online Room",
+      "name": "Online Room 1",
+      "description": "For online sessions."
+    },
+    {
+      "name": "Online Room 2",
       "description": "For online sessions."
     }
   ],
@@ -3922,14 +4015,17 @@ SELECT seed_business_template(
         "Math",
         "Reading and writing",
         "Test prep",
-        "Assessments"
+        "Assessments",
+        "General tutoring"
       ]
     },
     {
       "name": "Tutor 2",
       "skills": [
         "Math",
-        "Reading and writing"
+        "Reading and writing",
+        "General tutoring",
+        "Assessments"
       ]
     }
   ],
@@ -3944,7 +4040,8 @@ SELECT seed_business_template(
       "resources": [
         "Room 1",
         "Room 2",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     },
     {
@@ -3952,12 +4049,13 @@ SELECT seed_business_template(
       "description": "A regular one-on-one tutoring session.",
       "minutes": 60,
       "skills": [
-        "Math"
+        "General tutoring"
       ],
       "resources": [
         "Room 1",
         "Room 2",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     },
     {
@@ -3970,7 +4068,8 @@ SELECT seed_business_template(
       "resources": [
         "Room 1",
         "Room 2",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     },
     {
@@ -3978,12 +4077,13 @@ SELECT seed_business_template(
       "description": "A shorter session for homework questions.",
       "minutes": 30,
       "skills": [
-        "Math"
+        "General tutoring"
       ],
       "resources": [
         "Room 1",
         "Room 2",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     },
     {
@@ -3995,7 +4095,8 @@ SELECT seed_business_template(
       ],
       "resources": [
         "Room 1",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     },
     {
@@ -4007,7 +4108,8 @@ SELECT seed_business_template(
       ],
       "resources": [
         "Room 1",
-        "Online Room"
+        "Online Room 1",
+        "Online Room 2"
       ]
     }
   ],
@@ -4030,7 +4132,7 @@ SELECT seed_business_template(
     {
       "title": "Can a parent stay during the session?",
       "section": "Policies",
-      "content": "Parents are welcome to ask about this when booking, and the tutor can share progress at the end."
+      "content": "Parents are welcome to stay if the tutor agrees, and the tutor can share progress at the end of the session."
     }
   ]
 }$spec$::jsonb

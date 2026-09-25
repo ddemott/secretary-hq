@@ -218,6 +218,41 @@ describe('a template for every signup business type', () => {
     }
   });
 
+  it("HAPPY: every template carries its business type's default starter service, and both placeholders can take it", async () => {
+    // WHY: defaultServicePolicy picks the fallback a call books by the starter
+    //      default's NAME. Auto Shop and Salon were first seeded without theirs,
+    //      so "my car is making a noise" fell through to a Tire Rotation.
+    const { STARTER_SERVICES } = await import('../../shared/starterServices');
+    const all = await root.query<{ tenant_id: string; business_type: string }>(
+      'SELECT tenant_id, business_type FROM tenants WHERE is_template'
+    );
+    for (const { tenant_id: id, business_type: bt } of all.rows) {
+      const def = (STARTER_SERVICES[bt] ?? []).find((s) => s.is_default);
+      if (!def) continue;
+      const res = await root.query<{ staff: number }>(
+        `SELECT count(se.employee_id)::int AS staff
+           FROM services s LEFT JOIN service_employee se USING (service_id)
+          WHERE s.tenant_id = $1 AND lower(s.name) = lower($2)
+          GROUP BY s.service_id`,
+        [id, def.name]
+      );
+      expect(res.rows.length, `${bt} is missing its default "${def.name}"`).toBe(1);
+      expect(res.rows[0].staff, `${bt}: only one placeholder can take "${def.name}"`).toBe(2);
+    }
+  });
+
+  it('SAD: no knowledge starter promises what the product cannot do, or asks for codes or health details', async () => {
+    // Arrival windows, dispatch, standing schedules: not supported. Door/lockbox
+    // codes and health details must never be collected on a recorded call.
+    const docs = await root.query<{ business_type: string; content: string }>(
+      `SELECT t.business_type, d.title || ' ' || d.content AS content
+         FROM tenant_docs d JOIN tenants t USING (tenant_id) WHERE t.is_template`
+    );
+    const banned =
+      /arrival window|we'?ll send a technician|put you on a regular schedule|tell us how to get in|sensitive eyes|medical|medication/i;
+    for (const d of docs.rows) expect(d.content, d.business_type).not.toMatch(banned);
+  });
+
   it.each([
     ['plumber', 'plumber', 'Plumber 1'],
     ['law-firm', 'law_firm', 'Attorney 1'],

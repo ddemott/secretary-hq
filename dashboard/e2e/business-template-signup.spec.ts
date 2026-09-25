@@ -57,7 +57,7 @@ test.describe('new business starts from its template', () => {
     expect(services.ok()).toBe(true);
     const rows = (await services.json()) as { name: string; price: string | null }[];
     expect(rows.map((r) => r.name)).toEqual(
-      expect.arrayContaining(["Women's Haircut", 'Highlights', 'Blowout'])
+      expect.arrayContaining(['Haircut', 'Highlights', 'Blowout'])
     );
     expect(rows.every((r) => r.price === null)).toBe(true);
 
@@ -69,7 +69,9 @@ test.describe('new business starts from its template', () => {
 
     // Setup shows the copied services and placeholder stylists.
     await page.goto('/dashboard?tab=setup&subtab=services');
-    await expect(page.getByText("Women's Haircut").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Haircut', { exact: true }).first()).toBeVisible({
+      timeout: 15_000,
+    });
     await page.goto('/dashboard?tab=setup&subtab=employees');
     await expect(page.getByText('Stylist 1').first()).toBeVisible({ timeout: 15_000 });
 
