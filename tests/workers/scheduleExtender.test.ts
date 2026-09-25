@@ -87,6 +87,8 @@ describe('extendSchedulesNow', () => {
 
     expect(result).toEqual({ rowsInserted: 0, tenantsFailed: 0 });
     expect(mockQuery.mock.calls[0][0]).toMatch(/is_deleted\s*=\s*false/);
+    // Template businesses are read-only (a write would be refused) and have no hours.
+    expect(mockQuery.mock.calls[0][0]).toMatch(/is_template\s*=\s*false/);
     expect(mockExtend).not.toHaveBeenCalled();
   });
 

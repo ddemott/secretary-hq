@@ -28,6 +28,7 @@
 import type { Pool } from 'pg';
 import { verticalForBusinessType } from '../../../shared/checklistPresetDerivation';
 import { isHipaaVertical } from '../../../shared/hipaaVerticalDenylist';
+import { copyBusinessTemplate } from './businessTemplate';
 
 /**
  * Shown when someone signs up with an email that already has an account.
@@ -146,7 +147,7 @@ export async function createTenantWithOwner(
       'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
       [params.tenantName, params.businessType, consentGateRequired]
     );
-    const tenantId = tenantRes.rows[0].tenant_id;
+    const tenantId = tenantRes.rows[0].tenant_id as string;
 
     const bcrypt = await import('bcrypt');
     const passwordHash = await bcrypt.hash(params.ownerPassword, 10);
@@ -201,12 +202,19 @@ export async function createTenantWithOwner(
     // still a valid business — the agent falls back to the platform TS library,
     // which is exactly today's behaviour. Failing tenant creation over a
     // template copy would trade a working signup for a cosmetic one.
+    //
+    // The SAVEPOINT is what makes "best-effort" true. Without it a failed copy
+    // aborts the whole transaction in Postgres, the catch below swallows the
+    // error, and COMMIT then silently rolls back the business being created.
+    await client.query('SAVEPOINT question_tree_copy');
     try {
       await client.query('SELECT copy_question_tree_templates_to_tenant($1, $2)', [
         tenantId,
         [verticalForBusinessType(params.businessType)],
       ]);
+      await client.query('RELEASE SAVEPOINT question_tree_copy');
     } catch (err) {
+      await client.query('ROLLBACK TO SAVEPOINT question_tree_copy');
       // Not fatal, but never silent: a tenant on the fallback library cannot be
       // configured per-client until someone notices and copies the templates in.
       console.warn(
@@ -216,6 +224,11 @@ export async function createTenantWithOwner(
         err
       );
     }
+
+    // GIVE THE NEW BUSINESS ITS OWN COPY OF ITS TEMPLATE BUSINESS — services
+    // (no prices), bays/chairs, skills, placeholder staff, who-does-what and
+    // knowledge starters — for the owner to fill out in the setup wizard.
+    await copyBusinessTemplate(client, tenantId, params.businessType);
 
     await client.query('COMMIT');
     return { ok: true, tenantId, userId, consentGateRequired };

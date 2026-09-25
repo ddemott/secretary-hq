@@ -300,6 +300,12 @@ UPDATE business_templates SET
  WHERE business_type = 'yoga-studio';
 -- END GENERATED: starter services
 
+-- ── Template businesses (Auto Shop Template, Salon Template) ────────────────
+-- Same reason as section 10: a --baseline rebuild never runs data migrations,
+-- so the templates would be missing and signup would copy nothing. The
+-- migration is written to be re-run safely, so include it rather than copy it.
+\ir migrations/20260925000100_seed_business_templates.sql
+
 -- ── Booking-readiness backfill (mirrors migration 20260630000000) ──────────
 -- Runs last so any seeded tenant can actually book: (1) every employee mapped
 -- to a service holds that service's required_skills (else the booking RPC
@@ -317,7 +323,9 @@ FROM (
   GROUP BY se.employee_id
 ) agg
 WHERE e.employee_id = agg.employee_id
-  AND NOT (COALESCE(e.skills, '{}') @> agg.req);
+  AND NOT (COALESCE(e.skills, '{}') @> agg.req)
+  -- Template businesses are read-only (20260925000000); they are complete by construction.
+  AND NOT tenant_is_template(e.tenant_id);
 
 UPDATE tenants t
 SET default_service_id = (
@@ -328,7 +336,8 @@ SET default_service_id = (
   ORDER BY ABS(COALESCE(s.duration_minutes, 30) - 30) ASC, s.name ASC
   LIMIT 1
 )
-WHERE t.default_service_id IS NULL;
+WHERE t.default_service_id IS NULL
+  AND NOT t.is_template;
 
 -- Seeded logins are known-good addresses: mark them email-verified so a
 -- fresh local/E2E database behaves like prod, where every account that

@@ -430,7 +430,15 @@ describe('POST /tenants/:id/update-config — business_type change cleanup', () 
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ success: true });
+    // The mocked copy returns no row, i.e. no template was copied.
+    expect(res.json()).toEqual({ success: true, templateCopied: false });
+    // Placeholder staff are cleared too, then the new type's template copy is
+    // asked for — inside the same transaction, before COMMIT (2026-09-25).
+    const texts = queries.map((q) => q.text);
+    const copyAt = texts.findIndex((t) => t.includes('copy_business_template_to_tenant'));
+    expect(texts.some((t) => t.includes('DELETE FROM employees'))).toBe(true);
+    expect(copyAt).toBeGreaterThan(4);
+    expect(copyAt).toBeLessThan(texts.length - 1);
     // Pin tx boundaries + correct cleanup order.
     expect(queries[0].text).toBe('BEGIN');
     expect(queries[1].text).toContain(

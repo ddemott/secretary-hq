@@ -204,7 +204,9 @@ export async function insertDraftGraph(
       const res = await client.query(
         // No updated_at column on resources (unlike services/employees) — don't
         // add one to the SET list or this UPDATE fails at runtime.
-        `UPDATE resources SET name = $1, description = $2
+        // is_auto_seeded = false: the owner reviewed this row in the wizard, so
+        // a template's bay/chair is theirs now (same rule as services below).
+        `UPDATE resources SET name = $1, description = $2, is_auto_seeded = false
           WHERE resource_id = $3 AND tenant_id = $4 AND is_deleted = false`,
         [r.name, r.description ?? null, r.existing_id, tenantId]
       );
@@ -273,6 +275,8 @@ export async function insertDraftGraph(
       const res = await client.query(
         `UPDATE employees
             SET name = $1, first_name = $2, last_name = $3, email = $4, phone = $5,
+                -- Reviewed in the wizard: a template placeholder is claimed.
+                is_auto_seeded = false,
                 updated_at = NOW()
           WHERE employee_id = $6 AND tenant_id = $7 AND is_deleted = false`,
         [

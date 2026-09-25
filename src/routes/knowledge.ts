@@ -76,7 +76,11 @@ export function registerKnowledgeRoutes(
 
       const res = await withTenantClient(tenantId, async (client) => {
         return client.query(
-          'SELECT tenant_doc_id, title, content, source, created_at FROM tenant_docs WHERE tenant_id = $1 ORDER BY created_at DESC',
+          `SELECT tenant_doc_id, title, content, source, created_at,
+                  -- A starter copied from the business's template is not read to
+                  -- callers until the owner saves it (saving embeds it).
+                  (source = 'template' AND embedding IS NULL) AS is_unreviewed_starter
+             FROM tenant_docs WHERE tenant_id = $1 ORDER BY created_at DESC`,
           [tenantId]
         );
       });

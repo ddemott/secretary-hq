@@ -95,7 +95,16 @@ describe('createTenantWithOwner — happy paths', () => {
       // A new business gets its OWN copy of its vertical's questions, inside the
       // same transaction that creates it — so a tenant never exists with a
       // business_type and no questions. 2026-08-14.
+      // Savepoints make the two best-effort copies really best-effort: without
+      // them a failed copy aborts the transaction and COMMIT rolls back the
+      // business being created.
+      'SAVEPOINT question_tree_copy',
       expect.stringContaining('copy_question_tree_templates_to_tenant'),
+      'RELEASE SAVEPOINT question_tree_copy',
+      // …and its own copy of the template business to fill out (2026-09-25).
+      'SAVEPOINT business_template_copy',
+      expect.stringContaining('copy_business_template_to_tenant'),
+      'RELEASE SAVEPOINT business_template_copy',
       'COMMIT',
     ]);
     expect(queries[1].params).toEqual(['dale@test.com']);
@@ -104,7 +113,9 @@ describe('createTenantWithOwner — happy paths', () => {
     // slot-filling intake tree that shipped with the vertical-intake presets — so
     // a new mobile-tire tenant provisions the mobile_tire questions, not the
     // generic local_service fallback it received before those presets existed.
-    expect(queries[4].params).toEqual([TENANT_ID, ['mobile_tire']]);
+    expect(queries[5].params).toEqual([TENANT_ID, ['mobile_tire']]);
+    // The template-business copy is asked for the same vertical.
+    expect(queries[8].params).toEqual([TENANT_ID, 'mobile_tire']);
   });
 
   it('2. tenant_name policy: commits on no duplicate, persists first/last name', async () => {
@@ -697,5 +708,59 @@ describe('createTenantWithOwner — HIPAA-vertical denylist', () => {
 
     expect(result.ok).toBe(true);
     expect(queries.length).toBeGreaterThan(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// BEST-EFFORT COPIES — a failed copy must never lose the new business
+// ════════════════════════════════════════════════════════════════════
+
+describe('createTenantWithOwner — template copies are truly best-effort', () => {
+  function poolFailingOn(needle: string) {
+    const queries: string[] = [];
+    const client = {
+      query: vi.fn(async (text: string) => {
+        queries.push(text);
+        if (text.includes('INSERT INTO tenants')) return { rows: [{ tenant_id: TENANT_ID }] };
+        if (text.includes('INSERT INTO users')) return { rows: [{ user_id: USER_ID }] };
+        if (text.includes(needle)) throw new Error(`${needle} blew up`);
+        return { rows: [], rowCount: 0 };
+      }),
+      release: vi.fn(),
+    };
+    return { pool: { connect: vi.fn(async () => client) } as unknown as Pool, queries };
+  }
+
+  const params = {
+    tenantName: 'Copy Fail Co',
+    businessType: 'auto-shop',
+    ownerEmail: 'copyfail@test.com',
+    ownerPassword: 'secure123',
+    ownerFullName: 'Copy Fail',
+    duplicateCheck: 'email' as const,
+  };
+
+  it('SAD: a failed business-template copy rolls back to its savepoint and the signup still commits', async () => {
+    // WHO: a new auto shop signing up while the template copy fails.
+    // WHAT: ROLLBACK TO SAVEPOINT, then COMMIT — never a whole-transaction ROLLBACK.
+    // WHY: in Postgres an error aborts the transaction; without the savepoint
+    //      the catch would swallow it and COMMIT would silently discard the
+    //      business the person just created.
+    const { pool, queries } = poolFailingOn('copy_business_template_to_tenant');
+    const result = await createTenantWithOwner(pool, params);
+    expect(result.ok).toBe(true);
+    expect(queries).toContain('ROLLBACK TO SAVEPOINT business_template_copy');
+    expect(queries.at(-1)).toBe('COMMIT');
+    expect(queries).not.toContain('ROLLBACK');
+  });
+
+  it('SAD: a failed question-tree copy rolls back to its savepoint and the signup still commits', async () => {
+    const { pool, queries } = poolFailingOn('copy_question_tree_templates_to_tenant');
+    const result = await createTenantWithOwner(pool, params);
+    expect(result.ok).toBe(true);
+    expect(queries).toContain('ROLLBACK TO SAVEPOINT question_tree_copy');
+    expect(queries.at(-1)).toBe('COMMIT');
+    // The template copy still ran after the question-tree failure.
+    expect(queries.some((q) => q.includes('copy_business_template_to_tenant'))).toBe(true);
   });
 });

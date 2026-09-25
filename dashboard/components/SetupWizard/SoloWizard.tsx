@@ -29,7 +29,7 @@ const STEP_LABELS: Record<SoloStep, string> = {
 export default function SoloWizard({ isOpen, onClose, onBackToPicker }: SetupWizardProps) {
   const tenantId = useActiveTenantId();
   const { userName } = useSessionContext();
-  const { services, employees, loading, refresh } = useStaticData(tenantId);
+  const { services, employees, resources, loading, refresh } = useStaticData(tenantId);
   const vocab = useVocabulary();
   const [step, setStep] = useState<SoloStep>(1);
 
@@ -178,6 +178,37 @@ export default function SoloWizard({ isOpen, onClose, onBackToPicker }: SetupWiz
       (employees.length === 1 ? employees[0] : undefined);
     if (existing) {
       setOwnerEmployeeId(String(existing.employee_id));
+      return;
+    }
+
+    // A new business arrives with its template's placeholder staff
+    // ("Stylist 1", "Stylist 2"). A solo business is one person, so the first
+    // placeholder BECOMES the owner — keeping every service it is set up to do
+    // — and the others are removed. Adding the owner beside them would leave
+    // bookable staff who do not exist, and callers would be booked with them.
+    const placeholders = employees.filter((e) => e.type !== 'user' && e.is_auto_seeded);
+    if (placeholders.length > 0) {
+      setSaving(true);
+      setError(null);
+      try {
+        const nameParts = (ownerName || 'Owner').split(' ');
+        const [keep, ...extras] = placeholders;
+        const res = await Api.employees.update(String(keep.employee_id), {
+          first_name: nameParts[0] || 'Owner',
+          last_name: nameParts.slice(1).join(' ') || '',
+          name: ownerName || 'Owner',
+        });
+        if (!res.success) throw new Error(res.error || 'Failed to set up your staff profile');
+        for (const extra of extras) {
+          await Api.employees.delete(String(extra.employee_id), tenantId);
+        }
+        setOwnerEmployeeId(String(keep.employee_id));
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to set up your staff profile');
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -360,15 +391,21 @@ export default function SoloWizard({ isOpen, onClose, onBackToPicker }: SetupWiz
     setFinalizing(true);
     setError(null);
     try {
-      // 1. Create default resource. Tagged auto-seeded so a later
+      // 1. The work station. A business that already has one (its template's
+      // chair/bay, or the one created at signup) uses it; creating another
+      // every time left solo businesses with duplicate stations. Only a
+      // business with none gets a new one — tagged auto-seeded so a later
       // business_type change rolls it back along with the services.
-      const resResult = await Api.resources.create(tenantId, {
-        name: resourceName,
-        description: 'Auto-created during solo setup',
-        is_auto_seeded: true,
-      });
-      const resourceId =
-        resResult.success && resResult.resource ? resResult.resource.resource_id : null;
+      let resourceId: string | null = resources[0] ? String(resources[0].resource_id) : null;
+      if (!resourceId) {
+        const resResult = await Api.resources.create(tenantId, {
+          name: resourceName,
+          description: 'Auto-created during solo setup',
+          is_auto_seeded: true,
+        });
+        resourceId =
+          resResult.success && resResult.resource ? resResult.resource.resource_id : null;
+      }
       if (!resourceId) throw new Error('Failed to create work station');
 
       // 2. Assign all services to employee + resource

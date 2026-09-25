@@ -21,6 +21,7 @@ import {
 import { SUPER_ADMIN_TENANT_ID } from '../constants';
 import { assertRowAffected } from './routeHelpers';
 import { createTenantWithOwner } from '../services/tenants/bootstrap';
+import { copyBusinessTemplate } from '../services/tenants/businessTemplate';
 import { phonesWouldLoop } from '../services/phoneLoopGuard';
 import {
   defaultChecklistPresetIdForBusinessType,
@@ -252,7 +253,10 @@ export function registerTenantRoutes(
                   system_prompt, first_message, owner_phone, inbound_phone,
                   phone_status, telnyx_phone_number_id
              FROM tenants
-            WHERE is_deleted = false
+            -- Template businesses ("Auto Shop Template") are not customers:
+            -- they are read-only, so opening one from the switcher could only
+            -- show errors.
+            WHERE is_deleted = false AND is_template = false
             ORDER BY sort_order ASC, created_at DESC`
         )
       );
@@ -607,19 +611,65 @@ export function registerTenantRoutes(
 
           let cleanedServices = 0;
           let cleanedResources = 0;
+          let templateCopied = false;
           const businessTypeChanged =
             body.business_type !== undefined && body.business_type !== priorBusinessType;
           if (businessTypeChanged) {
+            // Never delete an auto-seeded service/resource that a real
+            // appointment (past or future) points at. services.appointment_id
+            // FK is ON DELETE SET NULL (would silently orphan the
+            // appointment's service reference); resources.appointment_id FK
+            // is ON DELETE CASCADE (would silently DESTROY the appointment
+            // itself). An owner who never renamed the template's default
+            // "Bay 1"/"Technician 1" rows before booking real customers into
+            // them must not lose that history just by changing business type
+            // later. Mirrors the same guard already applied to employees below.
             const svcDel = await client.query(
-              'DELETE FROM services WHERE tenant_id = $1 AND is_auto_seeded = true RETURNING service_id',
+              `DELETE FROM services s
+                WHERE s.tenant_id = $1 AND s.is_auto_seeded = true
+                  AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.service_id = s.service_id)
+              RETURNING service_id`,
               [id]
             );
             const resDel = await client.query(
-              'DELETE FROM resources WHERE tenant_id = $1 AND is_auto_seeded = true RETURNING resource_id',
+              `DELETE FROM resources r
+                WHERE r.tenant_id = $1 AND r.is_auto_seeded = true
+                  AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.resource_id = r.resource_id)
+              RETURNING resource_id`,
+              [id]
+            );
+            // Placeholder staff from the previous type's template ("Technician
+            // 1") go too — unless someone is already booked with them.
+            await client.query(
+              `DELETE FROM employees e
+                WHERE e.tenant_id = $1 AND e.is_auto_seeded = true
+                  AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.employee_id = e.employee_id)`,
+              [id]
+            );
+            // Knowledge starters the owner never reviewed (still un-embedded)
+            // belong to the previous type; anything they saved is theirs.
+            await client.query(
+              `DELETE FROM tenant_docs
+                WHERE tenant_id = $1 AND source = 'template' AND embedding IS NULL`,
+              [id]
+            );
+            // Skills nothing uses any more.
+            await client.query(
+              `DELETE FROM tenant_skills k
+                WHERE k.tenant_id = $1
+                  AND NOT EXISTS (SELECT 1 FROM employees e
+                                   WHERE e.tenant_id = $1 AND e.is_deleted = false
+                                     AND k.name = ANY (e.skills))
+                  AND NOT EXISTS (SELECT 1 FROM services s
+                                   WHERE s.tenant_id = $1 AND s.is_deleted = false
+                                     AND k.name = ANY (s.required_skills))`,
               [id]
             );
             cleanedServices = svcDel.rowCount ?? 0;
             cleanedResources = resDel.rowCount ?? 0;
+            // Then hand them their copy of the NEW type's template to fill out.
+            // A no-op when the owner has services of their own already.
+            templateCopied = await copyBusinessTemplate(client, id, body.business_type);
           }
 
           await client.query('COMMIT');
@@ -628,6 +678,7 @@ export function registerTenantRoutes(
             businessTypeChanged,
             cleanedServices,
             cleanedResources,
+            templateCopied,
             disclosureAttested: requiresAttestation,
           };
         } catch (err) {
@@ -667,11 +718,14 @@ export function registerTenantRoutes(
         businessTypeChanged: result.businessTypeChanged,
         cleanedServices: result.cleanedServices,
         cleanedResources: result.cleanedResources,
+        templateCopied: result.templateCopied,
         // Audit trail: record the attestation event distinctly from the generic
         // column-change audit so a legal review can find "who attested what, when".
         ...(disclosureAttested ? { disclosureAttestedBy: req.auth?.user_id } : {}),
       });
-      return reply.send({ success: true });
+      // templateCopied tells the wizard a business-type switch just handed the
+      // owner a fresh copy of the new type's template, so it should reload.
+      return reply.send({ success: true, templateCopied: result.templateCopied });
     }, 'Failed to update tenant config')
   );
 
@@ -822,6 +876,11 @@ export function registerTenantRoutes(
           );
           const res = await client.query(
             'UPDATE resources SET is_auto_seeded = false WHERE tenant_id = $1 AND is_auto_seeded = true RETURNING resource_id',
+            [id]
+          );
+          // Template placeholder staff the owner kept are theirs now too.
+          await client.query(
+            'UPDATE employees SET is_auto_seeded = false WHERE tenant_id = $1 AND is_auto_seeded = true',
             [id]
           );
           await client.query('COMMIT');

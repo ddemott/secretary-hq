@@ -5,7 +5,7 @@ import bcrypt from 'bcrypt';
 // (set by test:ci or command line) with correct password; fallback to local postgres one.
 export const ROOT_DB_URL = process.env.DATABASE_URL?.includes('test_db')
   ? process.env.DATABASE_URL
-  : (process.env.TEST_ADMIN_DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/test_db');
+  : process.env.TEST_ADMIN_DATABASE_URL || 'postgres://postgres:postgres@localhost:5433/test_db';
 
 // ── Honest-skip helper ────────────────────────────────────────────────
 // Used in `beforeEach` to mark a test as SKIPPED (not silently PASSED)
@@ -62,11 +62,38 @@ export async function clearDB(client: Client) {
     'tenant_docs',
     'tenant_skills',
   ];
-  for (const table of tables) {
-    await client.query(`TRUNCATE ${table} CASCADE`).catch(() => {
-      /* table may not exist */
-    });
+  // Wiping the database on purpose: template businesses are read-only and
+  // their TRUNCATE guard (20260925000000) refuses this without the flag.
+  // ensureTemplates() puts them back for tests that need them.
+  await client.query("SELECT set_config('app.template_maintenance', 'on', false)");
+  try {
+    for (const table of tables) {
+      await client.query(`TRUNCATE ${table} CASCADE`).catch(() => {
+        /* table may not exist */
+      });
+    }
+  } finally {
+    await client.query("SELECT set_config('app.template_maintenance', 'off', false)");
   }
+}
+
+/**
+ * Make sure the template businesses (Auto Shop Template, Salon Template) exist.
+ * A test file that ran clearDB() earlier in the same worker database wipes
+ * them; the seeding migration is idempotent, so re-applying it restores them.
+ */
+export async function ensureTemplates(client: Client): Promise<void> {
+  const res = await client.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM tenants WHERE is_template'
+  );
+  if (res.rows[0].n >= 2) return;
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const sql = readFileSync(
+    join(__dirname, '..', 'supabase', 'migrations', '20260925000100_seed_business_templates.sql'),
+    'utf8'
+  );
+  await client.query(sql);
 }
 
 /** Check if a table exists in the current database */
