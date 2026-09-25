@@ -48,7 +48,7 @@ interface DashboardEmployee {
   last_name?: string | null;
   type?: string;
   is_active: boolean;
-  /** A template's placeholder ("Technician 1") the owner has not confirmed yet. */
+  /** A template's placeholder ("Mechanic 1") the owner has not confirmed yet. */
   is_auto_seeded?: boolean;
 }
 interface DashboardService {

@@ -173,7 +173,7 @@ describe('copy_business_template_to_tenant', () => {
       [tenant]
     );
     expect(emp.rows.every((r) => r.is_auto_seeded)).toBe(true);
-    expect(emp.rows.map((r) => r.name).sort()).toEqual(['Technician 1', 'Technician 2']);
+    expect(emp.rows.map((r) => r.name).sort()).toEqual(['Mechanic 1', 'Mechanic 2']);
   });
 
   it('HAPPY: links point at the copy’s own rows, never the template’s', async () => {
@@ -208,14 +208,17 @@ describe('copy_business_template_to_tenant', () => {
     expect(docs.rows.every((r) => !r.embedded && r.source === 'template')).toBe(true);
   });
 
-  it('HAPPY: the business gets the template’s words for bays and staff', async () => {
+  it("HAPPY: the business keeps its business type's own words for bays and staff", async () => {
+    // WHY: the dashboard's wording ("Bays", "Mechanics") comes from
+    //      business_templates for the business type; a copy must not override
+    //      it (e2e/industry-templates.spec.ts pins "Mechanic" for auto-shop).
     const tenant = await newTenant('Copy Test Labels', 'auto-shop');
     await copy(tenant, 'auto_shop');
-    const t = await root.query<{ resource_plural: string; employee_plural: string }>(
-      'SELECT resource_plural, employee_plural FROM tenants WHERE tenant_id = $1',
+    const t = await root.query<{ employee_label: string | null; resource_label: string | null }>(
+      'SELECT employee_label, resource_label FROM tenants WHERE tenant_id = $1',
       [tenant]
     );
-    expect(t.rows[0]).toMatchObject({ resource_plural: 'Bays', employee_plural: 'Technicians' });
+    expect(t.rows[0]).toEqual({ employee_label: null, resource_label: null });
   });
 
   it('SAD: a business that already has services is never overwritten or merged into', async () => {
@@ -254,7 +257,7 @@ describe('copy_business_template_to_tenant', () => {
       [tenant]
     );
     await root.query(
-      `UPDATE employees SET name = 'Maria' WHERE tenant_id = $1 AND name = 'Technician 1'`,
+      `UPDATE employees SET name = 'Maria' WHERE tenant_id = $1 AND name = 'Mechanic 1'`,
       [tenant]
     );
     const tpl = await root.query<{ name: string; price: string | null }>(
@@ -266,7 +269,7 @@ describe('copy_business_template_to_tenant', () => {
       'SELECT name FROM employees WHERE tenant_id = $1 ORDER BY name',
       [AUTO_TEMPLATE]
     );
-    expect(techs.rows.map((r) => r.name)).toEqual(['Technician 1', 'Technician 2']);
+    expect(techs.rows.map((r) => r.name)).toEqual(['Mechanic 1', 'Mechanic 2']);
   });
 
   it('HAPPY: deleting a business that was copied from a template leaves the template intact', async () => {

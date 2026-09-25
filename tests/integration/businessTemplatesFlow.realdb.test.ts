@@ -128,7 +128,7 @@ describe('signup', () => {
   it('HAPPY: a new auto shop starts with its own copy of the Auto Shop Template', async () => {
     const tenant = await signUp('auto-shop');
     expect(await serviceNames(tenant)).toEqual(await serviceNames(AUTO_TEMPLATE));
-    expect(await employeeNames(tenant)).toEqual(['Technician 1', 'Technician 2']);
+    expect(await employeeNames(tenant)).toEqual(['Mechanic 1', 'Mechanic 2']);
     expect(await docTitles(tenant)).toEqual(await docTitles(AUTO_TEMPLATE));
   });
 
@@ -197,7 +197,7 @@ describe('switching business type in the wizard', () => {
 
   it('HAPPY: the templates are untouched by all of the above', async () => {
     expect(await serviceNames(AUTO_TEMPLATE)).toContain('Oil Change');
-    expect(await employeeNames(AUTO_TEMPLATE)).toEqual(['Technician 1', 'Technician 2']);
+    expect(await employeeNames(AUTO_TEMPLATE)).toEqual(['Mechanic 1', 'Mechanic 2']);
     expect(await employeeNames(SALON_TEMPLATE)).toEqual(['Stylist 1', 'Stylist 2']);
   });
 });

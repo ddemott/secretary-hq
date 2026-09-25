@@ -12,15 +12,18 @@
 --
 -- Fixed ids so tests, docs and later migrations can name them.
 
-SELECT set_config('app.template_maintenance', 'on', false);
+-- Transaction-local: the migration runner and seed.sql both run in one
+-- transaction, so the flag cannot outlive this file (or a failed run).
+SELECT set_config('app.template_maintenance', 'on', true);
 
-INSERT INTO tenants (tenant_id, name, business_type, timezone, is_template, template_vertical,
-                     resource_label, resource_plural, employee_label, employee_plural, booking_label)
+-- No vocabulary here: the words the dashboard uses ("Bays", "Mechanics") come
+-- from business_templates for the business type, as for every business.
+INSERT INTO tenants (tenant_id, name, business_type, timezone, is_template, template_vertical)
 VALUES
   ('7e3a0000-0000-4000-8000-00000000a001', 'Auto Shop Template', 'auto-shop', 'America/Chicago',
-   true, 'auto_shop', 'Bay', 'Bays', 'Technician', 'Technicians', 'Appointment'),
+   true, 'auto_shop'),
   ('7e3a0000-0000-4000-8000-00000000a002', 'Salon Template', 'salon', 'America/Chicago',
-   true, 'salon', 'Chair', 'Chairs', 'Stylist', 'Stylists', 'Appointment')
+   true, 'salon')
 ON CONFLICT (tenant_id) DO NOTHING;
 
 -- The tenants-insert trigger gave each template one generic resource; the
@@ -34,7 +37,7 @@ DO $$
 DECLARE
   t uuid := '7e3a0000-0000-4000-8000-00000000a001';
   bay1 uuid; bay2 uuid; bay3 uuid;
-  tech1 uuid; tech2 uuid;
+  mech1 uuid; mech2 uuid;
   s_oil uuid; s_rot uuid; s_mount uuid; s_brake uuid; s_diag uuid; s_align uuid; s_insp uuid;
 BEGIN
   IF EXISTS (SELECT 1 FROM services WHERE tenant_id = t) THEN RETURN; END IF;
@@ -53,12 +56,12 @@ BEGIN
   INSERT INTO resources (tenant_id, name, description) VALUES (t, 'Alignment Bay', 'Bay with the alignment rack') RETURNING resource_id INTO bay3;
 
   INSERT INTO employees (tenant_id, name, first_name, last_name, skills, is_active)
-  VALUES (t, 'Technician 1', 'Technician', '1',
+  VALUES (t, 'Mechanic 1', 'Mechanic', '1',
           ARRAY['Oil Change','Tires','Brakes','Diagnostics','Alignment','General Service'], true)
-  RETURNING employee_id INTO tech1;
+  RETURNING employee_id INTO mech1;
   INSERT INTO employees (tenant_id, name, first_name, last_name, skills, is_active)
-  VALUES (t, 'Technician 2', 'Technician', '2', ARRAY['Oil Change','Tires','General Service'], true)
-  RETURNING employee_id INTO tech2;
+  VALUES (t, 'Mechanic 2', 'Mechanic', '2', ARRAY['Oil Change','Tires','General Service'], true)
+  RETURNING employee_id INTO mech2;
 
   INSERT INTO services (tenant_id, name, description, duration_minutes, price, required_skills, required_resources)
   VALUES (t, 'Oil Change', 'Oil and filter change', 45, NULL, ARRAY['Oil Change'], ARRAY['Bay 1']) RETURNING service_id INTO s_oil;
@@ -75,15 +78,15 @@ BEGIN
   INSERT INTO services (tenant_id, name, description, duration_minutes, price, required_skills, required_resources)
   VALUES (t, 'Vehicle Inspection', 'General safety inspection', 45, NULL, ARRAY['General Service'], ARRAY['Bay 1']) RETURNING service_id INTO s_insp;
 
-  -- Who does what: Technician 1 does everything; Technician 2 the everyday work.
+  -- Who does what: Mechanic 1 does everything; Mechanic 2 the everyday work.
   INSERT INTO service_employee (tenant_id, service_id, employee_id) VALUES
-    (t, s_oil, tech1), (t, s_oil, tech2),
-    (t, s_rot, tech1), (t, s_rot, tech2),
-    (t, s_mount, tech1), (t, s_mount, tech2),
-    (t, s_brake, tech1),
-    (t, s_diag, tech1),
-    (t, s_align, tech1),
-    (t, s_insp, tech1), (t, s_insp, tech2);
+    (t, s_oil, mech1), (t, s_oil, mech2),
+    (t, s_rot, mech1), (t, s_rot, mech2),
+    (t, s_mount, mech1), (t, s_mount, mech2),
+    (t, s_brake, mech1),
+    (t, s_diag, mech1),
+    (t, s_align, mech1),
+    (t, s_insp, mech1), (t, s_insp, mech2);
 
   -- Where: everyday work in either general bay; alignment only on the rack.
   INSERT INTO service_resource (tenant_id, service_id, resource_id) VALUES
@@ -174,4 +177,4 @@ BEGIN
      'Yes. Your stylist talks through the look you want before any color service.', 'template');
 END $$;
 
-SELECT set_config('app.template_maintenance', 'off', false);
+SELECT set_config('app.template_maintenance', 'off', true);

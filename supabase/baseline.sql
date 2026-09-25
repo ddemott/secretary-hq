@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ynJBrlv1fL1LrD0NfXax1CxGUWLGER0VYgQNqT1HaUBtXbnYWrhRCBNF5asEMaG
+\restrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -1444,17 +1444,6 @@ BEGIN
   INSERT INTO tenant_docs (tenant_id, title, section, content, source, embedding, normalized_text)
   SELECT p_tenant_id, title, section, content, 'template', NULL, NULL
     FROM tenant_docs WHERE tenant_id = v_template;
-
-  -- Words the dashboard uses for this business ("Bays", "Techs"), only where
-  -- the new business has none of its own yet.
-  UPDATE tenants t
-     SET resource_label  = COALESCE(t.resource_label,  tp.resource_label),
-         resource_plural = COALESCE(t.resource_plural, tp.resource_plural),
-         employee_label  = COALESCE(t.employee_label,  tp.employee_label),
-         employee_plural = COALESCE(t.employee_plural, tp.employee_plural),
-         booking_label   = COALESCE(t.booking_label,   tp.booking_label)
-    FROM tenants tp
-   WHERE t.tenant_id = p_tenant_id AND tp.tenant_id = v_template;
 
   DROP TABLE _tpl_resource_map;
   DROP TABLE _tpl_service_map;
@@ -8015,5 +8004,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ynJBrlv1fL1LrD0NfXax1CxGUWLGER0VYgQNqT1HaUBtXbnYWrhRCBNF5asEMaG
+\unrestrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
 

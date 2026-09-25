@@ -194,7 +194,7 @@ export function registerEmployeeRoutes(
           phone = COALESCE($5, phone),
           skills = COALESCE($6, skills),
           is_active = COALESCE($7, is_active),
-          -- An owner edit claims a template placeholder ("Technician 1" →
+          -- An owner edit claims a template placeholder ("Mechanic 1" →
           -- "Maria"): it is theirs now, so a business-type switch keeps it.
           is_auto_seeded = false,
           updated_at = NOW()

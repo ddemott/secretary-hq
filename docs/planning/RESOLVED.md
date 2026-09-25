@@ -24,7 +24,7 @@ Pricing research (#560), SMS cost correction (#561), and the three per-tier pric
 
 Dale: when a customer picks a business, "the row is duplicated and used for them to fill out … never overwrite the original." Shape only — services with NO prices ("we never deal with their money"), bays/chairs, skills, who-does-what, knowledge starters, placeholder staff to rename; never customers, calls or appointments.
 
-- Two template businesses as real, read-only rows: Auto Shop Template (7 services, 3 bays, Technician 1/2) and Salon Template (7 services, 3 chairs, Stylist 1/2), each with knowledge starters.
+- Two template businesses as real, read-only rows: Auto Shop Template (7 services, 3 bays, Mechanic 1/2) and Salon Template (7 services, 3 chairs, Stylist 1/2), each with knowledge starters.
 - `copy_business_template_to_tenant()` duplicates them at signup and on a business-type switch; `finalize-setup` / an owner edit claims the copied rows.
 - Read-only is a database guarantee: row triggers plus a TRUNCATE trigger. The TRUNCATE guard was added after the full test run showed `clearDB()` silently wiping the templates — `TRUNCATE` skips row triggers.
 - Knowledge starters arrive un-embedded, so the AI cannot read one to a caller until the owner saves it; the dashboard marks them "Not used yet — edit and save".

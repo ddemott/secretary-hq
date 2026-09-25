@@ -621,7 +621,7 @@ export function registerTenantRoutes(
             // appointment's service reference); resources.appointment_id FK
             // is ON DELETE CASCADE (would silently DESTROY the appointment
             // itself). An owner who never renamed the template's default
-            // "Bay 1"/"Technician 1" rows before booking real customers into
+            // "Bay 1"/"Mechanic 1" rows before booking real customers into
             // them must not lose that history just by changing business type
             // later. Mirrors the same guard already applied to employees below.
             const svcDel = await client.query(
@@ -638,7 +638,7 @@ export function registerTenantRoutes(
               RETURNING resource_id`,
               [id]
             );
-            // Placeholder staff from the previous type's template ("Technician
+            // Placeholder staff from the previous type's template ("Mechanic
             // 1") go too — unless someone is already booked with them.
             await client.query(
               `DELETE FROM employees e

@@ -280,17 +280,6 @@ BEGIN
   SELECT p_tenant_id, title, section, content, 'template', NULL, NULL
     FROM tenant_docs WHERE tenant_id = v_template;
 
-  -- Words the dashboard uses for this business ("Bays", "Techs"), only where
-  -- the new business has none of its own yet.
-  UPDATE tenants t
-     SET resource_label  = COALESCE(t.resource_label,  tp.resource_label),
-         resource_plural = COALESCE(t.resource_plural, tp.resource_plural),
-         employee_label  = COALESCE(t.employee_label,  tp.employee_label),
-         employee_plural = COALESCE(t.employee_plural, tp.employee_plural),
-         booking_label   = COALESCE(t.booking_label,   tp.booking_label)
-    FROM tenants tp
-   WHERE t.tenant_id = p_tenant_id AND tp.tenant_id = v_template;
-
   DROP TABLE _tpl_resource_map;
   DROP TABLE _tpl_service_map;
   DROP TABLE _tpl_employee_map;
