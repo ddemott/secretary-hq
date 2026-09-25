@@ -180,11 +180,10 @@ describe('POST /tenants/:id/update-config → real DB', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    // Membership, not exact list: creating a salon tenant fires a template
-    // trigger that seeds a starter resource ("Styling Station 1") with
-    // is_auto_seeded = false, so it legitimately survives the switch. Assert on
-    // the rows THIS test owns: our auto-seeded row is purged, our hand-typed
-    // row is preserved.
+    // Membership, not exact list: creating a salon tenant fires a trigger that
+    // seeds a starter resource ("Styling Station 1"), auto-seeded since
+    // 20260925000000, so the switch may purge it too. Assert on the rows THIS
+    // test owns: our auto-seeded row is purged, our hand-typed row is preserved.
     const svc = await setup.query('SELECT name FROM services WHERE tenant_id = $1', [id]);
     const svcNames = svc.rows.map((r) => r.name);
     expect(svcNames).toContain('hand-typed-cut'); // user-typed preserved

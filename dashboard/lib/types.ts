@@ -168,6 +168,8 @@ export interface Employee {
   is_active: boolean;
   is_deleted?: boolean;
   type?: 'employee' | 'user';
+  /** A template placeholder ("Technician 1") the owner has not claimed yet. */
+  is_auto_seeded?: boolean;
 }
 
 export interface Service {
@@ -537,6 +539,8 @@ export interface KnowledgeEntry {
   content: string;
   source: string | null;
   created_at: string;
+  /** Copied from the business's template and not saved yet — the AI does not use it. */
+  is_unreviewed_starter?: boolean;
 }
 
 // --- VOICE CRM TYPES (single source of truth) ---

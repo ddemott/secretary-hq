@@ -70,8 +70,9 @@ export async function extendSchedulesNow(
   // — it cannot be booked anyway (createWithTenantClient 404s it), so extending it
   // would be pure waste, and a resurrected-by-accident tenant would come back with a
   // suspiciously fresh schedule.
+  // Template businesses are read-only and have no hours to extend.
   const tenants = await pool.query<{ tenant_id: string }>(
-    'SELECT tenant_id FROM tenants WHERE is_deleted = false'
+    'SELECT tenant_id FROM tenants WHERE is_deleted = false AND is_template = false'
   );
 
   let rowsInserted = 0;

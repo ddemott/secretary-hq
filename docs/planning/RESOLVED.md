@@ -20,6 +20,21 @@ Pricing research (#560), SMS cost correction (#561), and the three per-tier pric
 
 ---
 
+## 2026-09-25 — Template businesses: a new business starts as a copy
+
+Dale: when a customer picks a business, "the row is duplicated and used for them to fill out … never overwrite the original." Shape only — services with NO prices ("we never deal with their money"), bays/chairs, skills, who-does-what, knowledge starters, placeholder staff to rename; never customers, calls or appointments.
+
+- Two template businesses as real, read-only rows: Auto Shop Template (7 services, 3 bays, Mechanic 1/2) and Salon Template (7 services, 3 chairs, Stylist 1/2), each with knowledge starters.
+- `copy_business_template_to_tenant()` duplicates them at signup and on a business-type switch; `finalize-setup` / an owner edit claims the copied rows.
+- Read-only is a database guarantee: row triggers plus a TRUNCATE trigger. The TRUNCATE guard was added after the full test run showed `clearDB()` silently wiping the templates — `TRUNCATE` skips row triggers.
+- Knowledge starters arrive un-embedded, so the AI cannot read one to a caller until the owner saves it; the dashboard marks them "Not used yet — edit and save".
+- Found and fixed on the way: the question-tree copy at signup was "best-effort" in a comment only — a failure inside the transaction would have aborted it and COMMIT would have discarded the new business. Both copies now run under savepoints (unit-tested).
+- Found and fixed: the solo wizard would have added the owner BESIDE a template's placeholder staff (bookable people who do not exist) and always created an extra work station. It now renames the first placeholder to the owner, removes the rest, and reuses an existing station.
+- Home opens the setup welcome while a template's placeholder staff are unclaimed (empty-business was the only signal before; no existing business is affected because only a template copy marks staff).
+- Tests: `tests/integration/businessTemplates.realdb.test.ts` (templates, copy, read-only incl. app_user and TRUNCATE), `businessTemplatesFlow.realdb.test.ts` (signup and type switch as app_user, finalize, starters, tenant list), bootstrap savepoint unit tests, SoloWizard / DashboardHome / KnowledgeEntriesTab tests, and `e2e/business-template-signup.spec.ts`.
+
+---
+
 ## 2026-09-24 — Overnight autonomous batch (Dale asleep): 5 fixes + doc pass
 
 One branch at a time, each through tests → PR → green CI → merge → prod deploy verified → branch deleted.

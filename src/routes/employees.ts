@@ -51,10 +51,12 @@ export function registerEmployeeRoutes(
       const res = await withTenantClient(tenantId, async (client) => {
         return client.query(
           `
-        SELECT employee_id::text AS employee_id, name, first_name, last_name, email, phone, skills, is_active, 'employee' as type
+        SELECT employee_id::text AS employee_id, name, first_name, last_name, email, phone, skills, is_active, 'employee' as type,
+               is_auto_seeded
         FROM employees WHERE tenant_id = $1 AND is_deleted = false
         UNION ALL
-        SELECT user_id::text as employee_id, COALESCE(full_name, email) as name, NULL as first_name, NULL as last_name, email, NULL as phone, '{}'::text[] as skills, true as is_active, 'user' as type
+        SELECT user_id::text as employee_id, COALESCE(full_name, email) as name, NULL as first_name, NULL as last_name, email, NULL as phone, '{}'::text[] as skills, true as is_active, 'user' as type,
+               false AS is_auto_seeded
         FROM users WHERE tenant_id = $1
         ORDER BY name ASC
       `,
@@ -192,6 +194,9 @@ export function registerEmployeeRoutes(
           phone = COALESCE($5, phone),
           skills = COALESCE($6, skills),
           is_active = COALESCE($7, is_active),
+          -- An owner edit claims a template placeholder ("Mechanic 1" →
+          -- "Maria"): it is theirs now, so a business-type switch keeps it.
+          is_auto_seeded = false,
           updated_at = NOW()
         WHERE employee_id = $8 AND tenant_id = $9 RETURNING *`,
           [

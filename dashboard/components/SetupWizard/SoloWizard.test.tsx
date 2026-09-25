@@ -408,3 +408,111 @@ describe('SoloWizard — re-answering "when do you work"', () => {
     });
   });
 });
+
+describe('SoloWizard — a business that arrived with a template copy', () => {
+  const TECH_1 = '21111111-2222-4333-8444-555555555551';
+  const TECH_2 = '21111111-2222-4333-8444-555555555552';
+  const BAY_ID = '31111111-2222-4333-8444-555555555553';
+
+  /** Layer template-copy data (placeholder staff, an existing bay) over the base mock. */
+  function withTemplateCopy() {
+    setupFetchMock();
+    const baseFetch = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const base = baseFetch.getMockImplementation() as (
+      u: string,
+      i?: RequestInit
+    ) => Promise<unknown>;
+    baseFetch.mockImplementation((url: string, init?: RequestInit) => {
+      const path = String(url);
+      const isGet = !init?.method || init.method === 'GET';
+      if (isGet && /\/employees(\?|$)/.test(path)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [
+            {
+              employee_id: TECH_1,
+              name: 'Technician 1',
+              type: 'employee',
+              is_active: true,
+              skills: [],
+              is_auto_seeded: true,
+            },
+            {
+              employee_id: TECH_2,
+              name: 'Technician 2',
+              type: 'employee',
+              is_active: true,
+              skills: [],
+              is_auto_seeded: true,
+            },
+          ],
+        });
+      }
+      if (isGet && /\/resources(\?|$)/.test(path)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ resource_id: BAY_ID, name: 'Bay 1', is_active: true }],
+        });
+      }
+      if (path.includes(`/employees/${TECH_1}/update`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            employee: { employee_id: TECH_1, name: 'Solo Owner' },
+          }),
+        });
+      }
+      if (path.includes(`/employees/${TECH_2}/delete`)) {
+        return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+      }
+      return base(url, init);
+    });
+    return baseFetch;
+  }
+
+  const callsTo = (fetchMock: ReturnType<typeof vi.fn>, needle: string, method?: string) =>
+    fetchMock.mock.calls.filter(([u, i]) => {
+      const init = i as RequestInit | undefined;
+      return String(u).includes(needle) && (!method || init?.method === method);
+    });
+
+  test('HAPPY: the first placeholder becomes the owner and the other placeholders are removed', async () => {
+    // WHO: a one-person auto shop whose business arrived with "Technician 1/2".
+    // WHAT: Technician 1 is renamed to the owner (keeping its services);
+    //       Technician 2 is deleted; no extra owner row is created.
+    // WHY: adding the owner beside the placeholders would leave bookable staff
+    //      who do not exist, and callers would be booked with them.
+    const fetchMock = withTemplateCopy();
+    render(<SoloWizard isOpen={true} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Oil Change')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Next'));
+    await waitFor(() => expect(callsTo(fetchMock, `/employees/${TECH_2}/delete`)).toHaveLength(1));
+
+    const update = callsTo(fetchMock, `/employees/${TECH_1}/update`)[0];
+    const body = JSON.parse(String((update[1] as RequestInit).body));
+    expect(body).toMatchObject({ name: 'Solo Owner', first_name: 'Solo', last_name: 'Owner' });
+    expect(callsTo(fetchMock, '/employees/create', 'POST')).toHaveLength(0);
+  });
+
+  test('HAPPY: finishing uses the bay the business already has instead of adding another', async () => {
+    const fetchMock = withTemplateCopy();
+    render(<SoloWizard isOpen={true} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Oil Change')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('When are you available?')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Next'));
+    fireEvent.click(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByText('Complete Setup')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Complete Setup'));
+
+    await waitFor(() =>
+      expect(callsTo(fetchMock, '/shifts/expand-weekly', 'POST')).toHaveLength(1)
+    );
+    expect(callsTo(fetchMock, '/resources/create', 'POST')).toHaveLength(0);
+    expect(callsTo(fetchMock, `/resources/${BAY_ID}/assign`, 'POST').length).toBeGreaterThan(0);
+    // The owner is the renamed placeholder.
+    const expand = callsTo(fetchMock, '/shifts/expand-weekly', 'POST')[0];
+    expect(JSON.parse(String((expand[1] as RequestInit).body)).employee_id).toBe(TECH_1);
+  });
+});

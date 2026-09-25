@@ -369,3 +369,39 @@ describe('DashboardHome — AI Receptionist status card', () => {
     expect(onNavigate).toHaveBeenCalledWith('ai-insights');
   });
 });
+
+describe('DashboardHome — a business that arrived with its template copy', () => {
+  test('HAPPY: the setup welcome still opens even though services, bays and staff exist', async () => {
+    // WHO: a brand-new auto shop, whose signup copied the Auto Shop Template.
+    // WHAT: the placeholder staff ("Technician 1") are still unclaimed, so
+    //       setup is unfinished — the welcome opens.
+    // WHY: "empty" used to be the only signal. With a template copy nothing is
+    //      empty, and the owner would never be guided to fill it out.
+    mockApi.employees.list.mockResolvedValue([
+      {
+        employee_id: 'e1',
+        name: 'Technician 1',
+        type: 'employee',
+        is_active: true,
+        is_auto_seeded: true,
+      },
+    ]);
+    render(<DashboardHome />);
+    await screen.findByRole('dialog', { name: /welcome/i });
+  });
+
+  test('SAD: an established business with real staff is never interrupted', async () => {
+    mockApi.employees.list.mockResolvedValue([
+      {
+        employee_id: 'e1',
+        name: 'Alice',
+        type: 'employee',
+        is_active: true,
+        is_auto_seeded: false,
+      },
+    ]);
+    render(<DashboardHome />);
+    await screen.findByText(/nothing booked for today yet/i);
+    expect(screen.queryByRole('dialog', { name: /welcome/i })).not.toBeInTheDocument();
+  });
+});

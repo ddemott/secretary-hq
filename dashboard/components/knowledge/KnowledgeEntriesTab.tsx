@@ -60,8 +60,17 @@ export function KnowledgeEntriesTab({
                         ? 'Policy Q&A'
                         : doc.source === 'website-scan'
                           ? 'From website'
-                          : doc.source || 'Manual'}
+                          : doc.source === 'template'
+                            ? 'Starter'
+                            : doc.source || 'Manual'}
                     </div>
+                    {doc.is_unreviewed_starter && (
+                      <span title="Your AI does not use this answer yet. Edit it to match your business and save it to turn it on.">
+                        <Badge variant="warning" className="text-[9px] py-0 px-1.5">
+                          Not used yet — edit and save
+                        </Badge>
+                      </span>
+                    )}
                     {doc.section && (
                       <Badge variant="secondary" className="text-[9px] py-0 px-1.5">
                         {doc.section}

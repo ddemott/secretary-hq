@@ -48,6 +48,8 @@ interface DashboardEmployee {
   last_name?: string | null;
   type?: string;
   is_active: boolean;
+  /** A template's placeholder ("Mechanic 1") the owner has not confirmed yet. */
+  is_auto_seeded?: boolean;
 }
 interface DashboardService {
   service_id: string;
@@ -140,8 +142,18 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const needsSetup = services.length === 0 || employees.length === 0 || resources.length === 0;
+  // A new business now arrives with a COPY of its template business (services,
+  // bays, placeholder staff), so "empty" no longer means "not set up". Until the
+  // owner finishes the wizard, the template's placeholder staff are still
+  // marked is_auto_seeded — only a template copy sets that on staff, so no
+  // existing business is affected. That is what should open the wizard.
+  const templateCopyUnfinished = employees.some((e) => e.is_auto_seeded === true);
 
-  const { stage, mode, transitions } = useOnboardingState({ needsSetup, loading, autoOpen: true });
+  const { stage, mode, transitions } = useOnboardingState({
+    needsSetup: needsSetup || templateCopyUnfinished,
+    loading,
+    autoOpen: true,
+  });
 
   useEffect(() => {
     function onShortcut() {

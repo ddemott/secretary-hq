@@ -99,6 +99,15 @@ Found while working through the backlog. Each says exactly what was and was not 
 
 ---
 
+## 🏗️ Template businesses — 2026-09-25 (Dale)
+
+A new business starts as a COPY of its type's template business ("Auto Shop Template", "Salon Template"); the template is never changed. Built on `feat/business-templates` (see CLAUDE.md → Database Key Details → Template businesses).
+
+- [ ] **Dale: approve applying the two migrations to prod** (`20260925000000_business_template_tenants.sql`, `20260925000100_seed_business_templates.sql`) BEFORE the merge — the backend calls `copy_business_template_to_tenant()` at signup.
+- [ ] **Fix the demo's business type** — `/demo/start` creates the demo as `automotive`, which resolves to the generic `local_service` setup, not `auto_shop` (no auto-shop intake questions or vehicle preferences). Separate PR, agreed with Dale.
+- [ ] **Rebuild the live demo on top of the Auto Shop Template** (sample calls, messages, preferences parked on `feat/product-tour`, local commit `2b063e31`), so the demo shows exactly what a new shop gets. Then finish and ship the product tour.
+- [ ] **More templates** — one per business type a real customer signs up as; only auto shop and salon exist today (build for real customers).
+
 ## 🧠 Caller preferences — 2026-09-25 (Dale)
 
 - [x] **(code) The AI remembers a caller's preferences** — branch `feat/caller-preferences`. Dale: "if they mention a preference, save it in memory and as the person's profile is being made you would save it." `remember_preference` is offered on every call (unless the owner turns preferences off on the AI Persona page). **What counts as a preference is per business type:** `shared/preferenceCatalog.ts` — a universal set (preferred staff, days, time of day, contact method, language, notes) plus a list for each of the 33 verticals (salon: usual service, color notes, sensitivities, style; auto shop: vehicle, wait or drop off, loaner, parts, approval before work; trades: property access, pets, equipment; …). The model can only pick those keys. The host holds each preference in the call's memory and saves it only to a profile this caller owns (caller-ID-recognized, created this call, or number proven by text code) — never into a profile the caller only claimed. Tests: `tests/shared/preferenceCatalog.test.ts`, `agent/src/checklist/callerPreferences.test.ts`, tenant-config + parser tests.

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict nX1MUPeytwPFguxX2cpVCjpZ79b17u8zgNvFTUhsCJAQeTHqqKMHhxWnr8Vdf6z
+\restrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -1359,6 +1359,108 @@ $$;
 
 
 --
+-- Name: copy_business_template_to_tenant(uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.copy_business_template_to_tenant(p_tenant_id uuid, p_vertical text) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_template uuid;
+BEGIN
+  IF tenant_is_template(p_tenant_id) THEN
+    RAISE EXCEPTION 'Cannot copy a template into a template';
+  END IF;
+
+  SELECT tenant_id INTO v_template
+    FROM tenants WHERE is_template AND template_vertical = p_vertical;
+  IF v_template IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM services WHERE tenant_id = p_tenant_id AND is_deleted = false) THEN
+    RETURN false;
+  END IF;
+
+  -- The business-type trigger (create_default_resources) may already have
+  -- given this brand-new business one generic resource. The template brings
+  -- its own bays/chairs, so drop that placeholder if nothing uses it yet.
+  -- Scoped to is_auto_seeded = true so this never reaches an owner's OWN
+  -- resource — e.g. one they created but haven't linked to a service yet —
+  -- which would otherwise look identically "unused" and be deleted by
+  -- mistake on a later business-type change.
+  DELETE FROM resources r
+   WHERE r.tenant_id = p_tenant_id
+     AND r.is_auto_seeded = true
+     AND NOT EXISTS (SELECT 1 FROM service_resource sr WHERE sr.resource_id = r.resource_id)
+     AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.resource_id = r.resource_id);
+
+  INSERT INTO tenant_skills (tenant_id, name, description)
+  SELECT p_tenant_id, name, description FROM tenant_skills WHERE tenant_id = v_template
+  ON CONFLICT DO NOTHING;
+
+  CREATE TEMP TABLE _tpl_resource_map (old_id uuid, new_id uuid) ON COMMIT DROP;
+  CREATE TEMP TABLE _tpl_service_map (old_id uuid, new_id uuid) ON COMMIT DROP;
+  CREATE TEMP TABLE _tpl_employee_map (old_id uuid, new_id uuid) ON COMMIT DROP;
+
+  INSERT INTO _tpl_resource_map
+  SELECT resource_id, gen_random_uuid() FROM resources
+   WHERE tenant_id = v_template AND is_deleted = false;
+  INSERT INTO resources (resource_id, tenant_id, name, description, is_active, capabilities, is_personal, is_auto_seeded)
+  SELECT m.new_id, p_tenant_id, r.name, r.description, r.is_active, r.capabilities, r.is_personal, true
+    FROM resources r JOIN _tpl_resource_map m ON m.old_id = r.resource_id;
+
+  INSERT INTO _tpl_service_map
+  SELECT service_id, gen_random_uuid() FROM services
+   WHERE tenant_id = v_template AND is_deleted = false;
+  INSERT INTO services (service_id, tenant_id, name, description, subtitle, duration_minutes,
+                        required_skills, required_resources, price, is_auto_seeded, embedding)
+  SELECT m.new_id, p_tenant_id, s.name, s.description, s.subtitle, s.duration_minutes,
+         s.required_skills, s.required_resources, NULL, true, s.embedding
+    FROM services s JOIN _tpl_service_map m ON m.old_id = s.service_id;
+
+  INSERT INTO _tpl_employee_map
+  SELECT employee_id, gen_random_uuid() FROM employees
+   WHERE tenant_id = v_template AND is_deleted = false;
+  INSERT INTO employees (employee_id, tenant_id, name, first_name, last_name, skills, is_active, is_auto_seeded)
+  SELECT m.new_id, p_tenant_id, e.name, e.first_name, e.last_name, e.skills, e.is_active, true
+    FROM employees e JOIN _tpl_employee_map m ON m.old_id = e.employee_id;
+
+  INSERT INTO service_employee (tenant_id, service_id, employee_id)
+  SELECT p_tenant_id, sm.new_id, em.new_id
+    FROM service_employee se
+    JOIN _tpl_service_map sm ON sm.old_id = se.service_id
+    JOIN _tpl_employee_map em ON em.old_id = se.employee_id
+   WHERE se.tenant_id = v_template;
+
+  INSERT INTO service_resource (tenant_id, service_id, resource_id)
+  SELECT p_tenant_id, sm.new_id, rm.new_id
+    FROM service_resource sr
+    JOIN _tpl_service_map sm ON sm.old_id = sr.service_id
+    JOIN _tpl_resource_map rm ON rm.old_id = sr.resource_id
+   WHERE sr.tenant_id = v_template;
+
+  INSERT INTO tenant_docs (tenant_id, title, section, content, source, embedding, normalized_text)
+  SELECT p_tenant_id, title, section, content, 'template', NULL, NULL
+    FROM tenant_docs WHERE tenant_id = v_template;
+
+  DROP TABLE _tpl_resource_map;
+  DROP TABLE _tpl_service_map;
+  DROP TABLE _tpl_employee_map;
+  RETURN true;
+END;
+$$;
+
+
+--
+-- Name: FUNCTION copy_business_template_to_tenant(p_tenant_id uuid, p_vertical text); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.copy_business_template_to_tenant(p_tenant_id uuid, p_vertical text) IS 'Duplicate the template business for a vertical into a new business''s own rows (services with no price, resources, skills, placeholder staff, links, un-embedded knowledge starters). Never modifies the template. No-op (false) when there is no template or the business already has services.';
+
+
+--
 -- Name: copy_fields_between_records(uuid, text, uuid, uuid, text[], text, text); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -1574,8 +1676,8 @@ BEGIN
     SELECT * INTO v_template FROM business_templates WHERE business_type = NEW.business_type;
 
     IF FOUND THEN
-        INSERT INTO resources (tenant_id, name, description)
-        VALUES (NEW.tenant_id, v_template.default_resource_name, v_template.default_resource_description);
+        INSERT INTO resources (tenant_id, name, description, is_auto_seeded)
+        VALUES (NEW.tenant_id, v_template.default_resource_name, v_template.default_resource_description, true);
     END IF;
 
     RETURN NEW;
@@ -1587,7 +1689,7 @@ $$;
 -- Name: FUNCTION create_default_resources(); Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON FUNCTION public.create_default_resources() IS 'AFTER INSERT ON tenants: create the business type''s default resource. SECURITY DEFINER because tenant creation has no tenant context yet, and resources RLS would otherwise refuse the row (2026-09-24 fix — /register 500''d under app_user). Writes only for NEW.tenant_id.';
+COMMENT ON FUNCTION public.create_default_resources() IS 'AFTER INSERT ON tenants: create the business type''s default resource, tagged is_auto_seeded so a template copy or business-type change can tell it apart from a resource the owner made themselves. SECURITY DEFINER because tenant creation has no tenant context yet, and resources RLS would otherwise refuse the row (2026-09-24 fix — /register 500''d under app_user). Writes only for NEW.tenant_id.';
 
 
 --
@@ -2109,6 +2211,81 @@ END;
 -- search_path pinned: a SECURITY DEFINER function with a mutable search_path can
 -- be hijacked (an attacker-created object shadowing an unqualified name would run
 -- with the definer's rights). pg_catalog first so built-ins can't be shadowed.
+$$;
+
+
+--
+-- Name: refuse_template_tenant_change(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.refuse_template_tenant_change() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF current_setting('app.template_maintenance', true) = 'on' THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.is_template THEN
+    RAISE EXCEPTION 'Template businesses can only be created by a migration'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.is_template THEN
+    RAISE EXCEPTION 'Template businesses are read-only (% on tenants)', TG_OP
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.is_template THEN
+    RAISE EXCEPTION 'A business cannot be turned into a template'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+--
+-- Name: refuse_template_truncate(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.refuse_template_truncate() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF current_setting('app.template_maintenance', true) = 'on' THEN
+    RETURN NULL;
+  END IF;
+  IF EXISTS (SELECT 1 FROM tenants WHERE is_template) THEN
+    RAISE EXCEPTION 'Template businesses are read-only (TRUNCATE on %)', TG_TABLE_NAME
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+
+--
+-- Name: refuse_template_write(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.refuse_template_write() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_tenant uuid;
+BEGIN
+  IF current_setting('app.template_maintenance', true) = 'on' THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+  v_tenant := CASE WHEN TG_OP = 'DELETE' THEN OLD.tenant_id ELSE NEW.tenant_id END;
+  IF tenant_is_template(v_tenant)
+     OR (TG_OP = 'UPDATE' AND tenant_is_template(OLD.tenant_id)) THEN
+    RAISE EXCEPTION 'Template businesses are read-only (% on %)', TG_OP, TG_TABLE_NAME
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
 $$;
 
 
@@ -2843,6 +3020,18 @@ CREATE FUNCTION public.tenant_ctx_uuid() RETURNS uuid
     LANGUAGE sql STABLE
     AS $$
   SELECT NULLIF(tenant_ctx(), '')::uuid;
+$$;
+
+
+--
+-- Name: tenant_is_template(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.tenant_is_template(p_tenant_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT COALESCE((SELECT is_template FROM tenants WHERE tenant_id = p_tenant_id), false)
 $$;
 
 
@@ -3739,7 +3928,8 @@ CREATE TABLE public.employees (
     last_name text,
     email text,
     phone text,
-    deleted_by text
+    deleted_by text,
+    is_auto_seeded boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE ONLY public.employees FORCE ROW LEVEL SECURITY;
@@ -4569,7 +4759,10 @@ CREATE TABLE public.tenants (
     legal_consent_ip inet,
     legal_consent_user_agent text,
     consent_gate_required boolean DEFAULT false NOT NULL,
-    CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text]))))
+    is_template boolean DEFAULT false NOT NULL,
+    template_vertical text,
+    CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'med_spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text])))),
+    CONSTRAINT tenants_template_vertical_iff_template CHECK ((is_template = (template_vertical IS NOT NULL)))
 );
 
 ALTER TABLE ONLY public.tenants FORCE ROW LEVEL SECURITY;
@@ -6056,6 +6249,13 @@ CREATE INDEX tenants_live_idx ON public.tenants USING btree (tenant_id) WHERE (i
 
 
 --
+-- Name: tenants_one_template_per_vertical; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX tenants_one_template_per_vertical ON public.tenants USING btree (template_vertical) WHERE is_template;
+
+
+--
 -- Name: users_email_lower_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6109,6 +6309,174 @@ CREATE TRIGGER on_tenant_created_defaults BEFORE INSERT ON public.tenants FOR EA
 --
 
 CREATE TRIGGER on_tenant_created_resources AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION public.create_default_resources();
+
+
+--
+-- Name: tenants refuse_template_tenant_change; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_tenant_change BEFORE INSERT OR DELETE OR UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION public.refuse_template_tenant_change();
+
+
+--
+-- Name: employees refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.employees FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: resources refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.resources FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: service_employee refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.service_employee FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: service_resource refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.service_resource FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: services refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.services FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: tenant_docs refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.tenant_docs FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: tenant_skills refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.tenant_skills FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: tenants refuse_template_truncate; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_truncate BEFORE TRUNCATE ON public.tenants FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_template_truncate();
+
+
+--
+-- Name: appointments refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: customer_messages refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.customer_messages FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: customer_preferences refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.customer_preferences FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: customers refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: employee_schedule refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.employee_schedule FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: employees refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.employees FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: resources refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.resources FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: service_employee refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.service_employee FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: service_resource refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.service_resource FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: services refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.services FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: tenant_docs refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.tenant_docs FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: tenant_question_trees refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.tenant_question_trees FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: tenant_skills refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.tenant_skills FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: users refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
+
+
+--
+-- Name: voice_sessions refuse_template_write; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER refuse_template_write BEFORE INSERT OR DELETE OR UPDATE ON public.voice_sessions FOR EACH ROW EXECUTE FUNCTION public.refuse_template_write();
 
 
 --
@@ -7636,5 +8004,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict nX1MUPeytwPFguxX2cpVCjpZ79b17u8zgNvFTUhsCJAQeTHqqKMHhxWnr8Vdf6z
+\unrestrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
 
