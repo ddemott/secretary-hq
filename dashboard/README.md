@@ -32,7 +32,7 @@ npm install
 npm run dev
 ```
 
-`npm run dev` runs `server.js`, a custom HTTPS dev server that uses the shared self-signed certs in `../certs/`. Open [https://localhost:4000](https://localhost:4000) to access the dashboard (accept the self-signed cert warning).
+`npm run dev` runs `server.js`, a custom HTTPS dev server that uses the shared self-signed certs in `../certs/`. Open [https://localhost:4400](https://localhost:4400) to access the dashboard (accept the self-signed cert warning).
 
 You should see:
 

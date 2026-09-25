@@ -49,6 +49,6 @@ describe('health routes', () => {
     const res = await app.inject({ method: 'GET', url: '/demo' });
 
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:4000/demo');
+    expect(res.headers.location).toBe('http://localhost:4400/demo');
   });
 });

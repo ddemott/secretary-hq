@@ -60,7 +60,7 @@ export function registerCalendarRoutes(
   app.get('/calendar/auth/google/callback', async (req: AppRequest, reply: FastifyReply) => {
     const { code, state, error: oauthError } = req.query as Record<string, string>;
 
-    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
 
     if (oauthError) {
       return reply.redirect(
@@ -153,7 +153,7 @@ export function registerCalendarRoutes(
   app.get('/calendar/auth/outlook/callback', async (req: AppRequest, reply: FastifyReply) => {
     const { code, state, error: oauthError } = req.query as Record<string, string>;
 
-    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
 
     if (oauthError) {
       return reply.redirect(

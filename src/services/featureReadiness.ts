@@ -186,11 +186,11 @@ export function evaluateCapabilities(ctx: FeatureReadinessContext): CapabilityEv
       feature: 'self_service_links',
       status: missing ? 'missing_config' : 'ready',
       detail: missing
-        ? 'DASHBOARD_URL not set — emails, OAuth redirects, and Stripe URLs default to https://localhost:4000'
+        ? 'DASHBOARD_URL not set — emails, OAuth redirects, and Stripe URLs default to https://localhost:4400'
         : `Links resolve to ${env.DASHBOARD_URL as string}`,
       warnings: missing
         ? [
-            'DASHBOARD_URL not set — emails, OAuth redirects, and Stripe success/cancel URLs default to https://localhost:4000 (broken in production)',
+            'DASHBOARD_URL not set — emails, OAuth redirects, and Stripe success/cancel URLs default to https://localhost:4400 (broken in production)',
           ]
         : [],
     });
