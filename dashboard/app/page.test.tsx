@@ -104,9 +104,15 @@ describe('LandingPage prices match the owner-decided tiers', () => {
     //      and the owner never set. Dale: remove them.
     await renderLanding();
     const pricing = document.getElementById('pricing')?.textContent ?? '';
-    expect(pricing).not.toMatch(
-      /staff member|stations? or workspaces?|Unlimited stations|Unlimited staff/i
-    );
+    // Any limit phrasing, not just the old wording: "1 staff", "Up to 5 staff",
+    // "3 stations", "Unlimited staff/stations", "staff member(s)".
+    const limit =
+      /\b(\d+|up to \d+|unlimited)\s+(staff|stations?|workspaces?|seats?|users?)\b|staff members?/i;
+    expect(pricing).not.toMatch(limit);
+    // The pattern itself must catch the phrasings it exists to catch.
+    for (const phrase of ['1 staff member', 'Up to 5 staff', '3 stations', 'Unlimited stations']) {
+      expect(phrase).toMatch(limit);
+    }
   });
 
   it('shows monthly prices only — no Annual toggle or "Save 20%" (owner: no annual discount)', async () => {
