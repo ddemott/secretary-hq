@@ -77,7 +77,7 @@ cd dashboard && npx playwright test   # E2E (40 spec files)
 npm run typecheck                 # (and in agent/ and dashboard/)
 
 # Start dev servers
-npm start                         # dashboard https://localhost:4000, backend https://localhost:4001
+npm start                         # dashboard https://localhost:4400, backend https://localhost:4001
 
 # CLAUDE.md drift check (CI gate — migration count must match files on disk)
 npm run verify:claude-md

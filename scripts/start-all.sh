@@ -11,8 +11,8 @@ else
   echo "No process found on port $PORT"
 fi
 
-# Kill any process using port 4000 (dashboard)
-PORT_DASH=4000
+# Kill any process using port 4400 (dashboard)
+PORT_DASH=4400
 PID_DASH=$(lsof -ti :$PORT_DASH || true)
 if [ ! -z "$PID_DASH" ]; then
   echo "Killing process on port $PORT_DASH (PID: $PID_DASH)"
@@ -84,10 +84,10 @@ fi
 setsid node dist/src/index.js > backend.log 2>&1 &
 echo "Backend server started on port 4001 (dist/src/index.js)"
 (cd dashboard && NODE_ENV=production setsid node server.js > ../dashboard.log 2>&1 &)
-echo "Dashboard server started on port 4000 (production mode)"
+echo "Dashboard server started on port 4400 (production mode)"
 
 # Show status
 sleep 5
 echo "--- Server Status ---"
 lsof -i :4001
-lsof -i :4000
+lsof -i :4400

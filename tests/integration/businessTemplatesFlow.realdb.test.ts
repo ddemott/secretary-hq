@@ -148,7 +148,8 @@ describe('signup', () => {
   });
 
   it('HAPPY: a business type with no template still signs up, just empty', async () => {
-    const tenant = await signUp('plumber');
+    // Every type signup OFFERS has a template; a free-text/API type does not.
+    const tenant = await signUp('dog-walking');
     expect(await serviceNames(tenant)).toEqual([]);
   });
 });

@@ -31,7 +31,7 @@
  *   7. Edit-overlap: PUT /appointments/:id/update is symmetric on overlap.
  *
  * Setup: backend on https://localhost:4001, dashboard on
- * https://localhost:4000, Postgres on localhost:5433.
+ * https://localhost:4400, Postgres on localhost:5433.
  */
 import { test, expect } from './helpers/test';
 import { type Page } from '@playwright/test';

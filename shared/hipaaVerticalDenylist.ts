@@ -15,7 +15,11 @@
  * "veterinary-clinic", "Family Medical Group", etc. without requiring an
  * exact enum value.
  */
-const HIPAA_VERTICAL_PATTERN = /hipaa|dental|veterinary|chiropractic|optometry|medical/i;
+// med spa (2026-09-25, Dale: "anything related to HIPAA is a no"): a medical
+// spa performs medical procedures under a physician and holds health
+// information, whatever its marketing calls it.
+const HIPAA_VERTICAL_PATTERN =
+  /hipaa|dental|veterinary|chiropractic|optometry|medical|med[-_ ]?spa|medi[-_ ]?spa/i;
 
 export function isHipaaVertical(businessType: string): boolean {
   return HIPAA_VERTICAL_PATTERN.test(businessType);

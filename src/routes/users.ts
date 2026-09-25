@@ -219,7 +219,7 @@ export function registerUserRoutes(
         throw tokenErr;
       }
 
-      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
       const resetLink = `${dashboardUrl}/reset-password?token=${rawToken}`;
       try {
         await sendUserInviteEmail(

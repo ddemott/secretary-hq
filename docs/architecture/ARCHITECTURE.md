@@ -1,6 +1,6 @@
 # SecretaryHQ SaaS — Architecture
 
-**Last verified:** 2026-09-20 for the facts re-counted by command in that pass (30 top-level route modules — `consent.ts` added by PR #526; 206 migrations; 40 committed Playwright spec files) and for live suite totals (backend 3,365 / 281 files, dashboard 1,242 / 113 files, agent 1,085 / 63 files — see CLAUDE.md Project Status and `docs/planning/TEST_COVERAGE.md`). Carried forward from 2026-09-16 and NOT re-checked on 2026-09-20: 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, dashboard on Next.js 16 / React 19, backend on Fastify 5. The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
+**Last verified:** 2026-09-20 for the facts re-counted by command in that pass (30 top-level route modules — `consent.ts` added by PR #526; 206 migrations then, re-counted 2026-09-25 as 213 on `feat/templates-every-business-type`; 40 committed Playwright spec files) and for live suite totals (backend 3,365 / 281 files, dashboard 1,242 / 113 files, agent 1,085 / 63 files — see CLAUDE.md Project Status and `docs/planning/TEST_COVERAGE.md`). Carried forward from 2026-09-16 and NOT re-checked on 2026-09-20: 27 defined agent tools via `agent/src/tools/` + `tools.ts` re-export, dashboard on Next.js 16 / React 19, backend on Fastify 5. The 2026-09-05 pass had drifted (32/184-192/26 were wrong).
 
 > **External CRM sync reduced to Square only (2026-06-12).** The Jobber, HubSpot, ServiceTitan, and GoHighLevel integrations (route files, sync services, OAuth, webhooks) were deleted from the codebase. **Square remains the one surviving, live external CRM sync provider** — bidirectional push/pull via `src/routes/square.ts` + `src/services/crm/squareClient.ts` + `squareSync.ts`, dispatched from `src/services/syncOrchestrator.ts`. Calendar sync (Google + Outlook, push-only) is unchanged.
 
@@ -46,7 +46,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 - **Edge**: Telnyx (PSTN + SIP) → LiveKit Cloud (orchestrator) → LiveKit agent worker on Railway (`secretary-hq-agent`: Deepgram Nova-3 STT, OpenAI GPT-4.1-mini LLM, **Deepgram Aura TTS**; no XAI key). Call sequencing = question trees (§6.3).
 - **Tools**: 27 voice tools defined in `agent/src/tools.ts` against the tenant's Postgres — Fastify (Node) at `/agent-tools/*`. The live question-tree path offers a subset of them, rebuilt per call from the trees it selects (4 always-on tools, plus only the selected trees' action and passthrough tools, plus conditional add-ons) — see §7.
 - **API**: Fastify (29 top-level route modules + `agentTools/` module dir) on Railway — serves the dashboard, handles webhooks, runs async work inline
-- **DB**: Postgres + pgvector on Supabase, 206 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
+- **DB**: Postgres + pgvector on Supabase, 213 migrations, RLS on every tenant-scoped table. Every single-column PK follows the `<table_singular>_id` convention (see `docs/workflow/CODING_STANDARDS.md`)
 - **UI**: Next.js 16 (App Router) + React 19 + Tailwind — deployed on Railway (production dashboard service)
 
 ---
@@ -70,7 +70,7 @@ Multi-tenant AI receptionist SaaS for service businesses (tire shops, salons, au
 │   ├── server.js                 Custom HTTPS server (dev) + Railway deploy entry (prod)
 │   └── 107 Vitest test files     React Testing Library + utility tests
 ├── supabase/
-│   ├── migrations/               206 SQL migrations
+│   ├── migrations/               213 SQL migrations
 │   └── seed.sql                  Platform admin + Bella's Hair Studio demo tenant
 ├── agent/                        LiveKit agent worker (Node) — deployed as Railway service `secretary-hq-agent`
 │   └── src/                      index.ts (entry), prompt.ts, toolsClient.ts, sessionContext.ts, tools.ts
@@ -484,6 +484,7 @@ Request
 ```
 POST /register    { email, password, company_name, business_type }
                   → bcrypt hash → INSERT users + INSERT tenants
+                  → copy_business_template_to_tenant(tenant, business_type)
                   → returns { token, tenant_id, user_id }
 
 POST /login       { email, password }  [rate-limited: 5/5min]
@@ -503,7 +504,11 @@ Dashboard `SessionContext` watches token TTL and pre-emptively refreshes 10 minu
 
 ### 10.2 Tenant uniqueness
 
-`users.email` is scoped per-tenant, not globally unique. The same email can register a second tenant without collision (BUG-002 fix, March 2026 review).
+One account per email, platform-wide and case-insensitive, since 2026-09-24 (#567; migration `20260924000200` unique index `users_email_lower_unique` on `LOWER(users.email)`). This deliberately reverses the March 2026 BUG-002 fix, which had scoped `users.email` per tenant.
+
+### 10.2a New business = copy of its type's template (2026-09-25, #573)
+
+Every business type has one read-only template business (`tenants.is_template = true`, `template_vertical`). Signup (`createTenantWithOwner` in `src/services/tenants/bootstrap.ts`) and a business-type switch (`POST /tenants/:id/update-config`) call `copy_business_template_to_tenant()` via `src/services/tenants/businessTemplate.ts`, which duplicates the template's services (price NULL), resources, `tenant_skills`, two placeholder staff, `service_employee` / `service_resource` links and knowledge starters (un-embedded, so the AI ignores them until the owner saves) into the new business's own rows. Never customers, appointments, calls, or hours. Copied rows carry `is_auto_seeded = true` until `finalize-setup` claims them; the copy is a no-op when the business already has services. Templates are read-only by DB triggers (row + TRUNCATE) unless the session sets `app.template_maintenance = 'on'` (migrations, `seed.sql`, test `clearDB()` only). #573 shipped Auto Shop + Salon; migration `20260925000200` (in progress, not merged) adds the other 28 signup types for 30 total. Detail: CLAUDE.md → Database Key Details → Template businesses.
 
 ### 10.3 OAuth flows (integrations)
 
@@ -764,7 +769,7 @@ Four React contexts in `dashboard/lib/`:
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `SessionContext`           | JWT, current user, active tenant (via `useActiveTenantId()`), tenant list, `tenantsVersion` counter for cross-component sync                           |
 | `ThemeContext`             | 8 themes (navy [default], rose, forest, midnight, nord, sunset, high-contrast, solarized) — swaps CSS custom properties in `app/globals.css`           |
-| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 31 types across 6 categories (`supabase/seed.sql`) |
+| `VocabularyContext`        | 3-tier label fallback (`COALESCE(tenant_override, template_default, hardcoded)`) per business type. 30 types across 6 categories (`supabase/seed.sql`) |
 | `AppointmentDetailContext` | Holds selected appointment for cross-view access (list → detail panel)                                                                                 |
 
 ### 16.4 Component hierarchy
@@ -943,7 +948,7 @@ Planned once there's real call volume.
 - **Secrets** — env vars only; never committed. Production validation fail-fast on missing required secrets.
 - **Audit log** — immutable via `SECURITY DEFINER` trigger, cascaded delete from `tenants`.
 - **Soft deletes** — `is_deleted` flag + partial indexes on appointments, customers, resources, employees.
-- **HIPAA exclusion** — medical verticals permanently removed. No BAA, no ePHI handling, no compliance program.
+- **HIPAA exclusion** — medical verticals permanently removed (med spa removed from signup 2026-09-25 and blocked in `shared/hipaaVerticalDenylist.ts`). No BAA, no ePHI handling, no compliance program.
 
 ---
 

@@ -154,7 +154,6 @@ describe('Business Vocabulary System', () => {
       'body-shop',
       'oil-change',
       'car-wash',
-      'med-spa',
       'lash-studio',
       'garage-door',
       'locksmith',

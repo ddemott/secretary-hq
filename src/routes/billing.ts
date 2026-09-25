@@ -186,7 +186,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
            WHERE tenant_id = $4 AND is_deleted = false`,
           [customerId, `sub_fixture_${plan}`, plan, tenant_id]
         );
-        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
         logEvent(req, 'fixture_checkout_activated', { tenantId: tenant_id, plan });
         return reply.send({
           url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing&billing=fixture`,
@@ -238,7 +238,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
         ]);
       }
 
-      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
       const firstSubscription = await isFirstSubscription(
         stripe,
         stripeId(tenant.stripe_customer_id),
@@ -509,7 +509,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
           .send({ success: false, error: 'No billing account found — complete checkout first' });
       }
 
-      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+      const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
       const session = await stripe.billingPortal.sessions.create({
         customer: res.rows[0].stripe_customer_id,
         return_url: `${dashboardUrl}/dashboard?tab=setup&subtab=billing`,
