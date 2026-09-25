@@ -19,7 +19,9 @@
 -- performs medical procedures under a physician and holds health information —
 -- HIPAA territory, which the product permanently excludes (Dale 2026-09-25).
 
--- Transaction-local, like 20260925000100: cannot outlive this file.
+-- The maintenance FLAG is transaction-local (like 20260925000100), so it cannot
+-- outlive this migration. The helper function created below does persist, but
+-- it is revoked from PUBLIC and cannot write to a template without the flag.
 SELECT set_config('app.template_maintenance', 'on', true);
 
 DELETE FROM business_templates WHERE business_type = 'med-spa';
