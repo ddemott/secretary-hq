@@ -636,3 +636,26 @@ describe('BillingView — resend failure', () => {
     localStorage.removeItem('emailVerified');
   });
 });
+
+describe('BillingView — plan features', () => {
+  test('call transfer is listed on the base (Solo) plan, so every plan includes it', async () => {
+    // WHO: an owner comparing plans
+    // WHAT: "Transfers to a person" sits in Solo; Growth/Professional say
+    //       "Everything in …", so no plan appears to lack it
+    // WHY: Dale 2026-09-25 — every plan has call transfer; it used to be listed
+    //      only under Growth, implying Solo could not transfer (it always could)
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'inactive',
+      subscription_plan: null,
+    });
+    render(<BillingView />);
+    // Exact copy, including the qualifier: transfer is offered only once the
+    // business sets a transfer number (otherwise the AI takes a message).
+    const TRANSFER = 'Transfers callers to a person on request (once you set a transfer number)';
+    expect(await screen.findByText(TRANSFER)).toBeInTheDocument();
+    expect(screen.getAllByText(TRANSFER)).toHaveLength(1);
+    expect(screen.queryByText('Call transfer to staff')).not.toBeInTheDocument();
+    expect(screen.getByText('Everything in Solo')).toBeInTheDocument();
+    expect(screen.getByText('Everything in Growth')).toBeInTheDocument();
+  });
+});
