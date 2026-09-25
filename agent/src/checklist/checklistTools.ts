@@ -842,10 +842,11 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
    * of it — often before we know who they are. The host holds it here and
    * writes it to their profile as soon as there is a profile THIS caller owns:
    *   - a returning caller recognized by carrier caller-ID (known at call start),
-   *   - a profile identify_caller saved on this call (not one that answered
-   *     requires_verification — a CLAIMED number that belongs to someone else
-   *     must never receive this caller's preferences), or
-   *   - a spoken number the caller proved with verify_phone_code.
+   *   - a profile identify_caller saved on this call FOR THE CALLER-ID NUMBER
+   *     (never one that answered requires_verification), or
+   *   - a SPOKEN number the caller proved with verify_phone_code. A spoken
+   *     number is only a claim; until it is proven by text code nothing is
+   *     written to it — new profile or not (owner decision 2026-09-25).
    * Until then nothing is written. Keyed by preference key, so a correction
    * ("actually, afternoons") replaces the earlier value.
    */
@@ -862,6 +863,11 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
     } catch {
       return null;
     }
+  };
+  /** Same line, however it was written: compares the last 10 digits. */
+  const samePhone = (a: string | null | undefined, b: string | null | undefined): boolean => {
+    const digits = (p: string | null | undefined) => (p ?? '').replace(/\D/g, '').slice(-10);
+    return digits(a).length === 10 && digits(a) === digits(b);
   };
   const flushPreferences = (): Promise<void> => {
     preferenceFlush = preferenceFlush.then(async () => {
@@ -975,8 +981,17 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       .then((raw: unknown) => {
         // The profile now exists and is this caller's — unless the number was
         // only CLAIMED and belongs to an existing customer (requires_verification).
+        // A SPOKEN number is only a claim — anyone can say any number. Owner
+        // decision 2026-09-25: spoken numbers are validated by text code, so
+        // this profile becomes a preference target only when its number IS the
+        // carrier-attested caller-ID. Otherwise the preferences wait for
+        // verify_phone_code (wrapPhoneVerifier) to prove it.
         const result = parseResult(raw);
-        if (result?.saved === true && result.requires_verification !== true) {
+        if (
+          result?.saved === true &&
+          result.requires_verification !== true &&
+          samePhone(phone, deps.callerPhone)
+        ) {
           profilePhone = phone;
           void flushPreferences();
         }

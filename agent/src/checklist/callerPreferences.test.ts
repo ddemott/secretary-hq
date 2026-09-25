@@ -218,6 +218,68 @@ describe('when the preference is written to the profile', () => {
     );
   });
 
+  it('SECURITY: a NEW profile made from a SPOKEN number gets nothing until the number is proven by text', async () => {
+    // Owner decision 2026-09-25: spoken numbers are validated by text code.
+    // Forwarded/blocked line (no caller-ID); the number has no profile yet, so
+    // identify_caller creates one — on the caller's word alone.
+    const { toolkit, fakes } = makeKit({ callerPhone: null });
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'preferred_staff',
+      value: 'Maria',
+    });
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    await call(toolkit.selectedTools(), 'record_answer', { node_id: 'caller_name', value: 'Sue' });
+    await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'caller_phone',
+      value: '555 765 4321',
+    });
+    await vi.waitFor(() => expect(fakes.identify_caller.execute).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fakes.save_customer_preference.execute).not.toHaveBeenCalled();
+
+    // Proven by the texted code → now it is theirs.
+    await call(toolkit.selectedTools(), 'verify_phone_code', {
+      phone: '555 765 4321',
+      code: '1234',
+    });
+    await vi.waitFor(() =>
+      expect(savedCalls(fakes)).toEqual([
+        { phone: '+15557654321', key: 'preferred_staff', value: 'Maria' },
+      ])
+    );
+  });
+
+  it('SECURITY: with caller-ID present, a DIFFERENT number the caller speaks is still only a claim', async () => {
+    // Caller-ID says +15550001111; the caller says "put it under 555 222 3333".
+    // The spoken number is unproven, so a preference mentioned AFTER it must not
+    // be written to it (it may go to the caller-ID line, which the carrier vouches for).
+    const { toolkit, fakes } = makeKit({ callerPhone: '+15550001111' });
+    await call(toolkit.selectedTools(), 'set_purpose', { trees: ['identity', 'message'] });
+    await call(toolkit.selectedTools(), 'record_answer', { node_id: 'caller_name', value: 'Sue' });
+    await call(toolkit.selectedTools(), 'record_answer', {
+      node_id: 'caller_phone',
+      value: '555 222 3333',
+    });
+    await vi.waitFor(() =>
+      expect(
+        fakes.identify_caller.execute.mock.calls.some((c) =>
+          JSON.stringify(c[0]).includes('555 222 3333')
+        )
+      ).toBe(true)
+    );
+    await new Promise((r) => setTimeout(r, 20));
+
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'preferred_staff',
+      value: 'Maria',
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(
+      savedCalls(fakes).filter((c) => c.phone.replace(/\D/g, '').endsWith('5552223333'))
+    ).toEqual([]);
+  });
+
   it('HAPPY: a correction replaces the earlier value (one entry per key)', async () => {
     const { toolkit, fakes } = makeKit({ callerPhone: '+15550001111' });
     await call(toolkit.selectedTools(), 'remember_preference', {
