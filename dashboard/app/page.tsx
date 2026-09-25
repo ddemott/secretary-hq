@@ -1049,8 +1049,6 @@ const LANDING_HTML = `
         <ul class="price-features">
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>30 AI-handled calls/month</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$1.00 per extra call — your line never stops answering</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 staff member</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>1 station or workspace</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Phone number included</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Email confirmations</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Customer records</li>
@@ -1065,8 +1063,6 @@ const LANDING_HTML = `
         <ul class="price-features">
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>100 AI-handled calls/month</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$0.75 per extra call</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Up to 5 staff members</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Up to 3 stations or workspaces</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Everything in Solo</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Visual schedule for your whole team</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Google Calendar sync</li>
@@ -1077,13 +1073,11 @@ const LANDING_HTML = `
       <div class="price-card reveal reveal-delay-2">
         <div class="price-name">Professional</div>
         <div class="price-amount"><span class="price-dollar">\$</span><span class="price-num" data-monthly="149.95">149.95</span><span class="price-period">/mo</span></div>
-        <p class="price-desc">High-volume teams. Unlimited staff, detailed reports, and custom words for your trade.</p>
+        <p class="price-desc">High-volume businesses. Detailed reports and custom words for your trade.</p>
         <hr class="price-divider">
         <ul class="price-features">
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>300 AI-handled calls/month</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>\$0.60 per extra call</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Unlimited staff members</li>
-          <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Unlimited stations</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Everything in Growth</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Detailed reports &amp; business trends</li>
           <li><div class="check"><svg viewBox="0 0 12 12"><polyline points="2 6 5 9 10 3"/></svg></div>Custom words &amp; phrases for your trade</li>

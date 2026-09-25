@@ -98,6 +98,17 @@ describe('LandingPage prices match the owner-decided tiers', () => {
     }
   });
 
+  it('shows no staff or station limits on any plan (owner: removed 2026-09-25)', async () => {
+    // WHY: the cards advertised "1 staff member / 1 station", "Up to 5 staff /
+    //      3 stations" and "Unlimited" — limits nothing in the product enforces
+    //      and the owner never set. Dale: remove them.
+    await renderLanding();
+    const pricing = document.getElementById('pricing')?.textContent ?? '';
+    expect(pricing).not.toMatch(
+      /staff member|stations? or workspaces?|Unlimited stations|Unlimited staff/i
+    );
+  });
+
   it('shows monthly prices only — no Annual toggle or "Save 20%" (owner: no annual discount)', async () => {
     // WHY: the page offered Annual at 20% off, but billing has only monthly
     //      prices, so an "annual" customer would still have been charged
