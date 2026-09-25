@@ -99,6 +99,14 @@ Found while working through the backlog. Each says exactly what was and was not 
 
 ---
 
+## 🧠 Caller preferences — 2026-09-25 (Dale)
+
+- [x] **(code) The AI remembers a caller's preferences** — branch `feat/caller-preferences`. Dale: "if they mention a preference, save it in memory and as the person's profile is being made you would save it." `remember_preference` is offered on every call (unless the owner turns preferences off on the AI Persona page). **What counts as a preference is per business type:** `shared/preferenceCatalog.ts` — a universal set (preferred staff, days, time of day, contact method, language, notes) plus a list for each of the 33 verticals (salon: usual service, color notes, sensitivities, style; auto shop: vehicle, wait or drop off, loaner, parts, approval before work; trades: property access, pets, equipment; …). The model can only pick those keys. The host holds each preference in the call's memory and saves it only to a profile this caller owns (caller-ID-recognized, created this call, or number proven by text code) — never into a profile the caller only claimed. Tests: `tests/shared/preferenceCatalog.test.ts`, `agent/src/checklist/callerPreferences.test.ts`, tenant-config + parser tests.
+  - [ ] **(Dale / live call) Prove it on a real call** — mention a preference as a new caller ("I always want mornings"), give name + number, then call back and hear it used. Unit tests cover the host logic; that the model actually CALLS the tool on a live call is unproven (OpenAI credits were out on 2026-09-18).
+  - [ ] **(code, later) Show preferences with their labels on the customer profile page**, and let owners add their own preference types.
+
+---
+
 ## 🔐 Signup identity — 2026-09-24 (Dale)
 
 - [x] **(code) Email verification at signup** — branch `feat/email-verification`. `/register` emails a single-use `/verify-email?token=` link (48 h, SHA-256-hashed in `email_verifications`); `POST /billing/checkout` answers 403 `email_not_verified` until `users.email_verified_at` is set, so no trial and no phone line on an unproven address. Resend: `POST /verify-email/resend` (signed-in, 3/hour) + a "Confirm your email" notice with **Resend email** on the Billing page. A completed password reset or admin-tenant consent confirmation also verifies (both are clicks on a link we emailed). **Every user that existed when migration `20260924000000` ran is backfilled as verified** — nobody is locked out; seed users are marked verified too. Tests: `tests/integration/emailVerification.realdb.test.ts` (real DB end to end) + route/unit/dashboard tests.

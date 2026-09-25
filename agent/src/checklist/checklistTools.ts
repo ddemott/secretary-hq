@@ -36,6 +36,7 @@ import type { ActionNodeDef, NodeId, QuestionTreeDef } from './types.js';
 import { CALLER_NAME, CALLER_PHONE } from './trees.js';
 import { BLOCK_LIBRARY } from './blockLibrary.js';
 import type { ToolMap } from '../tools.js';
+import type { PreferenceTypeConfig } from '../tenantConfig.js';
 
 /**
  * TREE-LEVEL CONFLICTS, COMPILED FROM THE BLOCK CONTRACT.
@@ -164,6 +165,9 @@ export const TREE_PASSTHROUGH_TOOLS: Record<string, string[]> = {
  * gets live human handoff without a per-tree action node, and tenants without a
  * forward number never see the tool at all.
  */
+/** How long finish_call waits for the call's preferences to save before the goodbye. */
+export const PREFERENCE_FLUSH_MAX_MS = 1500;
+
 export const ALWAYS_ON_PASSTHROUGH_TOOLS: readonly string[] = ['transfer_call'];
 
 /**
@@ -740,6 +744,16 @@ export interface ChecklistToolDeps {
    * must not see a handoff tool it cannot use).
    */
   offerTransfer?: boolean;
+  /**
+   * What counts as a caller preference for this business (tenant-config
+   * preference_catalog, shared/preferenceCatalog.ts). remember_preference may
+   * only save these keys. Empty/absent → the tool is not offered.
+   */
+  preferenceCatalog?: PreferenceTypeConfig[];
+  /** Owner toggle on the AI Persona page. false → no remember_preference. Default on. */
+  savePreferencesEnabled?: boolean;
+  /** Owner's own guidance on what to remember; appended to the tool description. */
+  preferencesInstructions?: string | null;
   maxPurposeRounds?: number;
   /** The agent reschedules its toolset (macrotask-deferred updateTools). */
   onSelectionChanged: () => void;
@@ -821,6 +835,59 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   // saved, "Camille" was recorded in the tracker, and the CRM kept Jamil
   // (CALL_IMPROVEMENTS.md #2).
   let identifiedAs: { name: string; phone: string } | null = null;
+  /**
+   * CALLER PREFERENCES — the call's memory (owner decision 2026-09-25).
+   *
+   * A caller mentions a preference ("I always see Maria") the moment they think
+   * of it — often before we know who they are. The host holds it here and
+   * writes it to their profile as soon as there is a profile THIS caller owns:
+   *   - a returning caller recognized by carrier caller-ID (known at call start),
+   *   - a profile identify_caller saved on this call (not one that answered
+   *     requires_verification — a CLAIMED number that belongs to someone else
+   *     must never receive this caller's preferences), or
+   *   - a spoken number the caller proved with verify_phone_code.
+   * Until then nothing is written. Keyed by preference key, so a correction
+   * ("actually, afternoons") replaces the earlier value.
+   */
+  const pendingPreferences = new Map<string, string>();
+  let profilePhone: string | null =
+    deps.knownCallerName && deps.callerPhone ? deps.callerPhone : null;
+  // Serializes flushes so two triggers landing together cannot double-save.
+  let preferenceFlush: Promise<void> = Promise.resolve();
+  const parseResult = (raw: unknown): Record<string, unknown> | null => {
+    if (typeof raw !== 'string') return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const flushPreferences = (): Promise<void> => {
+    preferenceFlush = preferenceFlush.then(async () => {
+      const save = realTools['save_customer_preference'];
+      if (!profilePhone || !save || pendingPreferences.size === 0) return;
+      for (const [key, value] of [...pendingPreferences]) {
+        try {
+          const raw = await shape(save).execute({ phone: profilePhone, key, value }, undefined);
+          if (parseResult(raw)?.saved === true) {
+            pendingPreferences.delete(key);
+          } else {
+            getLogger().warn(
+              { event: 'caller_preference_not_saved', key, result: String(raw).slice(0, 200) },
+              'save_customer_preference did not save — preference kept in call memory'
+            );
+          }
+        } catch (err) {
+          getLogger().warn(
+            { event: 'caller_preference_save_failed', key, err: String(err) },
+            'save_customer_preference threw — preference kept in call memory'
+          );
+        }
+      }
+    });
+    return preferenceFlush;
+  };
   let closing = false;
   /**
    * Successful transfer_call latches this for the rest of the call. SIP REFER
@@ -902,6 +969,15 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         },
         undefined
       )
+      .then((raw: unknown) => {
+        // The profile now exists and is this caller's — unless the number was
+        // only CLAIMED and belongs to an existing customer (requires_verification).
+        const result = parseResult(raw);
+        if (result?.saved === true && result.requires_verification !== true) {
+          profilePhone = phone;
+          void flushPreferences();
+        }
+      })
       .catch((err: unknown) => {
         getLogger().warn(
           { event: 'checklist_identify_failed', is_correction: isCorrection, err: String(err) },
@@ -1619,6 +1695,23 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
       const goodbye = name
         ? `You're all set, ${name}. Thanks for calling.`
         : `You're all set. Thanks for calling.`;
+      // Last chance to write the call's preferences before the session closes.
+      // Bounded: a slow save must never hold the goodbye.
+      await Promise.race([
+        flushPreferences(),
+        new Promise<void>((resolve) => setTimeout(resolve, PREFERENCE_FLUSH_MAX_MS)),
+      ]);
+      if (pendingPreferences.size > 0) {
+        getLogger().info(
+          {
+            event: 'caller_preferences_unsaved_at_close',
+            count: pendingPreferences.size,
+            keys: [...pendingPreferences.keys()],
+            reason: profilePhone ? 'save_failed' : 'no_owned_profile',
+          },
+          'call ended with preferences that were never tied to a profile this caller owns'
+        );
+      }
       await deps.closeCall(goodbye);
       return 'Call complete.';
     },
@@ -1655,10 +1748,7 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
    */
   const hostSelectMessageAfterTransferFail = (): boolean => {
     let changed = false;
-    if (
-      tracker.selectedTrees().includes('booking') &&
-      tracker.status('book') !== 'done'
-    ) {
+    if (tracker.selectedTrees().includes('booking') && tracker.status('book') !== 'done') {
       tracker.deselect('booking');
       changed = true;
     }
@@ -1762,6 +1852,55 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         return `${text}\n\n${retryOrFallback} ${stateBlock()}`;
       },
     });
+
+  // remember_preference — on EVERY call (not tree-gated), whenever the owner
+  // has not switched preferences off and this business has a preference list.
+  const catalog = deps.preferenceCatalog ?? [];
+  if (
+    deps.savePreferencesEnabled !== false &&
+    catalog.length > 0 &&
+    realTools['save_customer_preference']
+  ) {
+    const ownerGuidance = deps.preferencesInstructions?.trim();
+    baseTools['remember_preference'] = llm.tool({
+      description:
+        'The MOMENT the caller mentions a lasting preference — something that should still ' +
+        'be true on their next call — remember it. Silent: do NOT tell the caller you are ' +
+        "saving anything, and keep the conversation going. Not for this visit's one-off " +
+        'details. Pick the key that fits; use "notes" only when nothing else does.\n' +
+        catalog.map((p) => `- ${p.key}: ${p.hint}`).join('\n') +
+        (ownerGuidance ? `\nThe business says: ${ownerGuidance}` : ''),
+      parameters: {
+        type: 'object',
+        properties: {
+          key: {
+            type: 'string',
+            enum: catalog.map((p) => p.key),
+            description: 'Which preference this is — one of the listed keys.',
+          },
+          value: {
+            type: 'string',
+            description: 'The preference in the caller’s own words, short ("Maria", "mornings").',
+          },
+        },
+        required: ['key', 'value'],
+        additionalProperties: false,
+      },
+      execute: (args: { key: string; value: string }): Promise<string> => {
+        const value = typeof args.value === 'string' ? args.value.trim() : '';
+        if (!catalog.some((p) => p.key === args.key) || !value) {
+          return Promise.resolve(
+            'Not remembered — use one of the listed keys and a short value. Carry on.'
+          );
+        }
+        pendingPreferences.set(args.key, value);
+        // Background, never awaited: a slow save must not become dead air while
+        // the caller is mid-sentence. finish_call makes the bounded last attempt.
+        if (profilePhone) void flushPreferences();
+        return Promise.resolve('Noted. Do not mention it — carry on with the call.');
+      },
+    });
+  }
 
   // Always-on passthroughs — driven by ALWAYS_ON_PASSTHROUGH_TOOLS so the
   // inventory list and the registration cannot drift. transfer_call also needs
@@ -2100,6 +2239,26 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
   };
 
   /** Transparent passthrough that records how many times were just offered. */
+  /**
+   * verify_phone_code, unchanged for the model. A PROVEN number makes its
+   * profile this caller's, so preferences held in the call's memory can now be
+   * written to it.
+   */
+  const wrapPhoneVerifier = (real: ToolMap[string]): ToolMap[string] =>
+    llm.tool({
+      description: shape(real).description,
+      parameters: shape(real).parameters,
+      execute: async (args: unknown, toolCtx: unknown): Promise<unknown> => {
+        const raw = await shape(real).execute(args, toolCtx);
+        const result = parseResult(raw);
+        if (result?.verified === true && typeof result.phone === 'string') {
+          profilePhone = result.phone;
+          void flushPreferences();
+        }
+        return raw;
+      },
+    });
+
   const wrapSlotReader = (real: ToolMap[string]): ToolMap[string] =>
     llm.tool({
       description: shape(real).description,
@@ -2135,7 +2294,11 @@ export function createChecklistTools(deps: ChecklistToolDeps): ChecklistToolkit 
         // the model sees. It only lets the host notice that an offer is now
         // outstanding, which is what the unconfirmed-booking guard reads.
         tools[name] =
-          name === 'get_available_slots' ? wrapSlotReader(realTools[name]) : realTools[name];
+          name === 'get_available_slots'
+            ? wrapSlotReader(realTools[name])
+            : name === 'verify_phone_code'
+              ? wrapPhoneVerifier(realTools[name])
+              : realTools[name];
       }
     }
     return tools;

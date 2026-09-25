@@ -14,6 +14,7 @@
  * spike used. Session plumbing (greeting say(), transcript, silent-turn
  * recovery, summary) is shared and unchanged.
  */
+import type { PreferenceTypeConfig } from '../tenantConfig.js';
 import { type llm, voice } from '@livekit/agents';
 import { nameTheOwnerStream, sanitizeStream, spokenOwnerName } from '../speechSanitizer.js';
 import type { KnownCustomer } from '../customerContext.js';
@@ -71,6 +72,12 @@ export interface ChecklistAgentOptions {
    * destination is a dead end.
    */
   offerTransfer?: boolean;
+  /** Caller-preference types for this business (tenant-config preference_catalog). */
+  preferenceCatalog?: PreferenceTypeConfig[];
+  /** Owner toggle; false turns off remember_preference. Default on. */
+  savePreferencesEnabled?: boolean;
+  /** Owner guidance on what to remember. */
+  preferencesInstructions?: string | null;
   /**
    * What this business actually does, in the owner's words (`tenants.greeting_menu`).
    *
@@ -789,6 +796,9 @@ export class ChecklistAgent extends voice.Agent {
           : null,
       // Forward-number gate — same boolean the greeting uses for CLOSER_WITH_TRANSFER.
       offerTransfer: opts.offerTransfer,
+      preferenceCatalog: opts.preferenceCatalog,
+      savePreferencesEnabled: opts.savePreferencesEnabled,
+      preferencesInstructions: opts.preferencesInstructions,
       onSelectionChanged: () => {
         // NEVER updateTools inside the tool's own execute (the router lesson:
         // it swaps out the tool LiveKit is waiting on — "function output

@@ -78,6 +78,9 @@ describe('fetchTenantConfig', () => {
       // renders this list, and "you can ask for undefined" is not a sentence a
       // receptionist says. 2026-07-31.
       staffFirstNames: [],
+      // No preference_catalog in the response (older backend) → empty; the
+      // remember_preference tool is then not offered.
+      preferenceCatalog: [],
       checklistRuntimeConfig: null,
       // Absent from the response ⇒ null, meaning "this tenant has no per-tenant
       // question trees, use the platform library" — the pre-2026-08-14
@@ -157,6 +160,29 @@ describe('fetchTenantConfig', () => {
     });
     const cfg = await fetchTenantConfig(client, TENANT_ID);
     expect(cfg.staffFirstNames).toEqual(['Dale', 'Maria']);
+  });
+
+  it('HAPPY: passes a well-formed preference_catalog through to preferenceCatalog', async () => {
+    // WHY: the keys become remember_preference's enum (2026-09-25).
+    const client = clientWith({
+      status: 200,
+      body: {
+        success: true,
+        result: {
+          name: 'Bella',
+          timezone: 'America/Chicago',
+          system_prompt: null,
+          preference_catalog: [
+            { key: 'usual_service', label: 'Usual service', hint: 'Cut, color.' },
+            { key: 'Bad Key', label: 'x', hint: 'y' },
+          ],
+        },
+      },
+    });
+    const cfg = await fetchTenantConfig(client, TENANT_ID);
+    expect(cfg.preferenceCatalog).toEqual([
+      { key: 'usual_service', label: 'Usual service', hint: 'Cut, color.' },
+    ]);
   });
 
   it('maps forwarded_from_phone → forwardedFromPhone (snake → camel)', async () => {
