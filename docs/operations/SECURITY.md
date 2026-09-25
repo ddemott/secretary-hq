@@ -2,7 +2,7 @@
 
 **Last full review:** 2026-05-09 (security review pass 1 + pass 2 — webhook signature verification, RLS coverage, JWT/refresh, AGENT_SECRET rotation)
 
-**Since then, verified separately and folded in below:** the anonymous `?tenant_id=` read/write/delete hole (2026-05-21), the 2026-07-13→08-02 RLS-is-decorative finding and its closure — production now connects as `app_user`, which cannot bypass policies, probed directly on 2026-08-02 (38/38 tables, 52 policies; both counts are point-in-time and have since moved to 42 tables / 61 policies — see the banner below) and re-probed in CI by `tests/regression/rlsIsolation.test.ts`.
+**Since then, verified separately and folded in below:** the anonymous `?tenant_id=` read/write/delete hole (2026-05-21), the 2026-07-13→08-02 RLS-is-decorative finding and its closure — production now connects as `app_user`, which cannot bypass policies, probed directly on 2026-08-02 (38/38 tables, 52 policies; both counts are point-in-time and have since moved to 42 tables / 61 policies — see the banner below) and re-probed in CI by `tests/regression/rlsIsolation.test.ts`; and the 2026-09-24/25 account-creation gate (email verification, one account per email, card-required trial, `ENABLE_SIGNUP`) plus the caller-preference write scoping added with it (#565–#571).
 
 This is a baseline of the production-surface security posture so future audits start from a known shape rather than re-deriving it. Each section names the threat, the current control, where it lives, and any gaps left open with a rationale.
 
@@ -106,6 +106,7 @@ Out of scope (not a multi-tenant SaaS concern at this stage): DDoS, application-
 
 - Local test Postgres uses a SUPERUSER+BYPASSRLS `postgres` role. RLS is bypassed in that role regardless of FORCE. The probes use `api_user` (non-super, non-BYPASSRLS) for behavioral cross-tenant tests. Production runs against Supabase-managed Postgres where the `postgres` role is non-super (otherwise the FORCE migrations from 2026-03-23 would have been pointless). FORCE-vs-managed-postgres behavior is not tested locally — it has to be verified post-deploy.
 - `audit_log` is `SECURITY DEFINER` so the audit trigger bypasses RLS to write rows. The trigger itself is internal and only ever fires from already-tenant-scoped INSERTs/UPDATEs/DELETEs.
+- `create_default_resources()` is `SECURITY DEFINER` since migration `20260924000100` (#567), for the same reason as `audit_log`: `/register`'s `on_tenant_created_resources` trigger inserts default `resources` rows for a newly-created tenant, and under the RLS-enforced `app_user` role there is no tenant context yet at that instant in the transaction — the insert 500'd for every templated business type until this fix. Scoping is safe because the function reads `NEW.tenant_id` off the trigger's own row (the tenant that was JUST inserted in the same transaction), never a value a caller supplies directly — there is no argument surface for a request to redirect it at another tenant.
 - ~~**`GET /customers` has a code path with zero application-level tenant scoping.**~~ — **FIXED 2026-09-16, PR #517** (found earlier the same day, tracked `docs/planning/TODO.md`/PR #508 audit). `src/routes/customers.ts`'s super-admin sentinel-tenant branch now requires `requireSuperAdmin` **and** an explicit `?all_tenants=true` opt-in — absent, it returns `[]` rather than every tenant's customer PII. The identical branch on `GET /appointments` (`src/routes/appointments.ts`) was fixed the same way in the same PR. Detail: `docs/planning/RESOLVED.md` (2026-09-16 entry).
 
 ## Same-tenant role authorization
@@ -145,6 +146,19 @@ Square also verifies HMAC against `${notificationUrl}${body}` rather than the bo
 - `/reset-password` looks up by token hash, verifies expiry + not-yet-used, updates `users.password_hash` + `users.password_changed_at = NOW()`, marks the row used.
 - `password_resets` has RLS enabled with FORCE + a policy that only allows access when `app.current_tenant_id` is empty. The `/forgot-password` and `/reset-password` routes run via `withPoolClient` (no setTenantContext call), so they remain authorized; any authenticated tenant session is denied (defense in depth — there's no production caller that should ever read this table from a tenant-scoped connection). Closed RLS-zero gap on 2026-05-09.
 
+## Account creation gate (2026-09-24, #566/#567)
+
+**Control: email verification before checkout, one account per email platform-wide, a card on file before any trial, and self-serve signup closed by default.**
+
+- `POST /register` creates the account but `POST /billing/checkout` refuses with 403 `email_not_verified` until `users.email_verified_at` is set. Verification is a 48-hour single-use token: raw token emailed, SHA-256 hash stored in `email_verifications`, `POST /verify-email` (public) consumes it, `POST /verify-email/resend` is rate-limited 3/hour per authenticated user. Reset-password and the admin-provisioned-tenant consent-confirm flow also verify the email. All pre-existing prod users were backfilled `email_verified_at` so the gate only affects new signups.
+- **One account per email, platform-wide, case-insensitive** — `users_email_lower_unique` (migration `20260924000200`), plus application checks in `/register`, admin `/tenants/create`, and `/users/invite` so the error is a clean "you already have an account" rather than a constraint-violation 500. Emails are stored lowercased; `/login` matches on `LOWER(email)`. This is a deliberate reversal of an earlier decision (tracked historically as BUG-002) to allow the same email across tenants — reversed because duplicate-email accounts were creating exactly the confusion ("which login is this?") that rule was meant to avoid.
+- `POST /provisioning/activate` (the route that actually assigns a phone number) returns 402 `subscription_required` unless the tenant's `subscription_status = 'active'` — super-admin and deleted tenants are exempt. Checkout itself collects a card up front (`payment_method_collection: 'always'`); the 14-day trial is granted only when the Stripe customer has no PAST subscription (`stripe.subscriptions.list({status:'all'})`, checked server-side) — a lookup failure fails closed (no trial granted, not a free one).
+- **Self-serve signup is closed by default.** `POST /register` returns 403 `signup_closed` unless `ENABLE_SIGNUP=true` (unset in prod); `GET /signup-status` is the public read of the flag the dashboard uses to show "Sign-ups aren't open yet." Accounts are currently created directly rather than through the public form.
+
+**Gaps acknowledged:**
+
+- No email-existence oracle audit has been run against the new duplicate-account error message the way the password-reset flow was audited — worth a look before relying on it as a hard privacy boundary.
+
 ## JWT / session management
 
 **Control: 8-hour stateless tokens with password-rotation revocation.**
@@ -176,6 +190,13 @@ Square also verifies HMAC against `${notificationUrl}${body}` rather than the bo
 **Gaps acknowledged:**
 
 - One global secret per environment. We don't bind it to a specific worker identity. Mitigation: the secret is 32+ chars (Zod `min(32)` in agent config), only present in two Railway services' env, never logged. Forward path: switch to per-worker JWT auth if/when the agent worker count grows beyond one tenant's worth.
+
+## Caller preference writes (2026-09-25, #571)
+
+**Control: a preference the AI hears is only ever written to a profile the caller has actually proven ownership of.**
+
+- The host (`agent/src/checklist/checklistTools.ts`) holds every preference the caller mentions in call memory first, keyed by a fixed per-vertical catalog (`shared/preferenceCatalog.ts`) — the model cannot invent a free-form key. A write to `save_customer_preference` only fires against: the carrier-attested caller-ID number for a recognized returning caller, a profile `identify_caller` saved this call (never one that answered `requires_verification`), or a spoken number the caller proved with `verify_phone_code`. **A spoken number that has not been proven gets nothing written to it, new profile or not** — there is no SMS/10DLC path yet to confirm it belongs to the person on the line, so a save would otherwise let a caller plant data on an arbitrary phone number just by reciting it.
+- `agent/src/checklist/callerPreferences.test.ts` covers the ownership gate; `tests/shared/preferenceCatalog.test.ts` covers the catalog (no medical keys anywhere — med_spa is appearance-only, consistent with the platform-wide HIPAA-vertical exclusion).
 
 ## Open follow-ups
 

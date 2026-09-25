@@ -2,9 +2,42 @@
 
 > 2026-09-24. Two inputs for the open tier-pricing decision (`docs/planning/TODO.md`
 > P0 §2 "Decide final tier pricing"): how the market prices, and what one call
-> actually costs us. **No decision is recorded here** — the options at the end are
-> for Dale to pick from. Pairs with `COMPETITOR_WEAKPOINTS.md` (attack map) and
-> `STRATEGY.md` (positioning).
+> actually costs us. Pairs with `COMPETITOR_WEAKPOINTS.md` (attack map) and
+> `STRATEGY.md` (positioning). The research below predates the decision and is kept
+> as-is for context; the tiers it explores (Solo $129/150, Growth $279/500,
+> Professional $449/2,000) are **not** what shipped.
+
+## Decided (2026-09-24/25)
+
+Landed in code #565–#570; not what "Options (not decisions)" (§4 below) proposed —
+Dale picked lower entry prices and smaller included-call bands than either option
+sketched:
+
+| Tier         | Price / month | Included calls | Overage / call |
+| ------------ | ------------- | -------------- | -------------- |
+| Solo         | $29.95        | 30             | $1.00          |
+| Growth       | $59.95        | 100            | $0.75          |
+| Professional | $149.95       | 300            | $0.60          |
+
+- **Monthly only — no annual plan, no annual discount.** The landing page's annual
+  toggle was removed (#568), not merely left unbuilt.
+- **No per-tier staff/station limits.** The plan cards no longer show a seat/station
+  cap on any tier (#569) — SecretaryHQ prices on calls, not seats, settling the
+  Option B seat-pricing question in Option A's direction.
+- **Call transfer to a person is included on every plan** (#570), not gated to a
+  higher tier — it already worked everywhere once a transfer number was set; the
+  pricing page previously implied otherwise.
+- **A paid plan past its included calls keeps answering.** Overage is billed per
+  call at the rate above rather than the line going quiet or refusing new calls
+  (#565); only the free/no-plan tier still blocks. Stripe itself has no products,
+  prices, or webhook registered yet, so overage is computed and stored, not
+  actually charged to a card today.
+- Card-required 14-day trial (#566) and email-verification-before-checkout (#567)
+  shipped alongside the pricing change but are separate decisions — see
+  `docs/planning/RESOLVED.md` (2026-09-24/25 entry) and `docs/operations/SECURITY.md`.
+
+Below this line is the original research and the (unpicked) options — kept for the
+cost-per-call math and competitor data, not as a live proposal.
 
 ## 1. How competitors price
 

@@ -659,3 +659,30 @@ describe('BillingView — plan features', () => {
     expect(screen.getByText('Everything in Growth')).toBeInTheDocument();
   });
 });
+
+describe('BillingView — network failures', () => {
+  test('SAD: resend throwing (network down) shows the error instead of a false "sent"', async () => {
+    localStorage.setItem('emailVerified', 'false');
+    mockApi.billing.resendVerification.mockRejectedValue(new Error('Failed to fetch'));
+    render(<BillingView />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /resend email/i }));
+
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Failed to fetch', 'error'));
+    expect(screen.getByRole('button', { name: /resend email/i })).not.toBeDisabled();
+    localStorage.removeItem('emailVerified');
+  });
+
+  test('SAD: portal throwing (network down) shows the error and re-enables the button', async () => {
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'growth',
+    });
+    mockApi.billing.portal.mockRejectedValue(new Error('Failed to fetch'));
+    render(<BillingView />);
+    fireEvent.click(await screen.findByRole('button', { name: /manage billing/i }));
+
+    await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Failed to fetch', 'error'));
+    expect(screen.getByRole('button', { name: /manage billing/i })).not.toBeDisabled();
+  });
+});

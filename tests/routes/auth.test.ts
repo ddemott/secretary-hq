@@ -1146,6 +1146,32 @@ describe('Auth Routes — Handler-Level', () => {
 
   // ── /reset-password ─────────────────────────────────────────────────
 
+  describe('POST /verify-email handler', () => {
+    it('SAD: a DB error mid-verification ROLLs BACK and propagates — never a half-verified user (WHO: owner clicking the link during a DB blip | WHAT: UPDATE users throws | WHERE: /verify-email transaction | WHY: the token must not be burned without the user being verified)', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [{ email_verification_id: 'ev1', user_id: USER_ID_MOCK }] });
+      const base = client.query.getMockImplementation()!;
+      client.query.mockImplementation(async (text: string, params?: unknown[]) => {
+        if (text.startsWith('UPDATE users SET email_verified_at')) throw new Error('db blip');
+        return base(text, params);
+      });
+
+      const route = findRoute(routes, '/verify-email');
+      const reply = createMockReply();
+      await route.handler(createMockRequest({ token: 'v'.repeat(43) }), reply);
+
+      const texts = client.query.mock.calls.map((c) => String(c[0]).trim());
+      expect(texts).toContain('ROLLBACK');
+      expect(texts).not.toContain('COMMIT');
+      expect(reply.statusCode).toBeGreaterThanOrEqual(500);
+    });
+  });
+
   describe('POST /reset-password handler', () => {
     it('updates password + marks token used on valid token (WHO: user with reset link | WHAT: completes reset | WHERE: /reset-password | WHY: changes credentials and forces re-login of other sessions)', async () => {
       const { mockClient: client, queryResponses } = createMockClient();
