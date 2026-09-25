@@ -32,8 +32,9 @@ When you log in you land on **Home**. The top navigation has two groups:
   Answer Debugger. The **Setup Assistant** button here re-opens the guided
   setup wizard.
 - **Phone Assistant** — how your AI sounds and behaves, including the
-  **AI Persona** page (voice, speaking style, greeting, and "Forward Calls to a
-  Person"). This is also where per-company preferences live.
+  **AI Persona** page (voice, speaking style, greeting, "Forward Calls to a
+  Person," and the caller-preferences toggle — on by default, see the FAQ
+  below).
 
 > Front-desk logins only see the everyday tabs. If a front-desk user opens an
 > owner-only link, they're sent back to Home.
@@ -153,6 +154,27 @@ appointments, call history, knowledge base, and more).
 **How do I change the AI's voice or greeting?**
 Phone Assistant → AI Persona. You can set the voice, speaking speed/style, and
 the greeting per business.
+
+**Does the AI remember what a caller likes?**
+Yes, by default. When a caller mentions something lasting — a preferred stylist,
+"weekends only," how they like to be reached — the AI saves it under a key that
+fits your type of business, and brings it up on their next call. It only saves
+to a caller it can actually confirm (their caller-ID number, or a number they
+proved with a text code) — never to an unconfirmed number someone just recites.
+Turn it off for your business on Phone Assistant → AI Persona.
+
+**What does signing up involve, and what does the trial cost?**
+New accounts confirm their email before they can pick a plan or check out — you'll
+get a verification link, and billing is blocked until you click it. The 14-day
+free trial requires a card on file (no more "no card needed"); you won't be
+charged until the trial ends. Self-serve signup is closed while the product is
+in this phase — accounts are created for you directly.
+
+**How does per-call billing work?**
+Each plan includes a set number of calls a month (Solo 30, Growth 100,
+Professional 300) and bills a fixed extra amount for every call over that —
+your line doesn't stop answering once you're over, it just costs more per call
+beyond the included amount. See Setup → Billing for your current usage.
 
 ---
 

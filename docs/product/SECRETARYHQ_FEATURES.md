@@ -2,7 +2,7 @@
 
 > Organized outline of SecretaryHQ's capabilities. Status legend:
 > **✅ built** (works today) · **🔨 in progress** · **💡 planned** (captured in
-> `docs/product/STRATEGY.md`, demand-gated). Last updated 2026-08-14; accuracy-corrected 2026-09-18.
+> `docs/product/STRATEGY.md`, demand-gated). Last updated 2026-08-14; accuracy-corrected 2026-09-18, 2026-09-25.
 >
 > One line: **an AI receptionist that answers the phone, books the work,
 > remembers the customer — and gives the owner just enough of a back office to
@@ -17,7 +17,7 @@
 - ✅ Knows the business — answers hours / prices / services / policies from a per-tenant knowledge base (RAG / vector search)
 - ✅ Books appointments live during the call
 - ✅ Recognizes returning callers + recalls their history and preferences
-- 🔨 Saves customer preferences mid-call ("prefers Maria", "last service: oil change") — the `save_customer_preference` tool is defined in `agent/src/tools/identity.ts` but is NOT presented to the model on the live question-tree path (CLAUDE.md, tool inventory re-verified 2026-09-14); recall of stored preferences works
+- ✅ Saves customer preferences mid-call ("prefers Maria", "weekends only"), per business type (2026-09-25, #571) — a host-built `remember_preference` tool is offered whenever the owner's `save_preferences_enabled` toggle (default on) is on; the key it saves under comes from a per-vertical catalog (`shared/preferenceCatalog.ts`, all 33 verticals). It writes only to a profile the caller actually owns — the carrier caller-ID number, or a spoken number proven by `verify_phone_code`; an unproven spoken number gets nothing saved (no SMS/10DLC to confirm it). Not yet proven on a live PSTN call — verified in simulation and unit tests only.
 - 🔨 Phone verification (OTP via SMS) when caller-ID is blocked, before booking — code shipped, but the tools are only offered when `ENABLE_PHONE_VERIFICATION` AND `ENABLE_SMS` are both on (`agent/src/index.ts`), so it is off until 10DLC registration lands
 - 🔨 Live human transfer is **wired** on the question-tree path when a forward number is set (`transfer_call` always-on passthrough, #462). Without a forward number, production calls take a message for escalation. Live PSTN proof + residual hardening still open (see TODO live-validation / RUNBOOK §7c).
 - ✅ Per-tenant persona — custom voice, greeting, and style flags (set on the AI Persona page; `tts_speed` is currently inert under Aura). The free-text system prompt ("Personality & Instructions") is only read on the legacy prompt-ladder path — under the live question-tree call architecture it is not passed to the model
@@ -92,9 +92,11 @@
 
 ## 10. Billing (our SaaS revenue)
 
-- ✅ Stripe subscription billing of the business — Solo / Growth / Pro _(built; needs live keys + path verification)_
+- ✅ Stripe subscription billing of the business — Solo / Growth / Professional _(code built; no Stripe product/price/webhook registered yet — `sk_test` key in prod — see `docs/operations/DEPLOYMENT.md`)_
 - ✅ Webhook-driven subscription activation + access gating
-- 💡 **Pricing model:** value-aligned **volume** pricing — metered on bookings/calls, never per-seat or per-minute; predictable bands (decision captured, build deferred — `docs/product/STRATEGY.md`)
+- ✅ **Pricing decided (2026-09-24/25):** monthly only, no annual option — Solo $29.95/mo (30 calls, $1.00/call overage), Growth $59.95/mo (100 calls, $0.75/call overage), Professional $149.95/mo (300 calls, $0.60/call overage). No per-tier staff/station limits; call transfer to a person included on every plan. A paid plan past its included calls keeps answering and is billed the overage — it does not get cut off; only the free/unrecognized tier blocks (#565). Full history: `docs/product/PRICING_RESEARCH.md`.
+- ✅ **Card required for the 14-day trial (2026-09-24, #566)** — checkout collects a card up front; the trial applies only to a Stripe customer's first-ever subscription. `POST /provisioning/activate` refuses a phone line (402) without an active subscription.
+- ✅ **Email verification gate (2026-09-24, #567)** — checkout is refused until the account's email is confirmed via an emailed link; one account per email platform-wide (case-insensitive). Self-serve signup is closed by default (`ENABLE_SIGNUP`) until launch.
 - 🚫 We do **NOT** process the business's customers' service payments (deliberate — no PCI/payout liability; stays with their POS/Square)
 
 ## 11. Platform & Observability

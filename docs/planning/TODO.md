@@ -173,7 +173,7 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
 
 ### 2. Billing — be able to take money
 
-- [ ] **(Dale)** **Decide final tier pricing** before creating Stripe products — current placeholders ($129/$279) have not been validated.
+- [ ] **(Dale)** **Decide final tier pricing** before creating Stripe products — **DECIDED 2026-09-24/25 and shipped in code (#565–#570, below); checkbox stays open because Stripe products/prices themselves are not yet created (part A below) and item 3 (overage billing through Stripe) is still open.**
   - **DECIDED 2026-09-24 (Dale): first tier = $29.95/month for 30 calls, $1.00 per call over 30, and calls past the cap KEEP BEING ANSWERED** (never refused). Unit economics at $0.18/call (`docs/product/PRICING_RESEARCH.md`): profit ~$22.38/mo (75%) with SMS off, ~$20.40 (68%) with SMS on a low-volume 10DLC campaign; each overage call nets ~$0.78 after its call, SMS and Stripe cost. Why $1.00 (was $0.75): competitors charge MORE for overage on the entry tier (Upfirst $1.50 / $1.00 / $0.75 / $0.70 by tier; Dialzara $0.48 → $0.35/min) so it pushes upgrades — at 60 calls tier 1 costs $59.95. Higher tiers (3+) still open.
   - **DECIDED 2026-09-24 (Dale): tier 2 = $59.95/month for 100 calls, $0.75 per call over 100, calls past the cap keep being answered.** Profit at full use ~$35.81 (60%) with SMS on, ~$38.91 (65%) off; each extra call nets ~$0.53. At 60 calls tier 1 and tier 2 both bill $59.95 and earn the same ~$43.65, so upgrading costs no margin and gives the customer 40 more calls. Benchmark: Upfirst tier 2 is $59.95 / 90 calls, $1.00 extra; Dialzara ~$1.04/call; Goodcall $0.50/caller.
   - **DECIDED 2026-09-24 (Dale): tier 3 = $149.95/month for 300 calls, $0.60 per call over 300, calls past the cap keep being answered.** Profit at full use ~$84.00 (56%) with SMS on; each extra call nets ~$0.39. A tier-2 customer saves by upgrading past ~220 calls. Benchmark: Upfirst tier 3 $159.95 / 300 calls, $0.75 extra; Dialzara $199 / ~217 calls; Goodcall $249 / 500 callers. Margins fall by tier (68% / 60% / 56%) because cost per call is flat — cutting the LLM cost is what lifts the top tier. Any tier-3 perks should be service (hands-on onboarding, priority support), not unbuilt features.
@@ -234,7 +234,7 @@ Both erase PII irreversibly (kill-switched off / inert until enabled). Branches 
 ## 🟡 P1 — Customer success & trust (non-blocking, do after P0)
 
 - [ ] **(Dale)** Verify **reminder delivery stats** in prod. **Unblocked 2026-07-09** — Telnyx creds confirmed, and `TELNYX_PHONE_NUMBER` corrected from the dead `+163****1960` (see P0 §1). Note the stats before that fix were measuring a broken `from` address: fallback-tenant sends were rejected by Telnyx and logged as `status='failed'` in `communications_history`. Expect `sent` now. Check the Failed-only drill-down (`GET /communications/history?status=failed`) and confirm no new failures post-`23:49:38Z`.
-- [ ] **(Dale/code)** **Pricing tiers (Pro/Enterprise)** positioning.
+- [ ] **(Dale/code)** **Pricing tiers (Professional/Enterprise)** positioning — Solo/Growth/Professional prices are decided and shipped (§2 above); what remains here is copy for an Enterprise tier above Professional, and cleaning up the still-stale in-app plan-picker bullets noted in §2 item 4.
 
 ### Optional integrations — turn on per business need (code complete, need creds + a live round-trip)
 

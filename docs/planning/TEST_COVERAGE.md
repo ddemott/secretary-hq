@@ -1,6 +1,8 @@
 # Test Coverage
 
-**Latest verification rerun (suite totals):** 2026-09-24 on `main` through #558 (recorded in `CLAUDE.md` Project Status). `npm test` at repo root finished **3,423 passing (286 files)**; `cd dashboard && npx vitest run` finished **1,244 passing (113 files)**; `cd agent && npx vitest run` finished **1,085 passing (63 files)**; `tsc --noEmit` clean in all three packages. Playwright e2e was NOT re-run locally (it wipes and rebuilds the local database); CI runs it green on every PR.
+**Latest verification rerun (suite totals):** 2026-09-25 on `main` through #571 (recorded in `CLAUDE.md` Project Status). `npm test` at repo root finished **3,477 passing (288 files)**; `cd dashboard && npx vitest run` finished **1,274 passing (115 files)**; `cd agent && npx vitest run` finished **1,107 passing (65 files)**; `tsc --noEmit` clean in all three packages. Playwright e2e was NOT re-run locally (it wipes and rebuilds the local database); CI runs it green on every PR. New test files added in the #565–#571 batch: `tests/integration/emailVerification.realdb.test.ts` (real-DB `/register`/`/verify-email` under the RLS-enforced `app_user` role — the suite that caught the `create_default_resources` 500), `tests/shared/preferenceCatalog.test.ts`, `agent/src/checklist/callerPreferences.test.ts`, `agent/src/preferenceCatalogParse.test.ts`, `dashboard/app/verify-email/page.test.tsx`, `dashboard/lib/api.billing.test.ts`.
+
+**Prior verification rerun (suite totals):** 2026-09-24. Root **3,423 passing (286 files)**; dashboard **1,244 passing (113 files)**; agent **1,085 passing (63 files)**.
 
 **Prior verification rerun (suite totals):** 2026-09-16. Root **3,205 passing (268 files)**; dashboard **1,173 passing (107 files)**; agent **1,061 passing (61 files)**.
 
@@ -33,12 +35,12 @@ Older refresh history (May 9–12 PK-rename sprint, reminder wiring, security pa
 
 | Suite                                                  | Tests                     | Status                                     | Runtime                      |
 | ------------------------------------------------------ | ------------------------- | ------------------------------------------ | ---------------------------- |
-| Root/backend (`npm test`)                              | 3,423 passing (286 files) | ✅                                         | 2026-09-24 rerun             |
-| Dashboard (`cd dashboard && npm test`)                 | 1,244 passing (113 files) | ✅                                         | 2026-09-24 rerun             |
-| Agent (`cd agent && npm test`)                         | 1,085 passing (63 files)  | ✅                                         | 2026-09-24 rerun             |
+| Root/backend (`npm test`)                              | 3,477 passing (288 files) | ✅                                         | 2026-09-25 rerun             |
+| Dashboard (`cd dashboard && npm test`)                 | 1,274 passing (115 files) | ✅                                         | 2026-09-25 rerun             |
+| Agent (`cd agent && npm test`)                         | 1,107 passing (65 files)  | ✅                                         | 2026-09-25 rerun             |
 | Playwright e2e (`cd dashboard && npx playwright test`) | 162 passed, 15 skipped    | ✅ last verified, not re-run in this sweep | 2026-08-18 full verification |
 
-Current verified total from the three suites re-run on 2026-09-24: **5,752 passing** (3,423 + 1,244 + 1,085). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
+Current verified total from the three suites re-run on 2026-09-25: **5,858 passing** (3,477 + 1,274 + 1,107). Last verified Playwright snapshot still stands at **162 passed, 15 skipped** from 2026-08-18.
 
 > **On skipped e2e tests**: `calendar-sync.spec.ts` tests skip without `SYNC_TEST_RECORDER=1` (set it + restart the backend to run them). One test in `full-functional-audit.spec.ts` (Voice Calls) is deferred until Telnyx PSTN clears. Re-run the suite to refresh pass/skip counts.
 
@@ -137,6 +139,13 @@ _Hotspot percentages are from the 2026-08-19 coverage run. Rows for `src/service
 | `components/scheduler/SchedulerToolbar.tsx`      | 0%         | toolbar path still unexercised       |
 | `components/knowledge/KnowledgeDocumentsTab.tsx` | 11.76%     | document-tab path still thin         |
 | `lib/api.ts`                                     | 33.42%     | many API helpers still unexercised   |
+
+### Agent — deliberately uncovered (2026-09-25, #571)
+
+Not coverage-run findings — both are named, accepted holes from the caller-preferences PR:
+
+- `agent/src/index.ts` — the 5 lines that wire `preferenceCatalog` / `savePreferencesEnabled` / `preferencesInstructions` from `tenantConfig` into the session-start options object have no unit harness; there is no session-start test bed that constructs a real `tenantConfig` and asserts what gets passed through. `agent/src/checklist/callerPreferences.test.ts` covers everything downstream of that wiring (the `remember_preference` tool itself, the flush/write logic).
+- `shared/preferenceCatalog.ts` — `preferencesForVertical()`'s de-dup branch (`if (seen.has(p.key)) continue`) is unreachable with the current data: no vertical list in `VERTICAL_PREFERENCES` currently repeats a key already in `UNIVERSAL_PREFERENCES`, so the branch that lets a vertical's own definition win never executes. Kept because a future vertical list overriding a universal key needs it; `tests/shared/preferenceCatalog.test.ts` covers every other branch of the file.
 
 ## Regenerating
 

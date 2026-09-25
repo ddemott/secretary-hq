@@ -20,7 +20,8 @@ export const DEFINED_UNREACHABLE_ON_QUESTION_TREE: Record<string, string> = {
   send_self_service_link: 'sms capability; gated off until 10DLC',
   record_sms_consent: 'sms capability; gated off until 10DLC',
   page_owner_via_sms: 'not selected by any tree; kept, not deleted',
-  save_customer_preference: 'not selected by any tree; kept, not deleted',
+  save_customer_preference:
+    'not model-facing; remember_preference (host tool in checklistTools) calls it to flush',
   get_detailed_customer_history: 'not on a tree; live identity path uses get_customer_context',
   find_caller_by_name: 'deliberately excluded — name enumeration; never wire without tightening',
   identify_caller: 'host-code-only via maybeIdentify(); never model-facing',
