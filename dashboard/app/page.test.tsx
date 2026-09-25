@@ -98,6 +98,23 @@ describe('LandingPage prices match the owner-decided tiers', () => {
     }
   });
 
+  it('shows no staff or station limits on any plan (owner: removed 2026-09-25)', async () => {
+    // WHY: the cards advertised "1 staff member / 1 station", "Up to 5 staff /
+    //      3 stations" and "Unlimited" — limits nothing in the product enforces
+    //      and the owner never set. Dale: remove them.
+    await renderLanding();
+    const pricing = document.getElementById('pricing')?.textContent ?? '';
+    // Any limit phrasing, not just the old wording: "1 staff", "Up to 5 staff",
+    // "3 stations", "Unlimited staff/stations", "staff member(s)".
+    const limit =
+      /\b(\d+|up to \d+|unlimited)\s+(staff|stations?|workspaces?|seats?|users?)\b|staff members?/i;
+    expect(pricing).not.toMatch(limit);
+    // The pattern itself must catch the phrasings it exists to catch.
+    for (const phrase of ['1 staff member', 'Up to 5 staff', '3 stations', 'Unlimited stations']) {
+      expect(phrase).toMatch(limit);
+    }
+  });
+
   it('shows monthly prices only — no Annual toggle or "Save 20%" (owner: no annual discount)', async () => {
     // WHY: the page offered Annual at 20% off, but billing has only monthly
     //      prices, so an "annual" customer would still have been charged
