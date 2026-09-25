@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Client } from 'pg';
 import { getRootClient, createTenant, skipIfDbDown, ensureTemplates } from '../utils';
+import { verticalForBusinessType } from '../../shared/checklistPresetDerivation';
 
 const AUTO_TEMPLATE = '7e3a0000-0000-4000-8000-00000000a001';
 const SALON_TEMPLATE = '7e3a0000-0000-4000-8000-00000000a002';
@@ -144,6 +145,99 @@ describe('the templates themselves', () => {
   });
 });
 
+describe('a template for every signup business type', () => {
+  // WHY: Dale 2026-09-25 — "always have a template for each business type".
+  //      Adding a business type to business_templates without a template must
+  //      fail CI, or that type's new customers silently start empty.
+  it('HAPPY: every business type offered at signup has exactly one template, on the right vertical', async () => {
+    const types = await root.query<{ business_type: string }>(
+      'SELECT business_type FROM business_templates ORDER BY business_type'
+    );
+    const templates = await root.query<{ business_type: string; template_vertical: string }>(
+      'SELECT business_type, template_vertical FROM tenants WHERE is_template'
+    );
+    const byType = new Map(templates.rows.map((t) => [t.business_type, t.template_vertical]));
+    const missing = types.rows.map((t) => t.business_type).filter((t) => !byType.has(t));
+    expect(missing).toEqual([]);
+    for (const { business_type } of types.rows) {
+      expect(byType.get(business_type), business_type).toBe(verticalForBusinessType(business_type));
+    }
+    expect(templates.rows.length).toBe(types.rows.length);
+  });
+
+  it('SAD: med-spa is not offered and has no template (HIPAA — Dale 2026-09-25)', async () => {
+    const offered = await root.query(
+      "SELECT 1 FROM business_templates WHERE business_type = 'med-spa'"
+    );
+    expect(offered.rows).toHaveLength(0);
+    const tpl = await root.query(
+      "SELECT 1 FROM tenants WHERE is_template AND template_vertical = 'med_spa'"
+    );
+    expect(tpl.rows).toHaveLength(0);
+  });
+
+  it('HAPPY: every template is a complete, bookable, price-free business', async () => {
+    const all = await root.query<{
+      tenant_id: string;
+      business_type: string;
+      employee_label: string;
+    }>(
+      `SELECT t.tenant_id, t.business_type, b.employee_label
+         FROM tenants t JOIN business_templates b USING (business_type)
+        WHERE t.is_template`
+    );
+    expect(all.rows.length).toBeGreaterThanOrEqual(30);
+    for (const { tenant_id: id, business_type: bt, employee_label: label } of all.rows) {
+      const s = await shape(id);
+      expect(s.services, bt).toBeGreaterThanOrEqual(4);
+      expect(s.resources, bt).toBeGreaterThanOrEqual(1);
+      expect(s.skills, bt).toBeGreaterThanOrEqual(2);
+      expect(s.docs, bt).toBeGreaterThanOrEqual(3);
+      // Placeholders are named in the business type's own wording.
+      const staff = await root.query<{ name: string }>(
+        'SELECT name FROM employees WHERE tenant_id = $1 ORDER BY name',
+        [id]
+      );
+      expect(
+        staff.rows.map((r) => r.name),
+        bt
+      ).toEqual([`${label} 1`, `${label} 2`]);
+      const bad = await root.query<{ name: string }>(
+        `SELECT s.name FROM services s
+          WHERE s.tenant_id = $1
+            AND (s.price IS NOT NULL
+              OR s.duration_minutes % 15 <> 0
+              OR NOT EXISTS (SELECT 1 FROM service_employee se WHERE se.service_id = s.service_id)
+              OR NOT EXISTS (SELECT 1 FROM service_resource sr WHERE sr.service_id = s.service_id))`,
+        [id]
+      );
+      expect(
+        bad.rows.map((r) => r.name),
+        bt
+      ).toEqual([]);
+    }
+  });
+
+  it.each([
+    ['plumber', 'plumber', 'Plumber 1'],
+    ['law-firm', 'law_firm', 'Attorney 1'],
+    ['yoga-studio', 'yoga_studio', 'Instructor 1'],
+  ])('HAPPY: a new %s gets its own copy of its template', async (businessType, vertical, staff) => {
+    const tenant = await newTenant(`Copy Test ${businessType}`, businessType);
+    expect(await copy(tenant, vertical)).toBe(true);
+    const tpl = await root.query<{ tenant_id: string }>(
+      'SELECT tenant_id FROM tenants WHERE is_template AND template_vertical = $1',
+      [vertical]
+    );
+    expect(await shape(tenant)).toEqual(await shape(tpl.rows[0].tenant_id));
+    const names = await root.query<{ name: string }>(
+      'SELECT name FROM employees WHERE tenant_id = $1',
+      [tenant]
+    );
+    expect(names.rows.map((r) => r.name)).toContain(staff);
+  });
+});
+
 describe('copy_business_template_to_tenant', () => {
   it('HAPPY: an auto shop gets its own full copy of the Auto Shop Template', async () => {
     const tenant = await newTenant('Copy Test Auto', 'auto-shop');
@@ -243,8 +337,9 @@ describe('copy_business_template_to_tenant', () => {
   });
 
   it('SAD: a business type with no template gets nothing and no error', async () => {
-    const tenant = await newTenant('Copy Test None', 'plumber');
-    expect(await copy(tenant, 'plumber')).toBe(false);
+    // A type signup never offers (free-text / API caller) — no template exists.
+    const tenant = await newTenant('Copy Test None', 'dog-walking');
+    expect(await copy(tenant, 'dog_walking')).toBe(false);
     expect((await shape(tenant)).services).toBe(0);
   });
 

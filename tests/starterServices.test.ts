@@ -40,7 +40,8 @@ const ALL = Object.entries(STARTER_SERVICES);
 describe('starter services — catalogue rules', () => {
   it('HAPPY: covers every live business template, and invents none', () => {
     const live = liveBusinessTypes();
-    expect(live.size).toBeGreaterThanOrEqual(31);
+    // 30 since 2026-09-25: med-spa removed (HIPAA-adjacent).
+    expect(live.size).toBeGreaterThanOrEqual(30);
 
     const missing = [...live].filter((t) => !STARTER_SERVICES[t]).sort();
     expect(

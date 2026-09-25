@@ -32,6 +32,8 @@ Dale: when a customer picks a business, "the row is duplicated and used for them
 - Found and fixed: the solo wizard would have added the owner BESIDE a template's placeholder staff (bookable people who do not exist) and always created an extra work station. It now renames the first placeholder to the owner, removes the rest, and reuses an existing station.
 - Home opens the setup welcome while a template's placeholder staff are unclaimed (empty-business was the only signal before; no existing business is affected because only a template copy marks staff).
 - Tests: `tests/integration/businessTemplates.realdb.test.ts` (templates, copy, read-only incl. app_user and TRUNCATE), `businessTemplatesFlow.realdb.test.ts` (signup and type switch as app_user, finalize, starters, tenant list), bootstrap savepoint unit tests, SoloWizard / DashboardHome / KnowledgeEntriesTab tests, and `e2e/business-template-signup.spec.ts`.
+- **Shipped: #573 merged 2026-09-25 (`2242d94e`).** Migrations `20260925000000_business_template_tenants.sql` + `20260925000100_seed_business_templates.sql` were applied to prod BEFORE the merge (Dale-approved). Prod verified: 2 templates, 0 prices, and the read-only guard refuses writes. The `main` CI run for the merge hit the known scheduling-atomic flake, so Railway SKIPPED the deploy — re-run + explicit redeploy tracked in `docs/planning/TODO.md` until `/health` `started_at` confirms it.
+- Follow-up in progress (not merged): a template for every other signup business type (28 more, 30 total) and `med-spa` removed from signup as HIPAA — see `docs/planning/TODO.md` → Template businesses.
 
 ---
 

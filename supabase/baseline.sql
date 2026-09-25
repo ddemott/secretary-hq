@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
+\restrict sLCE78BpoXP2OgWmqFmxgo3x5RdjCcntDfUZJL1yDz8JiExlSLfTUSRuLVmKsea
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -2729,6 +2729,97 @@ BEGIN
     LIMIT p_match_count;
 END;
 $$;
+
+
+--
+-- Name: seed_business_template(uuid, text, text, text, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.seed_business_template(p_tenant_id uuid, p_name text, p_business_type text, p_vertical text, p_spec jsonb) RETURNS void
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $_$
+DECLARE
+  v_item jsonb;
+  v_res_ids jsonb := '{}'::jsonb;
+  v_emp jsonb := '[]'::jsonb;
+  v_id uuid;
+  v_emp_item jsonb;
+BEGIN
+  INSERT INTO tenants (tenant_id, name, business_type, timezone, is_template, template_vertical)
+  VALUES (p_tenant_id, p_name, p_business_type, 'America/Chicago', true, p_vertical)
+  ON CONFLICT (tenant_id) DO NOTHING;
+
+  -- Already built (re-run from seed.sql): leave it exactly as it is.
+  IF EXISTS (SELECT 1 FROM services WHERE tenant_id = p_tenant_id) THEN
+    RETURN;
+  END IF;
+
+  -- The tenants-insert trigger's generic resource; the spec brings its own.
+  DELETE FROM resources WHERE tenant_id = p_tenant_id;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_spec->'skills') LOOP
+    INSERT INTO tenant_skills (tenant_id, name, description)
+    VALUES (p_tenant_id, v_item->>'name', v_item->>'description')
+    ON CONFLICT DO NOTHING;
+  END LOOP;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_spec->'resources') LOOP
+    INSERT INTO resources (tenant_id, name, description)
+    VALUES (p_tenant_id, v_item->>'name', v_item->>'description')
+    RETURNING resource_id INTO v_id;
+    v_res_ids := v_res_ids || jsonb_build_object(v_item->>'name', v_id);
+  END LOOP;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_spec->'staff') LOOP
+    INSERT INTO employees (tenant_id, name, first_name, last_name, skills, is_active)
+    VALUES (
+      p_tenant_id,
+      v_item->>'name',
+      regexp_replace(v_item->>'name', '\s+\S+$', ''),
+      regexp_replace(v_item->>'name', '^.*\s', ''),
+      ARRAY(SELECT jsonb_array_elements_text(v_item->'skills')),
+      true
+    )
+    RETURNING employee_id INTO v_id;
+    v_emp := v_emp || jsonb_build_array(jsonb_build_object('id', v_id, 'skills', v_item->'skills'));
+  END LOOP;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_spec->'services') LOOP
+    INSERT INTO services (tenant_id, name, description, duration_minutes, price,
+                          required_skills, required_resources)
+    VALUES (
+      p_tenant_id,
+      v_item->>'name',
+      v_item->>'description',
+      (v_item->>'minutes')::int,
+      NULL,
+      ARRAY(SELECT jsonb_array_elements_text(v_item->'skills')),
+      ARRAY(SELECT jsonb_array_elements_text(v_item->'resources'))
+    )
+    RETURNING service_id INTO v_id;
+
+    -- Who: every placeholder holding all of the service's skills.
+    FOR v_emp_item IN SELECT * FROM jsonb_array_elements(v_emp) LOOP
+      IF (v_emp_item->'skills') @> (v_item->'skills') THEN
+        INSERT INTO service_employee (tenant_id, service_id, employee_id)
+        VALUES (p_tenant_id, v_id, (v_emp_item->>'id')::uuid);
+      END IF;
+    END LOOP;
+
+    -- Where: the resources the spec names for it.
+    INSERT INTO service_resource (tenant_id, service_id, resource_id)
+    SELECT p_tenant_id, v_id, (v_res_ids->>r)::uuid
+      FROM jsonb_array_elements_text(v_item->'resources') AS r
+     WHERE v_res_ids ? r;
+  END LOOP;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_spec->'docs') LOOP
+    INSERT INTO tenant_docs (tenant_id, title, section, content, source)
+    VALUES (p_tenant_id, v_item->>'title', v_item->>'section', v_item->>'content', 'template');
+  END LOOP;
+END;
+$_$;
 
 
 --
@@ -8004,5 +8095,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict IFi1QmYZAASBZoBFMovqjA17ilf1NvBzv7OBjDu6u2c6eNh1ckINUgEJkzZdrck
+\unrestrict sLCE78BpoXP2OgWmqFmxgo3x5RdjCcntDfUZJL1yDz8JiExlSLfTUSRuLVmKsea
 

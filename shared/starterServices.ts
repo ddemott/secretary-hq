@@ -169,21 +169,8 @@ export const STARTER_SERVICES: Record<string, StarterService[]> = {
       look_first: true,
     },
   ],
-  // The consultation leads because everything a med spa actually does is decided
-  // AT that consultation — seeding treatments would have the agent booking
-  // procedures nobody has assessed. The follow-up is the one other thing that is
-  // genuinely bookable without an assessment: an existing client coming back to
-  // have a completed treatment checked.
-  'med-spa': [
-    {
-      name: 'Aesthetic consultation',
-      description:
-        'Talk through skin or body goals, look at what is needed, and recommend a treatment plan.',
-      look_first: true,
-      is_default: true,
-    },
-    { name: 'Follow-up visit' },
-  ],
+  // med-spa removed 2026-09-25: a medical spa performs medical procedures and
+  // holds health information — HIPAA territory, permanently excluded.
   'nail-salon': [
     { name: 'Manicure', is_default: true },
     { name: 'Pedicure' },
@@ -208,8 +195,7 @@ export const STARTER_SERVICES: Record<string, StarterService[]> = {
     { name: 'Personal training session', is_default: true },
     {
       name: 'Intro consultation',
-      description:
-        'Talk through goals, injuries, and current fitness before recommending a training plan.',
+      description: 'Talk through goals and current fitness before recommending a training plan.',
       look_first: true,
     },
   ],

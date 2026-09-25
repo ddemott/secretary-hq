@@ -130,7 +130,6 @@ INSERT INTO business_templates (
   ('oil-change',        'Quick Lube / Oil Change',        'Auto & Vehicle',          1, 'Lane',           'Lanes',           'Lube Tech',      'Lube Techs',      'Appointment',  'pNInz6ovDWjNkhCspfAY', 'Lane 1',            'Quick service lane',                   '[]'::jsonb, '{}', '', ''),
   ('barbershop',        'Barbershop',                     'Beauty & Personal Care',  2, 'Chair',          'Chairs',          'Barber',         'Barbers',         'Appointment',  'pNInz6ovDWjNkhCspfAY', 'Chair 1',           'Main barber chair',                    '[]'::jsonb, '{}', '', ''),
   ('lash-studio',       'Lash & Brow Studio',             'Beauty & Personal Care',  2, 'Station',        'Stations',        'Lash Artist',    'Lash Artists',    'Appointment',  '21m00Tcm4llvDq8ikWAM', 'Station 1',         'Lash application station',             '[]'::jsonb, '{}', '', ''),
-  ('med-spa',           'Med Spa / Aesthetics',           'Beauty & Personal Care',  2, 'Treatment Room', 'Treatment Rooms', 'Aesthetician',   'Aestheticians',   'Appointment',  '21m00Tcm4llvDq8ikWAM', 'Treatment Room 1',  'Main treatment room',                  '[]'::jsonb, '{}', '', ''),
   ('nail-salon',        'Nail Salon',                     'Beauty & Personal Care',  2, 'Station',        'Stations',        'Nail Tech',      'Nail Techs',      'Appointment',  '21m00Tcm4llvDq8ikWAM', 'Station 1',         'Nail technician station',              '[]'::jsonb, '{}', '', ''),
   ('salon',             'Hair Salon',                     'Beauty & Personal Care',  2, 'Chair',          'Chairs',          'Stylist',        'Stylists',        'Appointment',  '21m00Tcm4llvDq8ikWAM', 'Styling Station 1', 'Main chair for hair services',         '[]'::jsonb, '{}', '', ''),
   ('spa',               'Spa & Wellness',                 'Beauty & Personal Care',  2, 'Treatment Room', 'Treatment Rooms', 'Therapist',      'Therapists',      'Session',      '21m00Tcm4llvDq8ikWAM', 'Treatment Room 1',  'Main treatment room',                  '[]'::jsonb, '{}', '', ''),
@@ -243,10 +242,6 @@ UPDATE business_templates SET
   example_resources = ARRAY['Van 1', 'Van 2']::text[]
  WHERE business_type = 'locksmith';
 UPDATE business_templates SET
-  example_services  = '[{"name":"Aesthetic consultation","description":"Talk through skin or body goals, look at what is needed, and recommend a treatment plan.","look_first":true,"is_default":true},{"name":"Follow-up visit"}]'::jsonb,
-  example_resources = ARRAY['Treatment Room 1', 'Treatment Room 2']::text[]
- WHERE business_type = 'med-spa';
-UPDATE business_templates SET
   example_services  = '[{"name":"Flat repair","is_default":true},{"name":"Tire replacement"},{"name":"Tire rotation"}]'::jsonb,
   example_resources = ARRAY['Truck 1', 'Truck 2']::text[]
  WHERE business_type = 'mobile-tire';
@@ -259,7 +254,7 @@ UPDATE business_templates SET
   example_resources = ARRAY['Lane 1', 'Lane 2']::text[]
  WHERE business_type = 'oil-change';
 UPDATE business_templates SET
-  example_services  = '[{"name":"Personal training session","is_default":true},{"name":"Intro consultation","description":"Talk through goals, injuries, and current fitness before recommending a training plan.","look_first":true}]'::jsonb,
+  example_services  = '[{"name":"Personal training session","is_default":true},{"name":"Intro consultation","description":"Talk through goals and current fitness before recommending a training plan.","look_first":true}]'::jsonb,
   example_resources = ARRAY['Studio 1', 'Studio 2']::text[]
  WHERE business_type = 'personal-trainer';
 UPDATE business_templates SET
@@ -300,11 +295,12 @@ UPDATE business_templates SET
  WHERE business_type = 'yoga-studio';
 -- END GENERATED: starter services
 
--- ── Template businesses (Auto Shop Template, Salon Template) ────────────────
+-- ── Template businesses (one per signup business type) ────────────────
 -- Same reason as section 10: a --baseline rebuild never runs data migrations,
 -- so the templates would be missing and signup would copy nothing. The
 -- migration is written to be re-run safely, so include it rather than copy it.
 \ir migrations/20260925000100_seed_business_templates.sql
+\ir migrations/20260925000200_template_for_every_business_type.sql
 
 -- ── Booking-readiness backfill (mirrors migration 20260630000000) ──────────
 -- Runs last so any seeded tenant can actually book: (1) every employee mapped
