@@ -79,4 +79,40 @@ describe('VerifyEmailPage', () => {
     render(<VerifyEmailPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't connect/i);
   });
+
+  test('SAD: rate-limited (429) says to wait, and does not mark the browser verified', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: () => Promise.resolve({ message: 'Rate limit exceeded, retry in 15 minutes' }),
+    });
+    render(<VerifyEmailPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/retry in 15 minutes/i);
+    expect(localStorage.getItem('emailVerified')).toBeNull();
+  });
+
+  test('HAPPY: the single-use token is sent exactly once even if the effect re-runs (StrictMode)', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ success: true }),
+    });
+    render(
+      <React.StrictMode>
+        <VerifyEmailPage />
+      </React.StrictMode>
+    );
+    expect(await screen.findByText(/your email is confirmed/i)).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('SAD: a non-JSON error page (proxy/HTML) still shows the generic invalid-link message', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: () => Promise.reject(new SyntaxError('Unexpected token <')),
+    });
+    render(<VerifyEmailPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/invalid or has expired/i);
+  });
 });

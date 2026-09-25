@@ -169,3 +169,44 @@ describe('job inquiry email — escaping happens ONCE, at the emitter', () => {
     expect(html).toContain('R&amp;D lead &lt;contract&gt; — details collected on the call.');
   });
 });
+
+describe('signup email-verification email', () => {
+  it('HAPPY: sends the link, the expiry, and a plain-text copy to the new owner', async () => {
+    // WHO: a new owner who just signed up (2026-09-24 email verification).
+    // WHAT: subject names SecretaryHQ; the HTML and the text part both carry the
+    //       exact /verify-email link and the 48-hour expiry.
+    // WHY: until this link is clicked, checkout (the trial and the phone line)
+    //      is refused — a mail missing the link is a dead end.
+    process.env.NODE_ENV = 'test';
+    process.env.EMAIL_USER = 'sender@example.test';
+    process.env.EMAIL_PASS = 'secret';
+    sendMailMock.mockResolvedValue({ messageId: 'id' });
+
+    const { sendEmailVerificationEmail } =
+      await import('../../src/services/communications/systemEmail');
+    const link = 'https://app.example.test/verify-email?token=abcDEF123_-xyz';
+    await sendEmailVerificationEmail('new@owner.test', link, 48);
+
+    const msg = sendMailMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(msg.to).toBe('new@owner.test');
+    expect(msg.subject).toBe('Confirm your email for SecretaryHQ');
+    expect(msg.text).toContain(link);
+    expect(msg.text).toContain('48 hours');
+    expect(msg.html).toContain(link);
+    expect(msg.html).toContain('48 hours');
+    expect(msg.html).toContain('Confirm my email');
+  });
+
+  it('SAD: a transport failure rejects, so the caller can meter it', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.EMAIL_USER = 'sender@example.test';
+    process.env.EMAIL_PASS = 'secret';
+    sendMailMock.mockRejectedValue(new Error('SMTP down'));
+
+    const { sendEmailVerificationEmail } =
+      await import('../../src/services/communications/systemEmail');
+    await expect(
+      sendEmailVerificationEmail('new@owner.test', 'https://x.test/verify-email?token=t', 48)
+    ).rejects.toThrow('SMTP down');
+  });
+});

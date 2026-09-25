@@ -32,6 +32,7 @@ vi.mock('../../src/services/communications/systemEmail', async (importOriginal) 
 import * as systemEmail from '../../src/services/communications/systemEmail';
 import { registerAuthRoutes } from '../../src/routes/auth';
 import { registerBillingRoutes } from '../../src/routes/billing';
+import { errorsTotal } from '../../src/services/metrics';
 
 type AuthedRequest = FastifyRequest & {
   tenantId?: string;
@@ -192,6 +193,55 @@ describe('One account per email — concurrency', () => {
       [email]
     );
     expect(count.rows[0].n).toBe(1);
+  });
+});
+
+describe('failure paths', () => {
+  const errorsFor = (event: string): number =>
+    errorsTotal.snapshot().find((x) => x.labels.event === event)?.value ?? 0;
+
+  it('SAD: if the verification email fails to send, signup still succeeds and the failure is counted', async () => {
+    // WHO: a new owner signing up while SMTP is down.
+    // WHAT: 201, the token row exists (so Resend works), and
+    //       errors_total{event="email_verification_email_failed"} goes up.
+    // WHY: the send is fire-and-forget (an awaited SMTP send hung production
+    //      once); a failure must be visible, not silent.
+    const before = errorsFor('email_verification_email_failed');
+    sendVerify.mockRejectedValueOnce(new Error('SMTP down'));
+    const email = uniqueEmail('smtpdown');
+
+    const res = await register(email);
+
+    expect(res.statusCode).toBe(201);
+    await vi.waitFor(() => expect(errorsFor('email_verification_email_failed')).toBe(before + 1));
+    const rows = await setup.query(
+      `SELECT COUNT(*)::int AS n FROM email_verifications ev
+         JOIN users u USING (user_id) WHERE u.email = $1`,
+      [email]
+    );
+    expect(rows.rows[0].n).toBe(1);
+  });
+
+  it('SAD: /verify-email with a missing or too-short token is a 400 before any DB work', async () => {
+    for (const payload of [{}, { token: 'short' }, { token: 42 }]) {
+      const res = await app.inject({ method: 'POST', url: '/verify-email', payload });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('Invalid request');
+    }
+  });
+
+  it('SAD: /verify-email/resend for a signed-in user id that no longer exists is a 404', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/verify-email/resend',
+      headers: asOwner(
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-00000000dead',
+        'ghost@example.test'
+      ),
+    });
+    expect(res.statusCode).toBe(404);
+    expect(sendVerify).not.toHaveBeenCalled();
   });
 });
 

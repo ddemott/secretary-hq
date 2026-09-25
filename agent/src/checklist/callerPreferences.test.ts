@@ -334,6 +334,48 @@ describe('when the preference is written to the profile', () => {
     );
   });
 
+  it('SAD: a save that THROWS (network error) keeps the preference and a later trigger retries it', async () => {
+    const { toolkit, fakes } = makeKit({
+      knownCallerName: 'Camille',
+      callerPhone: '+15551234567',
+    });
+    fakes.save_customer_preference.execute
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValue(ok({ saved: true }));
+
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'preferred_staff',
+      value: 'Maria',
+    });
+    await vi.waitFor(() => expect(fakes.save_customer_preference.execute).toHaveBeenCalledTimes(1));
+    // The throw is contained — the call carries on, nothing unhandled.
+    await call(toolkit.selectedTools(), 'finish_call', {});
+
+    expect(savedCalls(fakes).map((c) => c.key)).toEqual(['preferred_staff', 'preferred_staff']);
+  });
+
+  it('SAD: a non-JSON or non-string save result counts as not saved (kept for retry, not silently dropped)', async () => {
+    const { toolkit, fakes } = makeKit({
+      knownCallerName: 'Camille',
+      callerPhone: '+15551234567',
+    });
+    fakes.save_customer_preference.execute
+      .mockResolvedValueOnce('upstream returned HTML')
+      .mockResolvedValueOnce({ saved: true } as unknown as string)
+      .mockResolvedValue(ok({ saved: true }));
+
+    await call(toolkit.selectedTools(), 'remember_preference', {
+      key: 'usual_service',
+      value: 'cut',
+    });
+    await vi.waitFor(() => expect(fakes.save_customer_preference.execute).toHaveBeenCalledTimes(1));
+    await call(toolkit.selectedTools(), 'finish_call', {});
+
+    // 1st: non-JSON text, 2nd: a non-string object (finish_call's retry) — both
+    // count as "not saved", so the preference is still pending afterwards.
+    expect(fakes.save_customer_preference.execute).toHaveBeenCalledTimes(2);
+  });
+
   it('SAD: a save that does not stick stays in the call’s memory and is retried on the next trigger', async () => {
     const { toolkit, fakes } = makeKit({
       knownCallerName: 'Camille',
