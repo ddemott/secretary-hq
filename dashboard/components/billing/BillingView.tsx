@@ -36,7 +36,7 @@ const PLANS: {
     features: [
       'AI receptionist 24/7',
       'Appointment booking',
-      'Transfers to a person when a caller asks',
+      'Transfers callers to a person on request (once you set a transfer number)',
       'SMS reminders',
       'Knowledge base',
     ],

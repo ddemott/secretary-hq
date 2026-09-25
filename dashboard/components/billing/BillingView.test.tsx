@@ -649,8 +649,11 @@ describe('BillingView — plan features', () => {
       subscription_plan: null,
     });
     render(<BillingView />);
-    expect(await screen.findByText('Transfers to a person when a caller asks')).toBeInTheDocument();
-    expect(screen.getAllByText(/Transfers to a person/)).toHaveLength(1);
+    // Exact copy, including the qualifier: transfer is offered only once the
+    // business sets a transfer number (otherwise the AI takes a message).
+    const TRANSFER = 'Transfers callers to a person on request (once you set a transfer number)';
+    expect(await screen.findByText(TRANSFER)).toBeInTheDocument();
+    expect(screen.getAllByText(TRANSFER)).toHaveLength(1);
     expect(screen.queryByText('Call transfer to staff')).not.toBeInTheDocument();
     expect(screen.getByText('Everything in Solo')).toBeInTheDocument();
     expect(screen.getByText('Everything in Growth')).toBeInTheDocument();
