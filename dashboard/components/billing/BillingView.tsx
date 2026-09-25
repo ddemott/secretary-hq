@@ -31,19 +31,22 @@ const PLANS: {
     name: 'Solo',
     price: 29.95,
     calls: '30 calls/month · $1.00 per extra call',
-    features: ['AI receptionist 24/7', 'Appointment booking', 'SMS reminders', 'Knowledge base'],
+    // Call transfer is on every plan (Dale, 2026-09-25) — it sits here in the
+    // base tier so Growth and Professional inherit it via "Everything in …".
+    features: [
+      'AI receptionist 24/7',
+      'Appointment booking',
+      'Transfers to a person when a caller asks',
+      'SMS reminders',
+      'Knowledge base',
+    ],
   },
   {
     key: 'growth',
     name: 'Growth',
     price: 59.95,
     calls: '100 calls/month · $0.75 per extra call',
-    features: [
-      'Everything in Solo',
-      'Call transfer to staff',
-      'Analytics dashboard',
-      'Priority support',
-    ],
+    features: ['Everything in Solo', 'Analytics dashboard', 'Priority support'],
   },
   {
     key: 'professional',
