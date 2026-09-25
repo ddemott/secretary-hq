@@ -27,7 +27,11 @@ import {
 // — see the transfer_available field below for why the agent gets a boolean
 // rather than the two raw numbers.
 import { canTransfer } from '../../../shared/phone';
-import { deriveChecklistRuntimeConfig } from '../../../shared/checklistPresetDerivation';
+import {
+  deriveChecklistRuntimeConfig,
+  verticalForBusinessType,
+} from '../../../shared/checklistPresetDerivation';
+import { preferencesForVertical } from '../../../shared/preferenceCatalog';
 import { loadTenantQuestionTrees } from '../../services/questionTrees';
 import { sendSms } from '../../services/telnyxSms';
 import {
@@ -233,6 +237,11 @@ export function registerSessionRoutes({ app, pool, withTenantClient }: AgentTool
         // person against before repeating it back as fact ("Jane" → "You mean
         // Dale?"). Empty array when a tenant has no employees configured.
         staff_first_names: row.staff,
+        // What counts as a caller preference for THIS business type (salon:
+        // usual service, color notes…; auto shop: vehicle, wait or drop off…),
+        // plus the universal set. The agent may only save these keys, so the
+        // same fact lands under the same name on every call (2026-09-25).
+        preference_catalog: preferencesForVertical(verticalForBusinessType(row.business_type)),
       });
     },
     'Failed to fetch tenant config'

@@ -1548,6 +1548,11 @@ export default defineAgent({
                 tenantConfig.forwardPhone?.trim() &&
                 transferExecutor
               ),
+              // Caller preferences (2026-09-25): which keys this business may
+              // save, the owner's on/off toggle, and their own guidance.
+              preferenceCatalog: tenantConfig.preferenceCatalog,
+              savePreferencesEnabled: tenantConfig.savePreferencesEnabled,
+              preferencesInstructions: tenantConfig.preferencesInstructions,
               runtime: {
                 currentDate: formatDateForPrompt(new Date(), tenantConfig.timezone),
                 // Read at SESSION START, so a very long call drifts — acceptable:

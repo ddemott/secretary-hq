@@ -16,6 +16,7 @@ import type { PoolClient } from 'pg';
 import { registerAgentToolRoutes } from '../../../src/routes/agentTools';
 import { sendJobInquiryEmail } from '../../../src/services/communications/systemEmail';
 import { registry } from '../../../src/services/metrics';
+import { preferencesForVertical } from '../../../shared/preferenceCatalog';
 
 /** Read the current value of errors_total{event="..."} from the live registry. */
 function errorCount(event: string): number {
@@ -414,6 +415,9 @@ describe('agentTools /tenant-config', () => {
       // pool returns no employee rows, so the list is empty — and an empty
       // roster must render NO roster line rather than an empty one.
       staff_first_names: [],
+      // 2026-09-25: no business_type → the local_service vertical's preference
+      // types plus the universal set (shared/preferenceCatalog.ts).
+      preference_catalog: preferencesForVertical('local_service'),
       // This tenant has no per-tenant question-tree rows, so the agent falls
       // back to the platform TypeScript library — the behaviour every tenant
       // had before per-tenant trees existed. An empty array here is the
@@ -504,6 +508,32 @@ describe('agentTools /tenant-config', () => {
     expect(res.json().result.checklist_runtime_config.preset_id).toBe('local_service_front_desk');
   });
 
+  it('HAPPY: a salon gets salon preference types, an auto shop gets vehicle ones', async () => {
+    // WHO: the agent starting a call for a salon, then for an auto shop.
+    // WHAT: preference_catalog is chosen by business_type, through the same
+    //       vertical mapping as the question trees.
+    // WHY: 2026-09-25 — each business has its own kinds of preferences; the
+    //      agent may only save these keys.
+    for (const [businessType, mustHave, mustNotHave] of [
+      ['salon', 'color_formula_notes', 'vehicle'],
+      ['auto-shop', 'vehicle', 'color_formula_notes'],
+    ] as const) {
+      const { app } = buildApp({
+        queryResponses: [
+          { rows: [{ name: 'Biz', timezone: 'America/Chicago', business_type: businessType }] },
+        ],
+      });
+      const res = await post(app, '/agent-tools/tenant-config', { tenant_id: TENANT_ID });
+      const keys = (res.json().result.preference_catalog as Array<{ key: string }>).map(
+        (p) => p.key
+      );
+      expect(keys, businessType).toContain(mustHave);
+      expect(keys, businessType).not.toContain(mustNotHave);
+      expect(keys, businessType).toContain('preferred_staff');
+      expect(keys[keys.length - 1]).toBe('notes');
+    }
+  });
+
   it('HAPPY: null timezone falls back to America/Chicago', async () => {
     // WHO: A tenant row that pre-dates the timezone column having a
     //       NOT NULL default (legacy seed data)
@@ -570,6 +600,9 @@ describe('agentTools /tenant-config', () => {
         version: 1,
       },
       staff_first_names: [],
+      // 2026-09-25: no business_type → the local_service vertical's preference
+      // types plus the universal set (shared/preferenceCatalog.ts).
+      preference_catalog: preferencesForVertical('local_service'),
       question_trees: [],
     });
   });

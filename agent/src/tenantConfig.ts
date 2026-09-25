@@ -13,6 +13,36 @@ import type { TenantRuntimeConfig } from './checklist/blockTypes.js';
 import type { QuestionTreeDef } from './checklist/types.js';
 import type { ToolsClient } from './toolsClient.js';
 
+/** One preference type the agent may save (see TenantConfig.preferenceCatalog). */
+export interface PreferenceTypeConfig {
+  key: string;
+  label: string;
+  hint: string;
+}
+
+const PREF_KEY = /^[a-z][a-z0-9_]*$/;
+
+/**
+ * Keep only well-formed entries (snake_case key, non-blank label and hint),
+ * de-duplicated by key. The keys become a tool enum the model must choose
+ * from, so a malformed entry must be dropped, not passed through.
+ */
+export function parsePreferenceCatalog(raw: unknown): PreferenceTypeConfig[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: PreferenceTypeConfig[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const { key, label, hint } = item as Record<string, unknown>;
+    if (typeof key !== 'string' || !PREF_KEY.test(key) || seen.has(key)) continue;
+    if (typeof label !== 'string' || !label.trim()) continue;
+    if (typeof hint !== 'string' || !hint.trim()) continue;
+    seen.add(key);
+    out.push({ key, label: label.trim(), hint: hint.trim() });
+  }
+  return out;
+}
+
 export interface TenantDisplayConfig {
   name: string;
   timezone: string;
@@ -135,6 +165,14 @@ export interface TenantDisplayConfig {
    */
   staffFirstNames: string[];
   /**
+   * What counts as a caller preference for this business type (backend
+   * shared/preferenceCatalog.ts, 2026-09-25): the vertical's own types plus the
+   * universal set, ending with a free-text "notes". remember_preference may
+   * only save these keys. Empty from an older backend — the tool is then not
+   * offered, rather than falling back to invented keys.
+   */
+  preferenceCatalog: PreferenceTypeConfig[];
+  /**
    * Compiled preset for this tenant. NULL when the backend omitted it or the
    * body failed schema (fail-soft: live ChecklistAgent then uses the full
    * platform library, which is the pre-preset behavior).
@@ -181,6 +219,7 @@ export const TENANT_FALLBACK: TenantDisplayConfig = {
   businessHours: null,
   bookableThrough: null,
   staffFirstNames: [],
+  preferenceCatalog: [],
   checklistRuntimeConfig: null,
   // Fallback tenant: no rows, so the platform library governs — the same
   // behaviour as before per-tenant trees existed.
@@ -239,6 +278,7 @@ export async function fetchTenantConfig(
     business_hours?: string | null;
     bookable_through?: string | null;
     staff_first_names?: string[] | null;
+    preference_catalog?: unknown;
     checklist_runtime_config?: unknown;
     question_trees?: unknown;
   }>('/agent-tools/tenant-config', { tenant_id: tenantId });
@@ -277,6 +317,7 @@ export async function fetchTenantConfig(
             (n): n is string => typeof n === 'string' && n.trim().length > 0
           )
         : [],
+      preferenceCatalog: parsePreferenceCatalog(res.result.preference_catalog),
       checklistRuntimeConfig: parseChecklistRuntimeConfig(res.result.checklist_runtime_config),
       questionTrees: parseQuestionTrees(res.result.question_trees),
     };
