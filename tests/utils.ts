@@ -78,22 +78,27 @@ export async function clearDB(client: Client) {
 }
 
 /**
- * Make sure the template businesses (Auto Shop Template, Salon Template) exist.
+ * Make sure every signup business type has its template business.
  * A test file that ran clearDB() earlier in the same worker database wipes
  * them; the seeding migration is idempotent, so re-applying it restores them.
  */
 export async function ensureTemplates(client: Client): Promise<void> {
-  const res = await client.query<{ n: number }>(
-    'SELECT count(*)::int AS n FROM tenants WHERE is_template'
+  // One template per signup business type. Both seeding migrations are
+  // idempotent (they skip a template that already has services).
+  const res = await client.query<{ missing: number }>(
+    `SELECT count(*)::int AS missing FROM business_templates b
+      WHERE NOT EXISTS (SELECT 1 FROM tenants t
+                         WHERE t.is_template AND t.business_type = b.business_type)`
   );
-  if (res.rows[0].n >= 2) return;
+  if (res.rows[0].missing === 0) return;
   const { readFileSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const sql = readFileSync(
-    join(__dirname, '..', 'supabase', 'migrations', '20260925000100_seed_business_templates.sql'),
-    'utf8'
-  );
-  await client.query(sql);
+  for (const file of [
+    '20260925000100_seed_business_templates.sql',
+    '20260925000200_template_for_every_business_type.sql',
+  ]) {
+    await client.query(readFileSync(join(__dirname, '..', 'supabase', 'migrations', file), 'utf8'));
+  }
 }
 
 /** Check if a table exists in the current database */

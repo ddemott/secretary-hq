@@ -102,7 +102,7 @@ async function issueEmailVerification(
       [opts.tenantId, opts.userId, hashToken(rawToken), EMAIL_VERIFY_TTL_HOURS]
     );
   });
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
   const verifyLink = `${dashboardUrl}/verify-email?token=${rawToken}`;
   void sendEmailVerificationEmail(opts.email, verifyLink, EMAIL_VERIFY_TTL_HOURS).catch(
     (err: unknown) => {
@@ -365,7 +365,7 @@ export function registerAuthRoutes(
             [user.user_id, tokenHash, ip, RESET_TTL_MINUTES]
           );
         });
-        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
         const resetLink = `${dashboardUrl}/reset-password?token=${rawToken}`;
         // FIRE-AND-FORGET (2026-07-27). This send was AWAITED, and on production
         // the SMTP connection hung: the token row was written, the request never

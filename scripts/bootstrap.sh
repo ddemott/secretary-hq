@@ -58,5 +58,5 @@ cd dashboard && npm test && cd ..
 
 echo "[secretaryhq] Setup complete!"
 echo "  Start dev servers: npm start"
-echo "  Dashboard: https://localhost:4000"
+echo "  Dashboard: https://localhost:4400"
 echo "  Backend:   https://localhost:4001"

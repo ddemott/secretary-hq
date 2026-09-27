@@ -40,14 +40,14 @@ function safeEquals(provided: string, expected: string): boolean {
 export function registerHealthRoutes(app: AppFastifyInstance, pool: Pool): void {
   // Public marketing landing page
   app.get('/', async (_req, reply) => {
-    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+    const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
     const html = getLandingHtml().replace(/\{\{DASHBOARD_URL\}\}/g, dashboardUrl);
     return reply.type('text/html').send(html);
   });
 
   // Demo page — redirect to real React dashboard demo (matches live site exactly)
   app.get('/demo', async (_req, reply) => {
-    const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:4000';
+    const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:4400';
     return reply.redirect(`${dashboardUrl}/demo`);
   });
 

@@ -20,7 +20,7 @@
  *      overlap rejection — the canceled row doesn't block the slot).
  *
  * Setup: backend on https://localhost:4001, dashboard on
- * https://localhost:4000, Postgres on localhost:5433. Each spec
+ * https://localhost:4400, Postgres on localhost:5433. Each spec
  * registers its own fresh tenant and cleans up in afterAll.
  */
 import { test, expect } from './helpers/test';

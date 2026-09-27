@@ -26,7 +26,7 @@ import * as squareSync from '../../src/services/crm/squareSync';
 
 // --- Constants ---
 const TENANT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-const DASHBOARD_URL = 'https://localhost:4000';
+const DASHBOARD_URL = 'https://localhost:4400';
 
 // --- App builder ---
 

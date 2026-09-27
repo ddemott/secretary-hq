@@ -21,8 +21,8 @@ export default defineConfig({
   use: {
     // Local dev serves the dashboard over HTTPS (server.js + mkcert certs);
     // CI runs `next start` (plain HTTP). Honor DASHBOARD_URL so CI can point
-    // at http://localhost:4000 without the TLS handshake failing every goto.
-    baseURL: process.env.DASHBOARD_URL ?? 'https://localhost:4000',
+    // at http://localhost:4400 without the TLS handshake failing every goto.
+    baseURL: process.env.DASHBOARD_URL ?? 'https://localhost:4400',
     ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     // Pin the browser timezone to the seed tenants' tz. Quick-book specs fill

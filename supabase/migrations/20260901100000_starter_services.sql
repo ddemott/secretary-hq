@@ -170,11 +170,6 @@ UPDATE business_templates SET
  WHERE business_type = 'locksmith';
 
 UPDATE business_templates SET
-  example_services  = '[{"name":"Aesthetic consultation","description":"Talk through skin or body goals, look at what is needed, and recommend a treatment plan.","look_first":true,"is_default":true},{"name":"Follow-up visit"}]'::jsonb,
-  example_resources = ARRAY['Treatment Room 1', 'Treatment Room 2']::text[]
- WHERE business_type = 'med-spa';
-
-UPDATE business_templates SET
   example_services  = '[{"name":"Flat repair","is_default":true},{"name":"Tire replacement"},{"name":"Tire rotation"}]'::jsonb,
   example_resources = ARRAY['Truck 1', 'Truck 2']::text[]
  WHERE business_type = 'mobile-tire';
@@ -190,7 +185,7 @@ UPDATE business_templates SET
  WHERE business_type = 'oil-change';
 
 UPDATE business_templates SET
-  example_services  = '[{"name":"Personal training session","is_default":true},{"name":"Intro consultation","description":"Talk through goals, injuries, and current fitness before recommending a training plan.","look_first":true}]'::jsonb,
+  example_services  = '[{"name":"Personal training session","is_default":true},{"name":"Intro consultation","description":"Talk through goals and current fitness before recommending a training plan.","look_first":true}]'::jsonb,
   example_resources = ARRAY['Studio 1', 'Studio 2']::text[]
  WHERE business_type = 'personal-trainer';
 

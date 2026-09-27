@@ -156,7 +156,7 @@ npx vitest run --coverage
 # Dashboard coverage (~30s)
 cd dashboard && npx vitest run --coverage
 
-# Playwright e2e count (requires servers running on :4000 + :4001 + Postgres)
+# Playwright e2e count (requires servers running on :4400 + :4001 + Postgres)
 cd dashboard && npx playwright test
 ```
 

@@ -41,6 +41,36 @@ When you log in you land on **Home**. The top navigation has two groups:
 
 ---
 
+## Your business starts from a ready-made setup
+
+When your account is created, you don't start from a blank page. You pick your
+type of business (auto shop, salon, plumber, bakery, and so on), and your
+account starts as a copy of a ready-made example business of that type. The
+copy is yours: changing it never affects anyone else, and nothing is shared
+with other businesses.
+
+What you get:
+
+- **Services** typical for your type of business, with sensible lengths —
+  **but no prices.** We never set your prices; add your own, or leave them off.
+- **Your bays, chairs, rooms, or vans** (named the way your trade names them).
+- **Two placeholder staff**, named for your trade (for example "Mechanic 1" and
+  "Mechanic 2"), already matched to the services they can do. Rename them to
+  your real people, or remove them — the setup wizard does this for you if you
+  work alone.
+- **Knowledge-base starters** — a few common questions and answers for your
+  type of business. These are marked **"Not used yet — edit and save"**: the AI
+  will not read one to a caller until you have checked it, fixed anything that
+  isn't true for you, and saved it.
+
+What you never get: customers, calls, appointments, or opening hours — those
+are always your own. If you change your business type before you finish the
+setup wizard, the example services, stations, and placeholder staff are
+swapped for the new type's. Once you've finished setup, everything is yours
+and a business-type change leaves it alone.
+
+---
+
 ## How to read your call analytics
 
 The analytics panels (on the Calls / Home area) turn raw calls into four
@@ -95,7 +125,9 @@ cancellation policy?") from a **knowledge base** you control:
 
 1. During setup you can paste your website URL and the assistant imports answers
    automatically (Phone Assistant → onboarding).
-2. You can add or edit individual Q&A entries anytime.
+2. You can add or edit individual Q&A entries anytime. Your account starts
+   with a few starter entries for your type of business; the AI ignores each
+   one until you review and save it (it shows "Not used yet — edit and save").
 3. If the AI ever gives a wrong or "I don't know" answer, an owner can use the
    built-in **Answer Debugger** (Setup → Answer Debugger) to see exactly which knowledge entries the AI
    considered for a question and how strongly each matched — so you know whether

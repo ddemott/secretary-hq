@@ -29,7 +29,7 @@ import { spawnSync } from 'child_process';
 import { readdirSync, statSync } from 'fs';
 import { resolve, join } from 'path';
 
-const BACKEND_URL = process.env.BACKEND_URL ?? 'https://localhost:4000';
+const BACKEND_URL = process.env.BACKEND_URL ?? 'https://localhost:4400';
 const REPO_ROOT = resolve(__dirname, '..', '..');
 
 /**

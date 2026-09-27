@@ -475,7 +475,13 @@ export const SPA_INTAKE_TREE: QuestionTreeDef = {
       node_id: 'spa_special_considerations',
       type: 'text',
       listen: true,
-      ask: 'anything they want the therapist to know for comfort or safety, if they volunteer it.',
+      // Comfort only (2026-09-25): "comfort or safety" invited callers to name
+      // medical conditions — health information this product does not collect.
+      ask:
+        'anything they want the therapist to know for comfort \u2014 areas to focus on or avoid, ' +
+        'room temperature \u2014 if they volunteer it. Never ask about or record medical ' +
+        'conditions, medications or pregnancy; if the caller raises one, say the therapist ' +
+        'will go over it with them in person.',
     },
   ],
 };
@@ -952,12 +958,8 @@ export const PERSONAL_TRAINER_INTAKE_TREE: QuestionTreeDef = {
       listen: true,
       ask: 'their training experience \u2014 new, returning, experienced \u2014 if they say.',
     },
-    {
-      node_id: 'personal_trainer_injuries_or_limitations',
-      type: 'text',
-      listen: true,
-      ask: 'any injuries or limitations they want considered, only if they volunteer it.',
-    },
+    // No injuries/limitations node (removed 2026-09-25): health information is
+    // for the trainer to discuss in person, not for the phone line to record.
     {
       node_id: 'personal_trainer_schedule_preference',
       type: 'text',

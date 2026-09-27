@@ -210,7 +210,7 @@ npm start
 
 | Service     | URL                    |
 | ----------- | ---------------------- |
-| Dashboard   | https://localhost:4000 |
+| Dashboard   | https://localhost:4400 |
 | Backend API | https://localhost:4001 |
 
 ### 5. Sign In

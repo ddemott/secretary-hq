@@ -1,5 +1,5 @@
 export const SUPER_ADMIN_TENANT_ID = '00000000-0000-0000-0000-000000000000';
-export const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://localhost:4000';
+export const DASHBOARD_URL = process.env.DASHBOARD_URL || 'https://localhost:4400';
 
 // Pagination defaults
 export const DEFAULT_PAGE_LIMIT = 200;

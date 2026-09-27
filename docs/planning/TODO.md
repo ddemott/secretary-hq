@@ -99,14 +99,23 @@ Found while working through the backlog. Each says exactly what was and was not 
 
 ---
 
+## ⚖️ Law-firm intake stores injury details — review before accepting any law firm (2026-09-25, Dale)
+
+- [ ] **Dale to decide before SecretaryHQ accepts a law-firm customer.** The `case_intake` tree's injury branch (`agent/src/checklist/trees.ts`: `injuries_sustained`, `medical_treatment`) records what injuries a caller suffered and where they were treated. Dale: "Law firm injuries and data never goes into our databases. Consider us just the phonebook." Left as is for now on purpose; do not onboard a law firm or expand that intake until this is decided.
+
 ## 🏗️ Template businesses — 2026-09-25 (Dale)
 
-A new business starts as a COPY of its type's template business ("Auto Shop Template", "Salon Template"); the template is never changed. Built on `feat/business-templates` (see CLAUDE.md → Database Key Details → Template businesses).
+A new business starts as a COPY of its type's template business ("Auto Shop Template", "Salon Template", …); the template is never changed. **Shipped in #573** (merged 2026-09-25, `2242d94e`; see CLAUDE.md → Database Key Details → Template businesses).
 
-- [ ] **Dale: approve applying the two migrations to prod** (`20260925000000_business_template_tenants.sql`, `20260925000100_seed_business_templates.sql`) BEFORE the merge — the backend calls `copy_business_template_to_tenant()` at signup.
+- [x] **Dale: approve applying the two migrations to prod** (`20260925000000_business_template_tenants.sql`, `20260925000100_seed_business_templates.sql`) BEFORE the merge — **DONE 2026-09-25:** approved and applied before #573 merged; prod verified (2 templates, 0 prices, the read-only guard refuses writes).
+- [ ] **#573 deploy: main CI hit the known scheduling-atomic flake, so Railway SKIPPED the deploy** — re-run the failed job, confirm green, trigger the deploy explicitly, then check `/health` `started_at` moved (CLAUDE.md → Project Status on SKIPPED being terminal).
+- [ ] **(code, IN PROGRESS) A template for EVERY signup business type** — branch `feat/templates-every-business-type`, migration `20260925000200_template_for_every_business_type.sql` (Dale: "always have a template for each business type"). Adds the other 28 (answering-service, bakery, barbershop, body-shop, car-detailing, car-wash, catering, cleaning, electrician, garage-door, hvac, insurance, landscaping, lash-studio, law-firm, locksmith, mobile-tire, nail-salon, oil-change, personal-trainer, pest-control, photography, plumber, real-estate, spa, tax-prep, tutoring, yoga-studio) from web-researched defaults via a migration-only `seed_business_template()` helper — 4–7 services with realistic 15-minute-multiple durations and no prices, 1–3 resources, 2 placeholder staff, 3–4 knowledge starters; sources cited in the migration comments. 30 templates total. `tests/integration/businessTemplates.realdb.test.ts` fails CI when a signup business type has no template (or more than one). Prod migration needs Dale's approval before merge, same as #573.
+- [x] **(code, on the same branch) `med-spa` removed from signup** (Dale 2026-09-25: "Anything related to HIPAA is a no" — a medical spa performs medical procedures under a physician and holds health information). Deleted from `business_templates` (migration `20260925000200` + `seed.sql`) and blocked in `shared/hipaaVerticalDenylist.ts` (med spa / medspa / medi spa spellings). Signup now offers 30 business types.
+  - [ ] **(code) Delete the leftover med_spa preset / intake tree / preference catalog / starter-services code** — HIPAA "delete on sight"; not done yet.
+- [ ] **Owners add their own questions and branches to their call question tree — DESIGN WITH DALE FIRST, DO NOT START.** Dale 2026-09-25: "could get complex so don't start that without me." Needs a design session before any code.
 - [ ] **Fix the demo's business type** — `/demo/start` creates the demo as `automotive`, which resolves to the generic `local_service` setup, not `auto_shop` (no auto-shop intake questions or vehicle preferences). Separate PR, agreed with Dale.
 - [ ] **Rebuild the live demo on top of the Auto Shop Template** (sample calls, messages, preferences parked on `feat/product-tour`, local commit `2b063e31`), so the demo shows exactly what a new shop gets. Then finish and ship the product tour.
-- [ ] **More templates** — one per business type a real customer signs up as; only auto shop and salon exist today (build for real customers).
+- [x] **More templates** — superseded by the every-business-type item above (Dale 2026-09-25: "always have a template for each business type").
 
 ## 🧠 Caller preferences — 2026-09-25 (Dale)
 

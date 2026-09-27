@@ -795,7 +795,7 @@ export function registerTenantRoutes(
           });
         }
 
-        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+        const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
         const consentLink = `${dashboardUrl}/consent?token=${rawToken}`;
 
         // FIRE-AND-FORGET (same pattern + reasoning as /forgot-password,

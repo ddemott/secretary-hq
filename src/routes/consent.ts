@@ -241,7 +241,7 @@ export function registerConsentRoutes(app: AppFastifyInstance, pool: Pool) {
             );
           });
 
-          const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4000';
+          const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
           const consentLink = `${dashboardUrl}/consent?token=${rawToken}`;
           void sendTenantConsentInviteEmail(
             candidate.email,

@@ -93,7 +93,7 @@ done
 case "$ENV" in
   local)
     BACKEND="${BACKEND_URL:-https://localhost:4001}"
-    DASHBOARD="${DASHBOARD_URL:-https://localhost:4000}"
+    DASHBOARD="${DASHBOARD_URL:-https://localhost:4400}"
     # -k skips cert check for self-signed local TLS; harmless for plain HTTP
     CURL_OPTS="-sk"
     ;;

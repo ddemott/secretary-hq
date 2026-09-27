@@ -6,7 +6,7 @@
  *  - try/finally guarantees DB cleanup even when an assertion fails.
  *  - No test relies on data created by another.
  *
- * Setup: backend on https://localhost:4001, dashboard on https://localhost:4000,
+ * Setup: backend on https://localhost:4001, dashboard on https://localhost:4400,
  * Postgres on localhost:5433.
  */
 import { test, expect } from './helpers/test';

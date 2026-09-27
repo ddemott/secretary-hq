@@ -464,12 +464,12 @@ jobs:
         run: cd dashboard && npm run start > /tmp/dashboard.log 2>&1 &
         env:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:4001
-          PORT: 4000
+          PORT: 4400
 
       - name: Wait for servers
         if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
         run: |
-          npx wait-on http://localhost:4001/health http://localhost:4000 --timeout 60000
+          npx wait-on http://localhost:4001/health http://localhost:4400 --timeout 60000
 
       - name: Install Playwright browsers
         if: github.event_name != 'pull_request' || steps.changes.outputs.code != 'false'
@@ -506,7 +506,7 @@ jobs:
           JWT_SECRET: ci-test-secret
           # Dashboard runs `next start` (HTTP) in CI; the Playwright baseURL
           # defaults to https for local dev, so override it here.
-          DASHBOARD_URL: http://localhost:4000
+          DASHBOARD_URL: http://localhost:4400
           # Run the test process in the seed tenants' timezone. Specs derive
           # datetime-local wall-clock strings from Node's tz (getTimezoneOffset)
           # while the browser reads them in timezoneId=America/Chicago. Locally
