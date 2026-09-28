@@ -37,12 +37,12 @@ function buildApp(queryResponses: MockQueryResult[]): {
 
   const mockPool = {
     query: vi.fn(async (sql: string) => {
-      queries.push(sql.trim().slice(0, 80));
+      queries.push(sql.trim().slice(0, 200));
       return responses.shift() ?? { rows: [], rowCount: 0 };
     }),
     connect: vi.fn(async () => ({
       query: vi.fn(async (sql: string) => {
-        queries.push(sql.trim().slice(0, 80));
+        queries.push(sql.trim().slice(0, 200));
         return responses.shift() ?? { rows: [], rowCount: 0 };
       }),
       release: vi.fn(),
@@ -315,6 +315,42 @@ describe('POST /tutorial/start', () => {
     const body = JSON.parse(res.body) as Record<string, unknown>;
     expect(body.success).toBe(false);
     expect((body.error as string).toLowerCase()).toContain('capacity');
+  });
+
+  it('REGRESSION: global cap query excludes soft-deleted tenants', async () => {
+    // WHO: anyone hitting /tutorial/start or /tutorial/reset after other
+    //      visitors have reset — resetting soft-deletes the OLD tenant but
+    //      leaves tutorial_expires_at in the future until the 30-min TTL
+    //      naturally elapses.
+    // WHAT: the cap COUNT(*) must filter is_deleted = false, or repeated
+    //       resets accumulate retired-but-not-yet-expired rows that still
+    //       count toward MAX_ACTIVE_TUTORIAL_TENANTS and can block new
+    //       sessions prematurely — flagged in PR #575 review.
+    // WHERE: the two `SELECT COUNT(*) ... WHERE is_tutorial = true AND
+    //        tutorial_expires_at > NOW()` queries in tutorial.ts.
+    const { app, queries } = buildApp([
+      { rows: [{ count: '0' }] },
+      {
+        rows: [
+          {
+            tenant_id: 'demo-uuid-1234',
+            user_id: 'user-uuid-5678',
+            email: 'demo+demo-uuid-1234@quicklubedemo.invalid',
+          },
+        ],
+        rowCount: 1,
+      },
+      { rows: [{ id: 1 }] }, // customers idempotency check inside seed
+    ]);
+
+    await app.inject({
+      method: 'POST',
+      url: '/tutorial/start',
+      headers: { 'x-forwarded-for': nextIp() },
+    });
+
+    const capQuery = queries.find((q) => q.includes('COUNT(*)'));
+    expect(capQuery).toContain('is_deleted = false');
   });
 
   it('different IPs each get their own rate-limit window', async () => {

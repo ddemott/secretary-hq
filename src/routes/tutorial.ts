@@ -118,8 +118,13 @@ async function provisionTutorialTenant(
        INSERT INTO users (tenant_id, email, password_hash, full_name, role)
        SELECT tenant_id,
               'demo+' || tenant_id || '@quicklubedemo.invalid',
-              -- bcrypt hash of a random 32-char string — no one can log in via password
-              '$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+              -- A real bcrypt hash of an unknown random string — no one can log
+              -- in via password. Must be VALID bcrypt (not a placeholder like
+              -- '$2b$...XXX'): an invalid hash makes bcrypt.compare() throw
+              -- instead of failing closed on any code path that ever checks a
+              -- password against this row. Same well-formed dummy hash
+              -- consent.ts's DUMMY_PASSWORD_HASH uses for the same reason.
+              '$2b$10$.no4pJwdMzW7kSlRuaiq1e8AxEaUNAt2zZR7csL9sMbEDCCUZiaAe',
               'Demo Owner',
               'owner'
        FROM new_tenant
@@ -190,7 +195,7 @@ export function registerTutorialRoutes(
       // Global cap check — count non-expired tutorial tenants.
       const capRes = await pool.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM tenants
-         WHERE is_tutorial = true AND tutorial_expires_at > NOW()`
+         WHERE is_tutorial = true AND tutorial_expires_at > NOW() AND is_deleted = false`
       );
       const activeCount = parseInt(capRes.rows[0]?.count ?? '0', 10);
       if (activeCount >= MAX_ACTIVE_TUTORIAL_TENANTS) {
@@ -245,7 +250,7 @@ export function registerTutorialRoutes(
 
       const capRes = await pool.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM tenants
-         WHERE is_tutorial = true AND tutorial_expires_at > NOW()`
+         WHERE is_tutorial = true AND tutorial_expires_at > NOW() AND is_deleted = false`
       );
       const activeCount = parseInt(capRes.rows[0]?.count ?? '0', 10);
       if (activeCount >= MAX_ACTIVE_TUTORIAL_TENANTS) {
