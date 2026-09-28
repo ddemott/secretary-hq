@@ -6,7 +6,7 @@
 // not — it doesn't actually charge anyone.
 //
 // Checks:
-//   1. /demo/start        — ephemeral tenant + JWT (prerequisite for auth'd routes)
+//   1. /tutorial/start     — ephemeral tenant + JWT (prerequisite for auth'd routes)
 //   2. GET  /billing/status   — route reachable, returns plan state
 //   3. POST /billing/webhook  — no sig: 400 means sig gate works; 503 means no Stripe key (GAP)
 //   4. POST /billing/checkout — Stripe key configured? → OK / GAP
@@ -67,7 +67,7 @@ async function main() {
   console.log(`${C.b}SecretaryHQ — Stripe billing path check${C.x} ${C.d}(${BACKEND})${C.x}`);
 
   // ── 1. Demo tenant (JWT for auth'd routes) ──────────────────────────────
-  const demo = await req('/demo/start', { method: 'POST', body: {} });
+  const demo = await req('/tutorial/start', { method: 'POST', body: {} });
   let jwt = null;
   let tenantId = null;
   if (demo.status === 200 && demo.json?.success) {

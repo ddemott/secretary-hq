@@ -45,10 +45,16 @@ export function registerHealthRoutes(app: AppFastifyInstance, pool: Pool): void 
     return reply.type('text/html').send(html);
   });
 
-  // Demo page — redirect to real React dashboard demo (matches live site exactly)
+  // Tutorial page — redirect to the real React dashboard tutorial (matches
+  // live site exactly). /demo kept as a permanent alias for old shared links
+  // and bookmarks from before the demo→tutorial rename (2026-09-27).
+  app.get('/tutorial', async (_req, reply) => {
+    const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:4400';
+    return reply.redirect(`${dashboardUrl}/tutorial`);
+  });
   app.get('/demo', async (_req, reply) => {
     const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:4400';
-    return reply.redirect(`${dashboardUrl}/demo`);
+    return reply.redirect(`${dashboardUrl}/tutorial`);
   });
 
   // Liveness: process is up. Intentionally shallow + synchronous — does NOT

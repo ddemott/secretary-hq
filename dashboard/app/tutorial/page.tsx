@@ -6,7 +6,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   (typeof window !== 'undefined' ? 'https://localhost:4001' : 'https://localhost:4001');
 
-interface DemoStartResponse {
+interface TutorialStartResponse {
   success: boolean;
   token: string;
   tenant_id: string;
@@ -16,25 +16,25 @@ interface DemoStartResponse {
   error?: string;
 }
 
-export default function DemoPage() {
+export default function TutorialPage() {
   const [status, setStatus] = useState<'starting' | 'error'>('starting');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
-    async function startDemo() {
+    async function startTutorial() {
       try {
-        const res = await fetch(`${API_BASE}/demo/start`, {
+        const res = await fetch(`${API_BASE}/tutorial/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // Body is required: declaring application/json with no body makes
           // the backend's JSON parser reject the request 400 before the route
-          // runs. /demo/start takes no parameters, so send an empty object.
+          // runs. /tutorial/start takes no parameters, so send an empty object.
           body: JSON.stringify({}),
         });
 
-        const data: DemoStartResponse = (await res.json()) as DemoStartResponse;
+        const data: TutorialStartResponse = (await res.json()) as TutorialStartResponse;
 
         if (cancelled) return;
 
@@ -44,14 +44,14 @@ export default function DemoPage() {
           return;
         }
 
-        // Store session exactly as LoginView does, plus demo-specific fields.
+        // Store session exactly as LoginView does, plus tutorial-specific fields.
         localStorage.setItem('authToken', data.token);
         localStorage.setItem('tenantId', data.tenant_id);
         localStorage.setItem('userName', 'Demo Owner');
         localStorage.setItem('userEmail', 'demo@quicklubedemo.invalid');
         localStorage.setItem('userRole', 'owner');
-        localStorage.setItem('demoExpiresAt', data.expires_at);
-        localStorage.setItem('demoTenantId', data.tenant_id);
+        localStorage.setItem('tutorialExpiresAt', data.expires_at);
+        localStorage.setItem('tutorialTenantId', data.tenant_id);
 
         // Hard navigation, NOT router.push(). SessionProvider lives in the root
         // layout and reads localStorage in a mount-once useEffect(…, []). A
@@ -67,7 +67,7 @@ export default function DemoPage() {
       }
     }
 
-    void startDemo();
+    void startTutorial();
     return () => {
       cancelled = true;
     };
@@ -92,7 +92,7 @@ export default function DemoPage() {
         }}
       >
         <div style={{ fontSize: 32 }}>⚠️</div>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Demo unavailable</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>Tutorial unavailable</div>
         <div style={{ color: '#7A90B8', maxWidth: 360 }}>{errorMsg}</div>
         <a
           href="/"
@@ -138,7 +138,7 @@ export default function DemoPage() {
         }}
       />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <div style={{ fontSize: 15, color: '#7A90B8' }}>Setting up your demo…</div>
+      <div style={{ fontSize: 15, color: '#7A90B8' }}>Setting up your tutorial…</div>
     </div>
   );
 }

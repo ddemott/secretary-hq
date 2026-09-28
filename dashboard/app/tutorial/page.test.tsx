@@ -1,10 +1,10 @@
 /**
- * Tests for dashboard/app/demo/page.tsx
+ * Tests for dashboard/app/tutorial/page.tsx
  *
  * WHO: anonymous visitor clicking "Try live demo" on the landing page
- * WHAT: fetch call to /demo/start, localStorage population, redirect
+ * WHAT: fetch call to /tutorial/start, localStorage population, redirect
  * WHEN: component mounts
- * WHERE: dashboard/app/demo/page.tsx
+ * WHERE: dashboard/app/tutorial/page.tsx
  * WHY: this is the only entry-point to the demo; if the fetch or
  *      localStorage write fails silently, visitors land on a blank/broken
  *      dashboard with no token and no error message
@@ -27,12 +27,12 @@ function stubLocation(): void {
     set: (v: string) => {
       hrefAssignments.push(v);
     },
-    get: () => 'https://test.local/demo',
+    get: () => 'https://test.local/tutorial',
   });
   Object.defineProperty(window, 'location', { value: loc, writable: true, configurable: true });
 }
 
-import DemoPage from './page';
+import TutorialPage from './page';
 
 function mockFetch(response: Partial<Response>): void {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response));
@@ -42,7 +42,7 @@ function mockFetchReject(err: Error): void {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(err));
 }
 
-describe('DemoPage', () => {
+describe('TutorialPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -59,7 +59,7 @@ describe('DemoPage', () => {
     // WHAT: the POST must carry a body, not just declare application/json
     // WHEN: 2026-07-08 — shipping the header without a body made the backend
     //       parser reject every click with 400 "Invalid JSON"
-    // WHERE: the fetch() in DemoPage's useEffect
+    // WHERE: the fetch() in TutorialPage's useEffect
     // WHY: this suite stubs fetch, so it can never catch a backend rejection.
     //      What it CAN do is pin the request shape the backend agreed to
     //      accept. Asserting the body exists is the half of the contract that
@@ -76,7 +76,7 @@ describe('DemoPage', () => {
       }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
       expect(hrefAssignments).toContain('/dashboard');
@@ -111,7 +111,7 @@ describe('DemoPage', () => {
       }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
       expect(hrefAssignments).toContain('/dashboard');
@@ -125,8 +125,8 @@ describe('DemoPage', () => {
   it('HAPPY: sets auth token and redirects to /dashboard on success', async () => {
     // WHO: visitor clicking "Try live demo"
     // WHAT: token + tenant_id stored in localStorage, router.push('/dashboard') called
-    // WHEN: /demo/start returns 200 with success=true
-    // WHERE: useEffect fetch in DemoPage
+    // WHEN: /tutorial/start returns 200 with success=true
+    // WHERE: useEffect fetch in TutorialPage
     // WHY: without these localStorage writes the dashboard renders the login screen
     mockFetch({
       ok: true,
@@ -140,7 +140,7 @@ describe('DemoPage', () => {
       }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
       expect(hrefAssignments).toContain('/dashboard');
@@ -149,8 +149,8 @@ describe('DemoPage', () => {
     expect(localStorage.getItem('authToken')).toBe('test-demo-jwt');
     expect(localStorage.getItem('tenantId')).toBe('demo-uuid-1234');
     expect(localStorage.getItem('userRole')).toBe('owner');
-    expect(localStorage.getItem('demoTenantId')).toBe('demo-uuid-1234');
-    expect(localStorage.getItem('demoExpiresAt')).toBeTruthy();
+    expect(localStorage.getItem('tutorialTenantId')).toBe('demo-uuid-1234');
+    expect(localStorage.getItem('tutorialExpiresAt')).toBeTruthy();
   });
 
   it('HAPPY: shows loading spinner while fetch is in-flight', async () => {
@@ -169,7 +169,7 @@ describe('DemoPage', () => {
       )
     );
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     // Spinner should be visible before fetch resolves
     const spinner = document.querySelector('[style*="border"]');
@@ -184,34 +184,34 @@ describe('DemoPage', () => {
     });
   });
 
-  it('SAD: shows error when /demo/start returns success=false', async () => {
+  it('SAD: shows error when /tutorial/start returns success=false', async () => {
     // WHO: visitor hitting the demo when capacity is full
     // WHAT: error message rendered instead of redirect
-    // WHEN: server returns { success: false, error: 'Demo capacity is full...' }
+    // WHEN: server returns { success: false, error: 'Tutorial capacity is full...' }
     // WHERE: error branch in useEffect
     // WHY: a silent failure redirects to a broken dashboard; error is better UX
     mockFetch({
       ok: false,
       json: async () => ({
         success: false,
-        error: 'Demo capacity is full. Please try again in a few minutes.',
+        error: 'Tutorial capacity is full. Please try again in a few minutes.',
       }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/demo unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText(/tutorial unavailable/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/demo capacity is full/i)).toBeInTheDocument();
+    expect(screen.getByText(/tutorial capacity is full/i)).toBeInTheDocument();
     expect(hrefAssignments).toHaveLength(0);
     expect(localStorage.getItem('authToken')).toBeNull();
   });
 
   it('SAD: shows error on 429 rate-limit response', async () => {
     // WHO: visitor hammering the demo button
-    // WHAT: "Demo unavailable" with the rate-limit message
+    // WHAT: "Tutorial unavailable" with the rate-limit message
     // WHEN: server returns 429
     // WHERE: error branch in useEffect
     // WHY: visitors should be told to wait, not see a blank error state
@@ -219,31 +219,31 @@ describe('DemoPage', () => {
       ok: false,
       json: async () => ({
         success: false,
-        error: 'Too many demo sessions from this IP. Try again in 15 minutes.',
+        error: 'Too many tutorial sessions from this IP. Try again in 15 minutes.',
       }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/demo unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText(/tutorial unavailable/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/too many demo sessions/i)).toBeInTheDocument();
+    expect(screen.getByText(/too many tutorial sessions/i)).toBeInTheDocument();
   });
 
   it('SAD: shows error on network failure', async () => {
     // WHO: visitor with no internet / backend down
-    // WHAT: "Demo unavailable" shown; no redirect, no auth stored
+    // WHAT: "Tutorial unavailable" shown; no redirect, no auth stored
     // WHEN: fetch rejects (TypeError: Failed to fetch)
     // WHERE: catch block in useEffect
     // WHY: unhandled promise rejection would show a blank spinner forever
     mockFetchReject(new Error('Failed to fetch'));
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/demo unavailable/i)).toBeInTheDocument();
+      expect(screen.getByText(/tutorial unavailable/i)).toBeInTheDocument();
     });
 
     // The catch block sets errorMsg from the Error — verify error state is shown
@@ -257,14 +257,14 @@ describe('DemoPage', () => {
     // WHO: visitor seeing the error state
     // WHAT: link to navigate back to landing page
     // WHEN: any error (capacity, rate-limit, network)
-    // WHERE: error render branch in DemoPage
+    // WHERE: error render branch in TutorialPage
     // WHY: visitors must have an exit path from the error screen
     mockFetch({
       ok: false,
       json: async () => ({ success: false, error: 'Something went wrong' }),
     });
 
-    render(<DemoPage />);
+    render(<TutorialPage />);
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /back to home/i })).toBeInTheDocument();

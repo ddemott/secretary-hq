@@ -79,7 +79,7 @@ describe('selectStaleWebsiteScanTenants', () => {
     expect(query).toHaveBeenCalledTimes(1);
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/website_scan_url IS NOT NULL/i);
-    expect(sql).toMatch(/is_demo = false/i);
+    expect(sql).toMatch(/is_tutorial = false/i);
     expect(sql).toMatch(/is_deleted = false/i);
     expect(sql).toMatch(/website_scan_fail_count < \$3/i);
     expect(sql).toMatch(/website_scan_last_attempt_at/i);

@@ -20,7 +20,7 @@ import { useTheme, THEMES } from '@/lib/ThemeContext';
 import { useSessionContext, type UserRole } from '@/lib/SessionContext';
 import { FeedbackButton } from '../ui/FeedbackButton';
 import { SetupProgressPill } from '../ui/SetupProgressPill';
-import { DemoBanner } from '../ui/DemoBanner';
+import { TutorialBanner } from '../ui/TutorialBanner';
 import { useAnchorRect } from '../../lib/useAnchorRect';
 import { AppShell } from './AppShell';
 import { TenantSwitcherDropdown } from './TenantSwitcherDropdown';
@@ -425,8 +425,8 @@ export function OutlookLayout({
           </div>
         )}
 
-        {/* DEMO BANNER — renders only when demoTenantId is in localStorage */}
-        <DemoBanner />
+        {/* TUTORIAL BANNER — renders only when tutorialTenantId is in localStorage */}
+        <TutorialBanner />
 
         {/* CONTENT AREA */}
         <div role="main" className="flex-1 flex overflow-hidden">

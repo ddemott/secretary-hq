@@ -1,5 +1,5 @@
 /**
- * Seed a freshly-created demo tenant with realistic automotive data.
+ * Seed a freshly-created tutorial tenant with realistic automotive data.
  *
  * Seeds in a single transaction so partial failure leaves no orphaned rows
  * (the tenant itself lives outside this transaction — it is created by the
@@ -13,20 +13,21 @@ import type { Pool, PoolClient } from 'pg';
 
 import { withTenantContext } from '../database/index';
 
-export interface DemoSeedParams {
+export interface TutorialSeedParams {
   tenantId: string;
   userId: string;
 }
 
 /**
- * Insert demo business data for the given tenant.
+ * Insert tutorial business data for the given tenant.
  * Must be called after the tenant + owner user rows already exist.
  *
  * RUNS UNDER THE TENANT'S RLS CONTEXT. This used to say "uses the raw pool (no
  * RLS context) — admin-level write", which was true only because the app
  * connected as a BYPASSRLS role and every policy was inert. The first time
  * production ran as `app_user` (2026-07-27) this function was the first thing to
- * break — `POST /demo/start`, the public "Try live demo" button, 500'd with
+ * break — `POST /demo/start`, the public "Try live demo" button (as it was
+ * named then), 500'd with
  *
  *     new row violates row-level security policy for table "tenant_skills"
  *
@@ -38,11 +39,11 @@ export interface DemoSeedParams {
  * ONE known tenant. Setting the context is both the fix and the honest
  * description of what it does.
  */
-export async function seedDemoTenant(pool: Pool, params: DemoSeedParams): Promise<void> {
+export async function seedTutorialTenant(pool: Pool, params: TutorialSeedParams): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await withTenantContext(client, params.tenantId, () => insertDemoData(client, params));
+    await withTenantContext(client, params.tenantId, () => insertTutorialData(client, params));
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -52,7 +53,10 @@ export async function seedDemoTenant(pool: Pool, params: DemoSeedParams): Promis
   }
 }
 
-async function insertDemoData(client: PoolClient, { tenantId }: DemoSeedParams): Promise<void> {
+async function insertTutorialData(
+  client: PoolClient,
+  { tenantId }: TutorialSeedParams
+): Promise<void> {
   // Idempotency guard: if customers already exist, this tenant is already seeded.
   // Appointments have a GiST exclusion that rejects duplicates, so we must not
   // re-run the INSERT block. Checking customers (5 rows) is the lightest proxy.

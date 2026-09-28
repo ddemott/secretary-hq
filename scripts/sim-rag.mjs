@@ -4,7 +4,7 @@
 // The receptionist answers caller questions from search_tenant_docs (pgvector
 // cosine over the tenant KB) via /agent-tools/policy-answer. Nothing measured
 // whether retrieval is actually accurate. This seeds a known KB into an
-// ephemeral /demo/start tenant, then asks PARAPHRASED caller questions and
+// ephemeral /tutorial/start tenant, then asks PARAPHRASED caller questions and
 // checks the right content is retrieved — plus that a genuinely out-of-scope
 // question correctly falls back ("I don't have that on hand...") instead
 // of hallucinating a match. Reports a hit-rate; exits non-zero below threshold.
@@ -71,7 +71,7 @@ async function main() {
   console.log(`${C.b}SecretaryHQ — RAG accuracy eval${C.x} ${C.d}(${BACKEND})${C.x}`);
 
   // 1. Ephemeral tenant + dashboard token (for /knowledge/add).
-  const demo = await post('/demo/start', {}, { auth: false });
+  const demo = await post('/tutorial/start', {}, { auth: false });
   const tenant = demo.json?.tenant_id;
   const token = demo.json?.token;
   if (!tenant || !token) {

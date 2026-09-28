@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict sLCE78BpoXP2OgWmqFmxgo3x5RdjCcntDfUZJL1yDz8JiExlSLfTUSRuLVmKsea
+\restrict Td8FQbOzHgpPWrnYvVJd1TIcYgy6pyJ4uqo1TRWyEah1JUH44LDo0NDsciJfGkx
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4812,8 +4812,8 @@ CREATE TABLE public.tenants (
     telnyx_phone_number_id text,
     sms_enabled boolean DEFAULT true NOT NULL,
     email_enabled boolean DEFAULT true NOT NULL,
-    is_demo boolean DEFAULT false NOT NULL,
-    demo_expires_at timestamp with time zone,
+    is_tutorial boolean DEFAULT false NOT NULL,
+    tutorial_expires_at timestamp with time zone,
     save_preferences_enabled boolean DEFAULT true NOT NULL,
     preferences_instructions text,
     default_buffer_minutes integer DEFAULT 0 NOT NULL,
@@ -6179,13 +6179,6 @@ CREATE INDEX idx_tenant_question_nodes_tree ON public.tenant_question_nodes USIN
 
 
 --
--- Name: idx_tenants_demo_expires; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_tenants_demo_expires ON public.tenants USING btree (demo_expires_at) WHERE (is_demo = true);
-
-
---
 -- Name: idx_tenants_stripe_customer; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6197,6 +6190,13 @@ CREATE INDEX idx_tenants_stripe_customer ON public.tenants USING btree (stripe_c
 --
 
 CREATE INDEX idx_tenants_telnyx_phone_number ON public.tenants USING btree (telnyx_phone_number_id) WHERE (telnyx_phone_number_id IS NOT NULL);
+
+
+--
+-- Name: idx_tenants_tutorial_expires; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_tenants_tutorial_expires ON public.tenants USING btree (tutorial_expires_at) WHERE (is_tutorial = true);
 
 
 --
@@ -8095,5 +8095,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict sLCE78BpoXP2OgWmqFmxgo3x5RdjCcntDfUZJL1yDz8JiExlSLfTUSRuLVmKsea
+\unrestrict Td8FQbOzHgpPWrnYvVJd1TIcYgy6pyJ4uqo1TRWyEah1JUH44LDo0NDsciJfGkx
 

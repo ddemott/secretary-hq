@@ -2,14 +2,14 @@
  * Maintenance purge — the ONLY thing in this codebase that destroys data.
  *
  * The application never hard-deletes a tenant. `DELETE /tenants/:id` and the
- * demo-expiry reaper both flip `tenants.is_deleted` instead (2026-07-13), because:
+ * tutorial-expiry reaper both flip `tenants.is_deleted` instead (2026-07-13), because:
  *
  *   1. A cascading DELETE obliterates a business — every appointment, customer, call
  *      recording, transcript, consent record — irreversibly, from one call, with no
  *      undo. Every other entity in this schema was already soft-deleted; tenants was
  *      the outlier, and the most destructive one.
  *   2. The cascade DEADLOCKS against fire-and-forget reminder seeding (FK locks in
- *      opposite orders; Postgres kills one side at random — PR #242). The demo reaper
+ *      opposite orders; Postgres kills one side at random — PR #242). The tutorial reaper
  *      runs every 60 seconds in production, so this is a live hazard, not a theory.
  *
  * So destruction becomes a deliberate, human, maintenance-window act. That is what
@@ -128,9 +128,9 @@ async function main() {
       tenant_id: string;
       name: string;
       deleted_at: string | null;
-      is_demo: boolean;
+      is_tutorial: boolean;
     }>(
-      `SELECT tenant_id, name, deleted_at, is_demo
+      `SELECT tenant_id, name, deleted_at, is_tutorial
          FROM tenants
         WHERE is_deleted = true ${cutoff}
         ORDER BY deleted_at NULLS FIRST`
@@ -156,7 +156,7 @@ async function main() {
         .map((r) => `${r.n} ${r.table_name}`)
         .join(', ');
       console.log(
-        `  ${t.name}${t.is_demo ? ' [demo]' : ''}  deleted=${t.deleted_at ?? '?'}\n` +
+        `  ${t.name}${t.is_tutorial ? ' [tutorial]' : ''}  deleted=${t.deleted_at ?? '?'}\n` +
           `      would destroy: ${radius || '(nothing but the tenant row)'}`
       );
 

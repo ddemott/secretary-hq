@@ -539,7 +539,7 @@ jobs:
           # simulate.sh reads agent secret via env_get (from .env) with
           # SIM_AGENT_SECRET as override — AGENT_SECRET alone is ignored.
           SIM_AGENT_SECRET: ci-agent-secret
-          # simulate tools hits /demo/start which may use OPENAI for embeddings
+          # simulate tools hits /tutorial/start which may use OPENAI for embeddings
           # in some paths; dummy is tolerated (falls back or skips).
           OPENAI_API_KEY: sk-dummy
 

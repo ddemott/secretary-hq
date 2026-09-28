@@ -661,7 +661,7 @@ const LANDING_HTML = `
           Start free trial
           <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
-        <a href="/demo" class="btn-ghost">Try live demo</a>
+        <a href="/tutorial" class="btn-ghost">Try live tutorial</a>
       </div>
 
       <div class="hero-stats reveal reveal-delay-3">
@@ -1026,7 +1026,7 @@ const LANDING_HTML = `
         <div class="val-layers">
           <div class="val-layer"><div class="val-layer-dot blue"></div>Private and secure — each business is walled off</div>
           <div class="val-layer"><div class="val-layer-dot green"></div>Logins with owner, manager, and front-desk roles</div>
-          <div class="val-layer"><div class="val-layer-dot green"></div>Try it free — instant demo with sample data, no commitment</div>
+          <div class="val-layer"><div class="val-layer-dot green"></div>Try it free — instant tutorial with sample data, no commitment</div>
         </div>
       </div>
 

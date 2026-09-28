@@ -87,7 +87,7 @@ async function main() {
   // ── S1. Provision an isolated demo tenant (unless one was supplied) ──
   let demoToken = null;
   if (!TENANT) {
-    const r = await api('/demo/start', {}, { auth: false });
+    const r = await api('/tutorial/start', {}, { auth: false });
     if (r.json?.success && r.json.tenant_id) {
       TENANT = r.json.tenant_id;
       demoToken = r.json.token ?? null; // dashboard JWT — for auth'd routes like /analytics/stats

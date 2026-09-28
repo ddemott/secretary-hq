@@ -1,7 +1,7 @@
 /**
  * Integration tests for demoSeed.ts
  *
- * WHO: demo provisioning path (POST /demo/start calls seedDemoTenant)
+ * WHO: demo provisioning path (POST /tutorial/start calls seedTutorialTenant)
  * WHAT: all required seed rows are created and queryable after seeding
  * WHEN: a new demo tenant is provisioned
  * WHERE: src/services/demoSeed.ts
@@ -16,10 +16,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { type Client, Pool } from 'pg';
 import { getRootClient, skipIfDbDown, ROOT_DB_URL } from '../utils';
-import { seedDemoTenant } from '../../src/services/demoSeed';
-import { cleanupExpiredDemoTenants } from '../../src/workers/reminderScheduler';
+import { seedTutorialTenant } from '../../src/services/tutorialSeed';
+import { cleanupExpiredTutorialTenants } from '../../src/workers/reminderScheduler';
 
-describe('seedDemoTenant', () => {
+describe('seedTutorialTenant', () => {
   let client: Client;
   let pool: Pool;
   let tenantId: string;
@@ -35,7 +35,7 @@ describe('seedDemoTenant', () => {
 
       // Create a demo tenant + owner user (same as the route does before seeding).
       const tRes = await client.query<{ tenant_id: string }>(
-        `INSERT INTO tenants (name, business_type, timezone, is_demo, demo_expires_at)
+        `INSERT INTO tenants (name, business_type, timezone, is_tutorial, tutorial_expires_at)
          VALUES ('Seed Test Demo', 'automotive', 'America/Chicago', true, NOW() + INTERVAL '30 minutes')
          RETURNING tenant_id`
       );
@@ -63,12 +63,12 @@ describe('seedDemoTenant', () => {
   });
 
   it('HAPPY: completes without error', async () => {
-    // WHO: POST /demo/start calling seedDemoTenant after tenant is created
+    // WHO: POST /tutorial/start calling seedTutorialTenant after tenant is created
     // WHAT: no throw, transaction commits
     // WHEN: fresh tenant with no pre-existing rows
-    // WHERE: seedDemoTenant()
+    // WHERE: seedTutorialTenant()
     // WHY: a ROLLBACK on any INSERT leaves the demo tenant empty — bad UX
-    await expect(seedDemoTenant(pool, { tenantId, userId })).resolves.not.toThrow();
+    await expect(seedTutorialTenant(pool, { tenantId, userId })).resolves.not.toThrow();
   });
 
   it('HAPPY: skills are created', async () => {
@@ -189,14 +189,14 @@ describe('seedDemoTenant', () => {
   it('SAD: calling seed twice is idempotent (ON CONFLICT DO NOTHING)', async () => {
     // WHO: provisioning retry / network hiccup causing double-seed
     // WHAT: second call should not throw (ON CONFLICT DO NOTHING on shifts)
-    // WHEN: race or retry on POST /demo/start
-    // WHERE: seedDemoTenant → expandShifts ON CONFLICT
+    // WHEN: race or retry on POST /tutorial/start
+    // WHERE: seedTutorialTenant → expandShifts ON CONFLICT
     // WHY: a duplicate error would leave the tenant partially seeded
-    await expect(seedDemoTenant(pool, { tenantId, userId })).resolves.not.toThrow();
+    await expect(seedTutorialTenant(pool, { tenantId, userId })).resolves.not.toThrow();
   });
 });
 
-describe('cleanupExpiredDemoTenants', () => {
+describe('cleanupExpiredTutorialTenants', () => {
   let client: Client;
   let pool: Pool;
   let dbAvailable = true;
@@ -219,11 +219,11 @@ describe('cleanupExpiredDemoTenants', () => {
     await pool.end();
   });
 
-  it('HAPPY: SOFT-deletes demo tenants whose demo_expires_at is in the past', async () => {
+  it('HAPPY: SOFT-deletes demo tenants whose tutorial_expires_at is in the past', async () => {
     // WHO: reminder scheduler tick running every 60s
     // WHAT: the expired demo tenant is flagged is_deleted — NOT hard-deleted.
-    // WHEN: demo_expires_at < NOW()
-    // WHERE: cleanupExpiredDemoTenants() in reminderScheduler
+    // WHEN: tutorial_expires_at < NOW()
+    // WHERE: cleanupExpiredTutorialTenants() in reminderScheduler
     // WHY THE CHANGE (2026-07-13): this runs every 60 SECONDS in production, and a
     //       cascading DELETE races the fire-and-forget reminder seeding of any live
     //       booking — FK locks in opposite orders, Postgres kills one side at random
@@ -232,13 +232,13 @@ describe('cleanupExpiredDemoTenants', () => {
     //       for the maintenance purge; nothing can reach them (withTenantClient 404s a
     //       soft-deleted tenant).
     const res = await client.query<{ tenant_id: string }>(
-      `INSERT INTO tenants (name, business_type, timezone, is_demo, demo_expires_at)
+      `INSERT INTO tenants (name, business_type, timezone, is_tutorial, tutorial_expires_at)
        VALUES ('Expired Demo', 'automotive', 'America/Chicago', true, NOW() - INTERVAL '1 minute')
        RETURNING tenant_id`
     );
     const expiredId = res.rows[0].tenant_id;
 
-    await cleanupExpiredDemoTenants(pool);
+    await cleanupExpiredTutorialTenants(pool);
 
     // The row SURVIVES, flagged — that is the point. Nothing reads it.
     const check = await client.query<{ is_deleted: boolean; deleted_at: Date | null }>(
@@ -259,18 +259,18 @@ describe('cleanupExpiredDemoTenants', () => {
 
   it('HAPPY: leaves non-expired demo tenants untouched', async () => {
     // WHO: reminder scheduler tick
-    // WHAT: tenant with future demo_expires_at is not deleted
-    // WHEN: demo_expires_at > NOW()
-    // WHERE: cleanupExpiredDemoTenants()
+    // WHAT: tenant with future tutorial_expires_at is not deleted
+    // WHEN: tutorial_expires_at > NOW()
+    // WHERE: cleanupExpiredTutorialTenants()
     // WHY: deleting active sessions would boot users mid-demo
     const res = await client.query<{ tenant_id: string }>(
-      `INSERT INTO tenants (name, business_type, timezone, is_demo, demo_expires_at)
+      `INSERT INTO tenants (name, business_type, timezone, is_tutorial, tutorial_expires_at)
        VALUES ('Active Demo', 'automotive', 'America/Chicago', true, NOW() + INTERVAL '20 minutes')
        RETURNING tenant_id`
     );
     const activeId = res.rows[0].tenant_id;
 
-    await cleanupExpiredDemoTenants(pool);
+    await cleanupExpiredTutorialTenants(pool);
 
     const check = await client.query('SELECT 1 FROM tenants WHERE tenant_id = $1', [activeId]);
     expect(check.rows).toHaveLength(1);
@@ -281,18 +281,18 @@ describe('cleanupExpiredDemoTenants', () => {
 
   it('HAPPY: leaves non-demo tenants untouched regardless of timestamps', async () => {
     // WHO: reminder scheduler tick
-    // WHAT: is_demo=false tenant is never swept even if created long ago
+    // WHAT: is_tutorial=false tenant is never swept even if created long ago
     // WHEN: any tick
-    // WHERE: cleanupExpiredDemoTenants() WHERE is_demo = true filter
+    // WHERE: cleanupExpiredTutorialTenants() WHERE is_tutorial = true filter
     // WHY: a missing WHERE clause would delete real business data
     const res = await client.query<{ tenant_id: string }>(
-      `INSERT INTO tenants (name, business_type, timezone, is_demo)
+      `INSERT INTO tenants (name, business_type, timezone, is_tutorial)
        VALUES ('Real Business', 'automotive', 'America/Chicago', false)
        RETURNING tenant_id`
     );
     const realId = res.rows[0].tenant_id;
 
-    await cleanupExpiredDemoTenants(pool);
+    await cleanupExpiredTutorialTenants(pool);
 
     const check = await client.query('SELECT 1 FROM tenants WHERE tenant_id = $1', [realId]);
     expect(check.rows).toHaveLength(1);

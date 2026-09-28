@@ -45,7 +45,7 @@ import { registerBillingRoutes, subscriptionGate } from './routes/billing';
 import { registerProvisioningRoutes } from './routes/provisioning';
 import { registerSquareRoutes } from './routes/square';
 import { registerAgentToolRoutes } from './routes/agentTools/index';
-import { registerDemoRoutes } from './routes/demo';
+import { registerTutorialRoutes } from './routes/tutorial';
 import { registerVoiceRoutes } from './routes/voice';
 import { registerVersionHistoryRoutes } from './routes/versionHistory';
 import { registerCommunicationRoutes } from './routes/communications';
@@ -304,7 +304,7 @@ registerAgentToolRoutes(
   normalizeForEmbedding,
   expandQueryForEmbedding
 );
-registerDemoRoutes(app, pool, generateToken);
+registerTutorialRoutes(app, pool, generateToken);
 registerSelfServiceRoutes(app, withTenantClient);
 registerExportRoutes(app, pool, withTenantClient);
 registerAuditLogRoutes(app, pool, withTenantClient);
