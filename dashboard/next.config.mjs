@@ -38,6 +38,11 @@ const nextConfig = {
   // See dashboard/railway.json for the full build + copy + start commands.
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../'),
+  // Permanent alias for old shared links/bookmarks from before the
+  // demo→tutorial rename (2026-09-27).
+  async redirects() {
+    return [{ source: '/demo', destination: '/tutorial', permanent: true }];
+  },
 };
 
 // withSentryConfig is a no-op at runtime when SENTRY_DSN is unset; the

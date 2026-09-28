@@ -102,7 +102,7 @@ async function main() {
   if (TENANT) {
     console.log(`using supplied tenant ${TENANT.slice(0, 8)}…`);
   } else {
-    const r = await api('/demo/start', {}, { auth: false });
+    const r = await api('/tutorial/start', {}, { auth: false });
     TENANT = r.json?.tenant_id;
     if (!TENANT) {
       console.error(`FAILED to provision demo tenant: ${r.status} ${JSON.stringify(r.json)}`);

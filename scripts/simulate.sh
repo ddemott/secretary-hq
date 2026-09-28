@@ -22,7 +22,7 @@
 #                                        voice agent DOES on a call (lookup,
 #                                        book, OTP, preferences, session log) by
 #                                        hitting /agent-tools/* — no telephony.
-#                                        Defaults to a fresh /demo/start tenant
+#                                        Defaults to a fresh /tutorial/start tenant
 #                                        (ephemeral, 30-min TTL, self-cleaning).
 #   rag    [--env local|prod]             RAG accuracy eval: seed a known KB into
 #                                        a demo tenant, ask paraphrased caller

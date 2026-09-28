@@ -1,12 +1,12 @@
 /**
- * Tests for POST /demo/start
+ * Tests for POST /tutorial/start
  *
  * WHO: anonymous visitor hitting the public demo endpoint
  * WHAT: tenant provisioning, JWT issuance, rate-limit, global cap
  * WHEN: on demand (no auth required)
  * WHERE: src/routes/demo.ts
  * WHY: ensure isolated demo tenants are created correctly and outbound
- *      guards fire for demo tenants (syncOrchestrator is_demo check)
+ *      guards fire for demo tenants (syncOrchestrator is_tutorial check)
  *
  * Strategy: mock the pool (no real DB), inject HTTP via Fastify.
  * Happy + sad paths with 5W diagnostics.
@@ -17,7 +17,7 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 
-import { registerDemoRoutes, resetDemoRateLimitForTesting } from '../../src/routes/demo';
+import { registerTutorialRoutes, resetTutorialRateLimitForTesting } from '../../src/routes/tutorial';
 import {
   generateToken as realGenerateToken,
   registerJwtAuthHook,
@@ -68,7 +68,7 @@ function buildApp(queryResponses: MockQueryResult[]): {
   // removeContentTypeParser must precede add for built-in types.
   app.removeContentTypeParser('application/json');
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonContentTypeParser);
-  registerDemoRoutes(app as never, mockPool, generateToken);
+  registerTutorialRoutes(app as never, mockPool, generateToken);
 
   return { app, mockPool, queries };
 }
@@ -76,7 +76,7 @@ function buildApp(queryResponses: MockQueryResult[]): {
 /**
  * Same as buildApp, but with the real JWT auth hook registered so
  * `Authorization: Bearer <token>` headers populate `req.auth` — needed to
- * exercise /demo/reset, which is authenticated (unlike /demo/start).
+ * exercise /tutorial/reset, which is authenticated (unlike /tutorial/start).
  *
  * The hook does its own `password_changed_at` lookup via `pool.connect()`
  * before the handler runs, consuming one entry off the shared response
@@ -102,7 +102,7 @@ function buildAuthedApp(queryResponses: MockQueryResult[]): {
   app.removeContentTypeParser('application/json');
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonContentTypeParser);
   registerJwtAuthHook(app as never, mockPool);
-  registerDemoRoutes(app as never, mockPool, generateToken);
+  registerTutorialRoutes(app as never, mockPool, generateToken);
 
   return { app, mockPool };
 }
@@ -125,19 +125,19 @@ function nextIp(): string {
   return `10.0.0.${testIpCounter++}`;
 }
 
-describe('POST /demo/start', () => {
+describe('POST /tutorial/start', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset in-process rate-limit Maps so tests don't bleed into each other.
     // (All inject() calls share req.ip = 127.0.0.1 unless x-forwarded-for is set.)
-    resetDemoRateLimitForTesting();
+    resetTutorialRateLimitForTesting();
   });
 
   it('happy path: creates tenant, returns token + metadata', async () => {
     // WHO: anonymous visitor
     // WHAT: successful demo provisioning with seeded data
     // WHEN: DB under normal load (cap not reached)
-    // WHERE: POST /demo/start
+    // WHERE: POST /tutorial/start
     // WHY: verify the full happy path returns all fields the dashboard needs
 
     const { app } = buildApp([
@@ -154,13 +154,13 @@ describe('POST /demo/start', () => {
         ],
         rowCount: 1,
       },
-      // 3. seedDemoTenant: BEGIN
+      // 3. seedTutorialTenant: BEGIN
       // (connect() is called, then multiple queries inside transaction)
     ]);
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/start',
+      url: '/tutorial/start',
       headers: { 'x-forwarded-for': nextIp() },
     });
 
@@ -169,7 +169,7 @@ describe('POST /demo/start', () => {
 
     // The token must be a REAL, VERIFIABLE SESSION — not merely "a string".
     //
-    // /demo/start used to sign its own JWT inline (ignoring the injected minter
+    // /tutorial/start used to sign its own JWT inline (ignoring the injected minter
     // above), so when session tokens gained a `typ` claim the demo token silently
     // stopped being one: every authenticated call a demo user made came back 401.
     // The old assertion — `typeof body.token === 'string'` — passed happily
@@ -197,7 +197,7 @@ describe('POST /demo/start', () => {
     // WHAT: the provisioning INSERT builds the owner email from the new tenant id
     //       ('demo+' || tenant_id || '@quicklubedemo.invalid'), and the session
     //       token carries that per-demo address.
-    // WHERE: POST /demo/start provisioning CTE.
+    // WHERE: POST /tutorial/start provisioning CTE.
     // WHY: users.email is unique platform-wide since 2026-09-24
     //      (users_email_lower_unique). The old shared demo@quicklubedemo.invalid
     //      would make every demo after the first fail with a unique violation.
@@ -217,7 +217,7 @@ describe('POST /demo/start', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/start',
+      url: '/tutorial/start',
       headers: { 'x-forwarded-for': nextIp() },
     });
 
@@ -238,11 +238,11 @@ describe('POST /demo/start', () => {
     // WHAT: fetch() sets Content-Type: application/json and passes no body
     // WHEN: 2026-07-08 — reproduced against production, returned
     //       400 {"success":false,"error":"Invalid JSON"} on every click
-    // WHERE: jsonContentTypeParser, before registerDemoRoutes' handler runs
+    // WHERE: jsonContentTypeParser, before registerTutorialRoutes' handler runs
     // WHY: neither suite covered this shape. The backend test injected with no
     //      payload (no content-type → parser skipped) and the dashboard test
     //      stubbed fetch outright, so the one request shape the browser
-    //      actually sends was tested by nobody. /demo/start was healthy the
+    //      actually sends was tested by nobody. /tutorial/start was healthy the
     //      entire time; the button in front of it was not.
     const { app } = buildApp([
       { rows: [{ count: '0' }] },
@@ -251,7 +251,7 @@ describe('POST /demo/start', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/start',
+      url: '/tutorial/start',
       headers: { 'x-forwarded-for': nextIp(), 'content-type': 'application/json' },
       // No payload — exactly what the browser sent.
     });
@@ -279,12 +279,12 @@ describe('POST /demo/start', () => {
     ]);
 
     for (let i = 0; i < 3; i++) {
-      await app.inject({ method: 'POST', url: '/demo/start', headers: { 'x-forwarded-for': ip } });
+      await app.inject({ method: 'POST', url: '/tutorial/start', headers: { 'x-forwarded-for': ip } });
     }
 
     const blocked = await app.inject({
       method: 'POST',
-      url: '/demo/start',
+      url: '/tutorial/start',
       headers: { 'x-forwarded-for': ip },
     });
 
@@ -307,7 +307,7 @@ describe('POST /demo/start', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/start',
+      url: '/tutorial/start',
       headers: { 'x-forwarded-for': nextIp() },
     });
 
@@ -338,12 +338,12 @@ describe('POST /demo/start', () => {
     for (let i = 0; i < 3; i++) {
       const r1 = await app.inject({
         method: 'POST',
-        url: '/demo/start',
+        url: '/tutorial/start',
         headers: { 'x-forwarded-for': ip1 },
       });
       const r2 = await app.inject({
         method: 'POST',
-        url: '/demo/start',
+        url: '/tutorial/start',
         headers: { 'x-forwarded-for': ip2 },
       });
       expect(r1.statusCode).not.toBe(429);
@@ -352,24 +352,24 @@ describe('POST /demo/start', () => {
   });
 });
 
-describe('POST /demo/reset', () => {
+describe('POST /tutorial/reset', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetDemoRateLimitForTesting();
+    resetTutorialRateLimitForTesting();
   });
 
   it('happy path: soft-deletes the old tenant and provisions a fresh one', async () => {
     // WHO: a prospect (or Dale) mid-walkthrough whose demo data has drifted
     // WHAT: the caller's own demo tenant is retired and a brand-new one issued
-    // WHEN: caller has a valid demo-owner JWT for a live is_demo tenant
-    // WHERE: POST /demo/reset
+    // WHEN: caller has a valid demo-owner JWT for a live is_tutorial tenant
+    // WHERE: POST /tutorial/reset
     // WHY: "start over" must not require leaving the dashboard
     const oldTenantId = 'demo-tenant-old';
     const token = demoOwnerToken(oldTenantId, 'user-old');
 
     const { app, mockPool } = buildAuthedApp([
       { rows: [] }, // JWT hook: password_changed_at lookup
-      { rows: [{ is_demo: true, is_deleted: false }] }, // ownership check
+      { rows: [{ is_tutorial: true, is_deleted: false }] }, // ownership check
       { rows: [{ count: '1' }] }, // global cap check
       { rows: [{ count: 1 }] }, // soft-delete UPDATE
       {
@@ -386,7 +386,7 @@ describe('POST /demo/reset', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/reset',
+      url: '/tutorial/reset',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
     });
 
@@ -412,25 +412,25 @@ describe('POST /demo/reset', () => {
     // WHY: reset must never be reachable without proving which demo you're in
     const { app } = buildAuthedApp([]);
 
-    const res = await app.inject({ method: 'POST', url: '/demo/reset' });
+    const res = await app.inject({ method: 'POST', url: '/tutorial/reset' });
 
     expect(res.statusCode).toBe(401);
   });
 
-  it('SAD: rejects with 403 when the caller is not an is_demo tenant', async () => {
+  it('SAD: rejects with 403 when the caller is not an is_tutorial tenant', async () => {
     // WHO: any caller whose JWT tenant is not a live demo tenant
     // WHAT: 403 — this must never be reachable against a real business
-    // WHERE: the is_demo ownership check in /demo/reset
+    // WHERE: the is_tutorial ownership check in /tutorial/reset
     // WHY: the whole point is this can never touch real tenant data
     const token = demoOwnerToken('real-tenant', 'user-real');
     const { app } = buildAuthedApp([
       { rows: [] }, // JWT hook lookup
-      { rows: [{ is_demo: false, is_deleted: false }] }, // ownership check fails
+      { rows: [{ is_tutorial: false, is_deleted: false }] }, // ownership check fails
     ]);
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/reset',
+      url: '/tutorial/reset',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
     });
 
@@ -443,18 +443,18 @@ describe('POST /demo/reset', () => {
     // WHO: a caller whose demo already expired/reset out from under them
     // WHAT: 403, not a crash — the tenant row still exists but is retired
     const token = demoOwnerToken('demo-tenant-gone', 'user-gone');
-    const { app } = buildAuthedApp([{ rows: [] }, { rows: [{ is_demo: true, is_deleted: true }] }]);
+    const { app } = buildAuthedApp([{ rows: [] }, { rows: [{ is_tutorial: true, is_deleted: true }] }]);
 
     const res = await app.inject({
       method: 'POST',
-      url: '/demo/reset',
+      url: '/tutorial/reset',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
     });
 
     expect(res.statusCode).toBe(403);
   });
 
-  it('shares the /demo/start rate-limit bucket', async () => {
+  it('shares the /tutorial/start rate-limit bucket', async () => {
     // WHY: a reset is exactly as expensive to provision as a fresh start, so
     // it must count against the same per-IP abuse guard, not a separate one
     // an attacker could use to double their throughput.
@@ -462,7 +462,7 @@ describe('POST /demo/reset', () => {
     const token = demoOwnerToken('demo-tenant-a', 'user-a');
 
     const { app } = buildAuthedApp([
-      // 3 allowed /demo/start calls
+      // 3 allowed /tutorial/start calls
       { rows: [{ count: '0' }] },
       { rows: [{ tenant_id: 't1', user_id: 'u1' }], rowCount: 1 },
       { rows: [{ count: '0' }] },
@@ -472,12 +472,12 @@ describe('POST /demo/reset', () => {
     ]);
 
     for (let i = 0; i < 3; i++) {
-      await app.inject({ method: 'POST', url: '/demo/start', headers: { 'x-forwarded-for': ip } });
+      await app.inject({ method: 'POST', url: '/tutorial/start', headers: { 'x-forwarded-for': ip } });
     }
 
     const blocked = await app.inject({
       method: 'POST',
-      url: '/demo/reset',
+      url: '/tutorial/reset',
       headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': ip },
     });
 
@@ -486,21 +486,21 @@ describe('POST /demo/reset', () => {
 });
 
 describe('syncOrchestrator demo guard', () => {
-  it('skips provider calls when is_demo=true, but still records synchronously', async () => {
+  it('skips provider calls when is_tutorial=true, but still records synchronously', async () => {
     // WHO: appointment route calling syncAppointmentToAll for a demo tenant
     // WHAT: no real provider .fn() calls, but record() still fires
-    // WHEN: tenant has is_demo=true in DB
-    // WHERE: syncOrchestrator.ts isDemoTenant check
+    // WHEN: tenant has is_tutorial=true in DB
+    // WHERE: syncOrchestrator.ts isTutorialTenant check
     // WHY: demo tenants must never pollute real CRM/calendar integrations;
     //      SYNC_TEST_RECORDER records still fire because they are synchronous
-    //      (before the async isDemoTenant gate) — e2e assertions in the
+    //      (before the async isTutorialTenant gate) — e2e assertions in the
     //      RECORDER path use a real tenant so this distinction doesn't matter
     //      in practice, but we document the design here.
 
     const { syncAppointmentToAll } = await import('../../src/services/syncOrchestrator');
 
     const mockPool = {
-      query: vi.fn(async () => ({ rows: [{ is_demo: true }], rowCount: 1 })),
+      query: vi.fn(async () => ({ rows: [{ is_tutorial: true }], rowCount: 1 })),
     } as unknown as Pool;
 
     // Should not throw.
@@ -508,24 +508,24 @@ describe('syncOrchestrator demo guard', () => {
       syncAppointmentToAll(mockPool, 'demo-tenant-id', 'appt-id', 'create', null)
     ).not.toThrow();
 
-    // Wait for the async is_demo check to settle.
+    // Wait for the async is_tutorial check to settle.
     await new Promise((r) => setTimeout(r, 10));
 
-    // pool.query was called once (the is_demo check).
+    // pool.query was called once (the is_tutorial check).
     expect((mockPool.query as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
   });
 
-  it('dispatches providers when is_demo=false', async () => {
+  it('dispatches providers when is_tutorial=false', async () => {
     // WHO: appointment route calling syncAppointmentToAll for a real tenant
     // WHAT: providers should be invoked (they'll fail gracefully — no real creds)
-    // WHEN: tenant has is_demo=false
+    // WHEN: tenant has is_tutorial=false
     // WHERE: syncOrchestrator.ts dispatch loop
     // WHY: confirm the guard does not suppress real tenant syncs
 
     const { syncAppointmentToAll } = await import('../../src/services/syncOrchestrator');
 
     const mockPool = {
-      query: vi.fn(async () => ({ rows: [{ is_demo: false }], rowCount: 1 })),
+      query: vi.fn(async () => ({ rows: [{ is_tutorial: false }], rowCount: 1 })),
     } as unknown as Pool;
 
     expect(() =>
@@ -534,7 +534,7 @@ describe('syncOrchestrator demo guard', () => {
 
     await new Promise((r) => setTimeout(r, 10));
 
-    // pool.query called at least once (the is_demo check).
+    // pool.query called at least once (the is_tutorial check).
     expect((mockPool.query as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(
       1
     );

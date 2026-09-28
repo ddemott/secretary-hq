@@ -167,12 +167,12 @@ export default function RegisterPage() {
             Sign-ups aren&apos;t open yet
           </h1>
           <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-            We&apos;re not taking new accounts just yet. Try the live demo in the meantime, or check
-            back soon.
+            We&apos;re not taking new accounts just yet. Try the live tutorial in the meantime, or
+            check back soon.
           </p>
           <div className="flex justify-center gap-6 text-sm font-semibold">
-            <a href="/demo" className="underline" style={{ color: 'var(--accent-soft)' }}>
-              Try the live demo
+            <a href="/tutorial" className="underline" style={{ color: 'var(--accent-soft)' }}>
+              Try the live tutorial
             </a>
             <a href="/dashboard" className="underline" style={{ color: 'var(--accent-soft)' }}>
               Sign in

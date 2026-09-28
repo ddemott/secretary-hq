@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL } from '../../lib/api';
 
-interface DemoResetResponse {
+interface TutorialResetResponse {
   success: boolean;
   token: string;
   tenant_id: string;
@@ -14,7 +14,7 @@ interface DemoResetResponse {
 
 function getRemainingSeconds(): number {
   if (typeof window === 'undefined') return 0;
-  const raw = localStorage.getItem('demoExpiresAt');
+  const raw = localStorage.getItem('tutorialExpiresAt');
   if (!raw) return 0;
   const diff = Math.floor((new Date(raw).getTime() - Date.now()) / 1000);
   return Math.max(0, diff);
@@ -26,14 +26,14 @@ function formatCountdown(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function isDemo(): boolean {
+function isTutorial(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!localStorage.getItem('demoTenantId');
+  return !!localStorage.getItem('tutorialTenantId');
 }
 
-export function DemoBanner() {
+export function TutorialBanner() {
   const [remaining, setRemaining] = useState<number>(() => getRemainingSeconds());
-  const [visible, setVisible] = useState<boolean>(() => isDemo());
+  const [visible, setVisible] = useState<boolean>(() => isTutorial());
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState('');
 
@@ -44,14 +44,14 @@ export function DemoBanner() {
       const secs = getRemainingSeconds();
       setRemaining(secs);
       if (secs <= 0) {
-        // Session expired — clear demo state and force re-login.
+        // Session expired — clear tutorial state and force re-login.
         localStorage.removeItem('authToken');
         localStorage.removeItem('tenantId');
         localStorage.removeItem('userName');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userRole');
-        localStorage.removeItem('demoExpiresAt');
-        localStorage.removeItem('demoTenantId');
+        localStorage.removeItem('tutorialExpiresAt');
+        localStorage.removeItem('tutorialTenantId');
         window.location.href = '/';
       }
     }, 1000);
@@ -65,7 +65,7 @@ export function DemoBanner() {
     setResetError('');
     try {
       const authToken = localStorage.getItem('authToken');
-      const res = await fetch(`${API_BASE_URL}/demo/reset`, {
+      const res = await fetch(`${API_BASE_URL}/tutorial/reset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export function DemoBanner() {
         // backend's JSON parser reject the request 400 before the route runs.
         body: JSON.stringify({}),
       });
-      const data: DemoResetResponse = (await res.json()) as DemoResetResponse;
+      const data: TutorialResetResponse = (await res.json()) as TutorialResetResponse;
 
       if (!res.ok || !data.success) {
         setResetError(data.error ?? `Error ${res.status}`);
@@ -83,14 +83,14 @@ export function DemoBanner() {
         return;
       }
 
-      // Same session shape as /demo/start (app/demo/page.tsx), swapped onto
-      // the new tenant. Hard navigation, not router.push() — SessionProvider
-      // reads localStorage in a mount-once useEffect and would otherwise keep
-      // running against the retired tenant.
+      // Same session shape as /tutorial/start (app/tutorial/page.tsx), swapped
+      // onto the new tenant. Hard navigation, not router.push() —
+      // SessionProvider reads localStorage in a mount-once useEffect and would
+      // otherwise keep running against the retired tenant.
       localStorage.setItem('authToken', data.token);
       localStorage.setItem('tenantId', data.tenant_id);
-      localStorage.setItem('demoExpiresAt', data.expires_at);
-      localStorage.setItem('demoTenantId', data.tenant_id);
+      localStorage.setItem('tutorialExpiresAt', data.expires_at);
+      localStorage.setItem('tutorialTenantId', data.tenant_id);
       window.location.href = '/dashboard';
     } catch (err) {
       setResetError(err instanceof Error ? err.message : 'Network error');
@@ -104,8 +104,8 @@ export function DemoBanner() {
     localStorage.removeItem('userName');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userRole');
-    localStorage.removeItem('demoExpiresAt');
-    localStorage.removeItem('demoTenantId');
+    localStorage.removeItem('tutorialExpiresAt');
+    localStorage.removeItem('tutorialTenantId');
     setVisible(false);
     window.location.href = '/';
   }
@@ -118,7 +118,7 @@ export function DemoBanner() {
     <div
       role="status"
       aria-live="polite"
-      data-testid="demo-banner"
+      data-testid="tutorial-banner"
       data-urgent={urgent ? 'true' : 'false'}
       style={{
         display: 'flex',
@@ -145,7 +145,7 @@ export function DemoBanner() {
             flexShrink: 0,
           }}
         />
-        <strong>Demo Mode</strong>
+        <strong>Tutorial Mode</strong>
         <span style={{ color: urgent ? '#FCA5A5' : '#7A90B8' }}>
           — session expires in{' '}
           <span
@@ -165,7 +165,7 @@ export function DemoBanner() {
         <button
           onClick={handleReset}
           disabled={resetting}
-          title="Wipe changes made during this walkthrough and start over with fresh demo data"
+          title="Wipe changes made during this walkthrough and start over with fresh tutorial data"
           style={{
             padding: '3px 12px',
             borderRadius: 6,
@@ -180,7 +180,7 @@ export function DemoBanner() {
             whiteSpace: 'nowrap',
           }}
         >
-          {resetting ? 'Resetting…' : 'Reset demo'}
+          {resetting ? 'Resetting…' : 'Reset tutorial'}
         </button>
         <button
           onClick={handleExit}
@@ -197,7 +197,7 @@ export function DemoBanner() {
             whiteSpace: 'nowrap',
           }}
         >
-          Exit demo
+          Exit tutorial
         </button>
       </span>
     </div>

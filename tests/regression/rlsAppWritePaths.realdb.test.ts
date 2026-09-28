@@ -12,7 +12,7 @@
  *     new row violates row-level security policy for table "tenant_skills"
  *       at async insertDemoData (dist/src/services/demoSeed.js:45)
  *
- * The database was fine. The APPLICATION was not: `seedDemoTenant` wrote through
+ * The database was fine. The APPLICATION was not: `seedTutorialTenant` wrote through
  * the raw pool with no tenant context — its own comment said so — which is
  * indistinguishable from a correct write while the role bypasses RLS, and is a
  * refused write the moment it doesn't. Only tenants/users/business_templates
@@ -31,7 +31,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Pool } from 'pg';
 
-import { seedDemoTenant } from '../../src/services/demoSeed';
+import { seedTutorialTenant } from '../../src/services/tutorialSeed';
 import { withTenantContext } from '../../src/database/index';
 
 const ADMIN_URL =
@@ -95,9 +95,9 @@ afterAll(async () => {
 });
 
 describe('application write paths under RLS enforcement', () => {
-  it('THE INCIDENT: seedDemoTenant succeeds as app_user (was: tenant_skills refused)', async () => {
+  it('THE INCIDENT: seedTutorialTenant succeeds as app_user (was: tenant_skills refused)', async () => {
     // WHO: every visitor who clicks "Try live demo" on the landing page.
-    // WHAT: the real seedDemoTenant, against a real DB, as the non-bypassing role.
+    // WHAT: the real seedTutorialTenant, against a real DB, as the non-bypassing role.
     // WHEN: it 500'd in production at 15:54 UTC on 2026-07-27, six minutes after
     //       DATABASE_URL was repointed, and again on every subsequent click.
     // WHERE: src/services/demoSeed.ts insertDemoData.
@@ -105,7 +105,7 @@ describe('application write paths under RLS enforcement', () => {
     if (!available) return;
 
     await expect(
-      seedDemoTenant(appUser, { tenantId: TENANT_ID, userId: USER_ID })
+      seedTutorialTenant(appUser, { tenantId: TENANT_ID, userId: USER_ID })
     ).resolves.toBeUndefined();
 
     // The seed is only real if the rows landed — a silently-empty seed would
@@ -129,7 +129,7 @@ describe('application write paths under RLS enforcement', () => {
     // the INSERT block, and dies on the appointments GiST exclusion.
     if (!available) return;
     await expect(
-      seedDemoTenant(appUser, { tenantId: TENANT_ID, userId: USER_ID })
+      seedTutorialTenant(appUser, { tenantId: TENANT_ID, userId: USER_ID })
     ).resolves.toBeUndefined();
   });
 

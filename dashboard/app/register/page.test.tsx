@@ -240,7 +240,7 @@ describe('RegisterPage — self-serve signup', () => {
 describe('RegisterPage — signup switch', () => {
   test('SAD: when signups are closed, the page says so and shows no form', async () => {
     // WHO: a visitor clicking "Start free trial" before launch
-    // WHAT: GET /signup-status says closed → "Sign-ups aren't open yet" with demo
+    // WHAT: GET /signup-status says closed → "Sign-ups aren't open yet" with tutorial
     //       and sign-in links; no form, no POST /register
     // WHY: owner decision 2026-09-24 — signup is not open to the public yet
     signupStatus = { success: true, open: false };
@@ -248,9 +248,9 @@ describe('RegisterPage — signup switch', () => {
 
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent(/sign-ups aren't open yet/i);
-    expect(within(status).getByRole('link', { name: /try the live demo/i })).toHaveAttribute(
+    expect(within(status).getByRole('link', { name: /try the live tutorial/i })).toHaveAttribute(
       'href',
-      '/demo'
+      '/tutorial'
     );
     expect(within(status).getByRole('link', { name: /sign in/i })).toHaveAttribute(
       'href',

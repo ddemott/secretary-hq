@@ -91,16 +91,16 @@ export function clearSyncRecorder(): void {
 }
 
 /**
- * Returns true if the tenant has is_demo=true.
+ * Returns true if the tenant has is_tutorial=true.
  * Defaults to false on any DB error so a broken pool doesn't block real syncs.
  */
-async function isDemoTenant(pool: Pool, tenantId: string): Promise<boolean> {
+async function isTutorialTenant(pool: Pool, tenantId: string): Promise<boolean> {
   try {
-    const res = await pool.query<{ is_demo: boolean }>(
-      'SELECT is_demo FROM tenants WHERE tenant_id = $1',
+    const res = await pool.query<{ is_tutorial: boolean }>(
+      'SELECT is_tutorial FROM tenants WHERE tenant_id = $1',
       [tenantId]
     );
-    return res.rows[0]?.is_demo === true;
+    return res.rows[0]?.is_tutorial === true;
   } catch {
     return false; // fail open — real tenants should not lose sync on a transient lookup error
   }
@@ -112,7 +112,7 @@ async function isDemoTenant(pool: Pool, tenantId: string): Promise<boolean> {
  *
  * record() + meter() are called synchronously so the SYNC_TEST_RECORDER
  * capture is available immediately (used by Playwright e2e assertions).
- * Actual provider calls are gated on an async is_demo lookup so demo
+ * Actual provider calls are gated on an async is_tutorial lookup so tutorial
  * tenants never reach real external endpoints.
  */
 export function syncAppointmentToAll(
@@ -132,9 +132,9 @@ export function syncAppointmentToAll(
     meter(name, 'appointment', action);
   }
 
-  isDemoTenant(pool, tenantId)
-    .then((isDemo) => {
-      if (isDemo) return; // demo tenants must not touch real external endpoints
+  isTutorialTenant(pool, tenantId)
+    .then((isTutorial) => {
+      if (isTutorial) return; // tutorial tenants must not touch real external endpoints
       for (const { name, fn } of providers) {
         fn(pool, tenantId, appointmentId, action).catch((e) =>
           logSyncError(logger, name, 'appointment', action, appointmentId, e)
@@ -163,9 +163,9 @@ export function syncCustomerToAll(
     meter(name, 'customer', action);
   }
 
-  isDemoTenant(pool, tenantId)
-    .then((isDemo) => {
-      if (isDemo) return;
+  isTutorialTenant(pool, tenantId)
+    .then((isTutorial) => {
+      if (isTutorial) return;
       for (const { name, fn } of providers) {
         fn(pool, tenantId, customerId, action).catch((e) =>
           logSyncError(logger, name, 'customer', action, customerId, e)

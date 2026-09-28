@@ -73,14 +73,14 @@ const VerifyEmailSchema = z.object({ token: z.string().min(20).max(200) });
  * Self-serve signup switch (owner decision 2026-09-24: not open yet).
  * CLOSED unless ENABLE_SIGNUP is exactly 'true' — so production, where it is
  * unset, refuses POST /register. Admin-created tenants (POST /tenants/create)
- * and /demo/start are unaffected. Local dev, CI and E2E set it to 'true'.
+ * and /tutorial/start are unaffected. Local dev, CI and E2E set it to 'true'.
  */
 export function isSignupOpen(): boolean {
   return process.env.ENABLE_SIGNUP === 'true';
 }
 
 export const SIGNUP_CLOSED_MESSAGE =
-  "Sign-ups aren't open yet. Try the live demo in the meantime, or check back soon.";
+  "Sign-ups aren't open yet. Try the live tutorial in the meantime, or check back soon.";
 
 /**
  * Write a fresh email-verification token for a user and send the link.

@@ -253,7 +253,7 @@ async function processBatch(): Promise<number> {
 }
 
 /**
- * Delete demo tenants whose demo_expires_at has passed.
+ * Delete tutorial tenants whose tutorial_expires_at has passed.
  * Uses the raw pool with no RLS tenant context — this is an admin sweep.
  * CASCADE on tenants covers all child rows automatically.
  * Exported for direct testing; the scheduler tick also calls it on every cycle.
@@ -261,7 +261,7 @@ async function processBatch(): Promise<number> {
  * The optional `poolOverride` parameter lets tests pass the test-DB pool
  * instead of the production pool (which reads DATABASE_URL from env).
  */
-export async function cleanupExpiredDemoTenants(poolOverride?: Pool): Promise<void> {
+export async function cleanupExpiredTutorialTenants(poolOverride?: Pool): Promise<void> {
   try {
     const pool = poolOverride ?? getPool();
     // SOFT delete (2026-07-13). This runs EVERY 60 SECONDS in production, and a
@@ -273,15 +273,15 @@ export async function cleanupExpiredDemoTenants(poolOverride?: Pool): Promise<vo
     //
     // The rows still exist; a maintenance-window purge can reclaim them whenever we
     // want. Nothing reads them: createWithTenantClient treats a soft-deleted tenant
-    // as 404, so an expired demo cannot answer a call, book, or bill.
+    // as 404, so an expired tutorial cannot answer a call, book, or bill.
     const res = await pool.query(
       `UPDATE tenants
           SET is_deleted = true, deleted_at = now()
-        WHERE is_demo = true AND demo_expires_at < NOW() AND is_deleted = false
+        WHERE is_tutorial = true AND tutorial_expires_at < NOW() AND is_deleted = false
        RETURNING tenant_id`
     );
     if ((res.rowCount ?? 0) > 0) {
-      console.log(`🧹 Soft-deleted ${res.rowCount} expired demo tenant(s)`);
+      console.log(`🧹 Soft-deleted ${res.rowCount} expired tutorial tenant(s)`);
     }
   } catch (err) {
     console.error('❌ Demo tenant cleanup error:', err);
@@ -300,7 +300,7 @@ function tick(): Promise<void> {
   _currentTick = (async () => {
     try {
       await processBatch();
-      await cleanupExpiredDemoTenants();
+      await cleanupExpiredTutorialTenants();
     } catch (error) {
       console.error('Tick error:', error);
     } finally {

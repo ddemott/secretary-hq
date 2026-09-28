@@ -12,7 +12,7 @@
  *   - Stale after 30 days (WEBSITE_RESCAN_STALE_DAYS, clamp 1–365).
  *   - At most 5 tenants per tick (WEBSITE_RESCAN_BATCH_SIZE, clamp 1–50).
  *   - Interval 24h (WEBSITE_RESCAN_INTERVAL_MS, clamp 1h–7d).
- *   - Skip demo tenants (is_demo).
+ *   - Skip tutorial tenants (is_tutorial).
  *   - Stages suggestions only — never auto-publishes.
  *   - Opt-out = NULL website_scan_url.
  *   - Dead-URL backoff: consecutive failures bump website_scan_fail_count and
@@ -159,7 +159,7 @@ export async function selectStaleWebsiteScanTenants(
     `SELECT tenant_id, website_scan_url
        FROM tenants
       WHERE is_deleted = false
-        AND is_demo = false
+        AND is_tutorial = false
         AND website_scan_url IS NOT NULL
         AND btrim(website_scan_url) <> ''
         AND website_scan_fail_count < $3

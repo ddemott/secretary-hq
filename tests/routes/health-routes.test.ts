@@ -23,32 +23,47 @@ describe('health routes', () => {
     else process.env.DASHBOARD_URL = OLD_DASHBOARD_URL;
   });
 
-  it('HAPPY: GET /demo redirects to dashboard /demo using DASHBOARD_URL', async () => {
-    // WHO: a tenant owner opening /demo from the backend entrypoint.
-    // WHAT: redirect should target the configured dashboard /demo route.
+  it('HAPPY: GET /tutorial redirects to dashboard /tutorial using DASHBOARD_URL', async () => {
+    // WHO: a prospect opening /tutorial from the backend entrypoint.
+    // WHAT: redirect should target the configured dashboard /tutorial route.
     // WHEN: DASHBOARD_URL is present.
-    // WHERE: registerHealthRoutes() /demo handler.
-    // WHY: production demo traffic must land on the real dashboard experience.
+    // WHERE: registerHealthRoutes() /tutorial handler.
+    // WHY: production tutorial traffic must land on the real dashboard experience.
+    const app = buildApp();
+    process.env.DASHBOARD_URL = 'https://dash.example.com';
+
+    const res = await app.inject({ method: 'GET', url: '/tutorial' });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('https://dash.example.com/tutorial');
+  });
+
+  it('HAPPY: GET /tutorial falls back to localhost dashboard when DASHBOARD_URL is unset', async () => {
+    // WHO: a developer opening /tutorial locally without DASHBOARD_URL configured.
+    // WHAT: backend redirect should fall back to localhost dashboard /tutorial.
+    // WHEN: env var is unset.
+    // WHERE: registerHealthRoutes() /tutorial handler.
+    // WHY: local tutorial path must stay usable without extra env wiring.
+    const app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/tutorial' });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:4400/tutorial');
+  });
+
+  it('HAPPY: GET /demo (legacy alias) also redirects to dashboard /tutorial', async () => {
+    // WHO: someone following an old shared link or bookmark from before the
+    //      demo→tutorial rename (2026-09-27).
+    // WHAT: /demo must keep working, permanently, and land on the new page.
+    // WHERE: registerHealthRoutes() /demo alias handler.
+    // WHY: renaming the feature must not break links already in the wild.
     const app = buildApp();
     process.env.DASHBOARD_URL = 'https://dash.example.com';
 
     const res = await app.inject({ method: 'GET', url: '/demo' });
 
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe('https://dash.example.com/demo');
-  });
-
-  it('HAPPY: GET /demo falls back to localhost dashboard when DASHBOARD_URL is unset', async () => {
-    // WHO: a developer opening /demo locally without DASHBOARD_URL configured.
-    // WHAT: backend redirect should fall back to localhost dashboard /demo.
-    // WHEN: env var is unset.
-    // WHERE: registerHealthRoutes() /demo handler.
-    // WHY: local demo path must stay usable without extra env wiring.
-    const app = buildApp();
-
-    const res = await app.inject({ method: 'GET', url: '/demo' });
-
-    expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:4400/demo');
+    expect(res.headers.location).toBe('https://dash.example.com/tutorial');
   });
 });

@@ -257,7 +257,7 @@ const TENANT_EXEMPT_ROUTES = [
   '/login',
   '/register',
   '/',
-  '/demo/start',
+  '/tutorial/start',
   '/billing/webhook',
   // OAuth callbacks (redirects from external providers)
   '/calendar/auth/google/callback',
@@ -661,7 +661,8 @@ const PUBLIC_ROUTES = [
   '/signup-status',
   '/',
   '/demo',
-  '/demo/start',
+  '/tutorial',
+  '/tutorial/start',
   '/call-simulator',
   '/call-simulator/start',
   '/billing/webhook',

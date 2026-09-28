@@ -1,10 +1,10 @@
 /**
- * Tests for DemoBanner component.
+ * Tests for TutorialBanner component.
  *
- * WHO: any dashboard user whose localStorage has demoTenantId set
+ * WHO: any dashboard user whose localStorage has tutorialTenantId set
  * WHAT: banner visibility, countdown, urgent state, exit behavior
  * WHEN: component mounts with/without demo session in localStorage
- * WHERE: dashboard/components/ui/DemoBanner.tsx
+ * WHERE: dashboard/components/ui/TutorialBanner.tsx
  * WHY: demo visitors must always see expiry time and a clear exit path;
  *      a broken banner leaves them stuck in a dead session
  */
@@ -13,17 +13,17 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DemoBanner } from './DemoBanner';
+import { TutorialBanner } from './TutorialBanner';
 
-function setDemoSession(expiresInSeconds: number) {
+function setTutorialSession(expiresInSeconds: number) {
   const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
-  localStorage.setItem('demoTenantId', 'demo-tenant-uuid');
-  localStorage.setItem('demoExpiresAt', expiresAt);
+  localStorage.setItem('tutorialTenantId', 'demo-tenant-uuid');
+  localStorage.setItem('tutorialExpiresAt', expiresAt);
 }
 
-function clearDemoSession() {
-  localStorage.removeItem('demoTenantId');
-  localStorage.removeItem('demoExpiresAt');
+function clearTutorialSession() {
+  localStorage.removeItem('tutorialTenantId');
+  localStorage.removeItem('tutorialExpiresAt');
   localStorage.removeItem('authToken');
   localStorage.removeItem('tenantId');
   localStorage.removeItem('userName');
@@ -31,49 +31,49 @@ function clearDemoSession() {
   localStorage.removeItem('userRole');
 }
 
-describe('DemoBanner', () => {
+describe('TutorialBanner', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    clearDemoSession();
+    clearTutorialSession();
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    clearDemoSession();
+    clearTutorialSession();
   });
 
-  it('HAPPY: renders banner when demoTenantId is in localStorage', () => {
+  it('HAPPY: renders banner when tutorialTenantId is in localStorage', () => {
     // WHO: demo visitor who just started a session
-    // WHAT: banner with "Demo Mode" text is visible
-    // WHEN: demoTenantId + demoExpiresAt present in localStorage on mount
-    // WHERE: DemoBanner visibility guard
+    // WHAT: banner with "Tutorial Mode" text is visible
+    // WHEN: tutorialTenantId + tutorialExpiresAt present in localStorage on mount
+    // WHERE: TutorialBanner visibility guard
     // WHY: visitors must know they are in demo mode to understand data is not real
-    setDemoSession(1800); // 30 minutes
-    render(<DemoBanner />);
-    expect(screen.getByTestId('demo-banner')).toBeInTheDocument();
-    expect(screen.getByText('Demo Mode')).toBeInTheDocument();
+    setTutorialSession(1800); // 30 minutes
+    render(<TutorialBanner />);
+    expect(screen.getByTestId('tutorial-banner')).toBeInTheDocument();
+    expect(screen.getByText('Tutorial Mode')).toBeInTheDocument();
   });
 
-  it('HAPPY: renders nothing when no demoTenantId in localStorage', () => {
+  it('HAPPY: renders nothing when no tutorialTenantId in localStorage', () => {
     // WHO: regular logged-in user (no demo session)
     // WHAT: banner is absent from the DOM
-    // WHEN: localStorage has no demoTenantId key
-    // WHERE: DemoBanner isDemo() guard
+    // WHEN: localStorage has no tutorialTenantId key
+    // WHERE: TutorialBanner isDemo() guard
     // WHY: banner must not appear for real users — it would be misleading
-    render(<DemoBanner />);
-    expect(screen.queryByTestId('demo-banner')).not.toBeInTheDocument();
+    render(<TutorialBanner />);
+    expect(screen.queryByTestId('tutorial-banner')).not.toBeInTheDocument();
   });
 
   it('HAPPY: shows countdown in M:SS format', () => {
     // WHO: demo visitor watching the clock
     // WHAT: "30:00" or similar M:SS appears in the banner
     // WHEN: session has 30 minutes remaining
-    // WHERE: formatCountdown in DemoBanner
+    // WHERE: formatCountdown in TutorialBanner
     // WHY: visitors need to know when their session will expire
-    setDemoSession(1800);
-    render(<DemoBanner />);
+    setTutorialSession(1800);
+    render(<TutorialBanner />);
     // Should show roughly 30:00 (exact second depends on timing, so just check M:SS pattern)
-    const banner = screen.getByTestId('demo-banner');
+    const banner = screen.getByTestId('tutorial-banner');
     expect(banner.textContent).toMatch(/\d+:\d{2}/);
   });
 
@@ -81,11 +81,11 @@ describe('DemoBanner', () => {
     // WHO: demo visitor about to run out of time
     // WHAT: banner has data-urgent="true"
     // WHEN: remaining seconds < 300
-    // WHERE: urgent flag in DemoBanner
+    // WHERE: urgent flag in TutorialBanner
     // WHY: visitor needs visual warning before sudden session expiry
-    setDemoSession(240); // 4 minutes — below the 5-min threshold
-    render(<DemoBanner />);
-    const banner = screen.getByTestId('demo-banner');
+    setTutorialSession(240); // 4 minutes — below the 5-min threshold
+    render(<TutorialBanner />);
+    const banner = screen.getByTestId('tutorial-banner');
     expect(banner.getAttribute('data-urgent')).toBe('true');
   });
 
@@ -95,17 +95,17 @@ describe('DemoBanner', () => {
     // WHEN: remaining seconds >= 300
     // WHERE: urgent flag false path
     // WHY: red urgency should only fire near expiry, not the whole session
-    setDemoSession(600); // 10 minutes
-    render(<DemoBanner />);
-    const banner = screen.getByTestId('demo-banner');
+    setTutorialSession(600); // 10 minutes
+    render(<TutorialBanner />);
+    const banner = screen.getByTestId('tutorial-banner');
     expect(banner.getAttribute('data-urgent')).toBe('false');
   });
 
-  it('HAPPY: Exit demo button clears all auth localStorage keys', () => {
+  it('HAPPY: Exit tutorial button clears all auth localStorage keys', () => {
     // WHO: demo visitor who wants to leave
-    // WHAT: clicking "Exit demo" removes auth + demo keys
+    // WHAT: clicking "Exit tutorial" removes auth + demo keys
     // WHEN: user clicks the Exit button
-    // WHERE: handleExit() in DemoBanner
+    // WHERE: handleExit() in TutorialBanner
     // WHY: without clearing keys the visitor stays "logged in" as a dead demo tenant
 
     // Pre-set auth keys as the demo/page.tsx would have done
@@ -113,33 +113,33 @@ describe('DemoBanner', () => {
     localStorage.setItem('tenantId', 'demo-tenant-uuid');
     localStorage.setItem('userName', 'Demo Owner');
     localStorage.setItem('userRole', 'owner');
-    setDemoSession(1800);
+    setTutorialSession(1800);
 
     // Intercept window.location.href assignment (jsdom doesn't actually navigate)
     const originalHref = window.location.href;
     delete (window as { location?: unknown }).location;
     (window as { location: unknown }).location = { href: originalHref };
 
-    render(<DemoBanner />);
-    const exitBtn = screen.getByRole('button', { name: /exit demo/i });
+    render(<TutorialBanner />);
+    const exitBtn = screen.getByRole('button', { name: /exit tutorial/i });
     fireEvent.click(exitBtn);
 
     expect(localStorage.getItem('authToken')).toBeNull();
     expect(localStorage.getItem('tenantId')).toBeNull();
-    expect(localStorage.getItem('demoTenantId')).toBeNull();
-    expect(localStorage.getItem('demoExpiresAt')).toBeNull();
+    expect(localStorage.getItem('tutorialTenantId')).toBeNull();
+    expect(localStorage.getItem('tutorialExpiresAt')).toBeNull();
   });
 
   it('HAPPY: countdown ticks down over time', () => {
     // WHO: demo visitor watching the timer
     // WHAT: the displayed time decrements each second via setInterval
     // WHEN: 1 second passes after mount
-    // WHERE: useEffect setInterval in DemoBanner
+    // WHERE: useEffect setInterval in TutorialBanner
     // WHY: a frozen timer makes visitors think the session won't expire
-    setDemoSession(600);
-    render(<DemoBanner />);
+    setTutorialSession(600);
+    render(<TutorialBanner />);
 
-    const banner = screen.getByTestId('demo-banner');
+    const banner = screen.getByTestId('tutorial-banner');
     const initialText = banner.textContent ?? '';
 
     act(() => {
@@ -151,17 +151,17 @@ describe('DemoBanner', () => {
     expect(updatedText).not.toBe(initialText);
   });
 
-  it('HAPPY: Reset demo swaps in the new session and reloads the dashboard', async () => {
+  it('HAPPY: Reset tutorial swaps in the new session and reloads the dashboard', async () => {
     // WHO: a prospect (or Dale) whose demo data has drifted mid-walkthrough
-    // WHAT: clicking "Reset demo" calls POST /demo/reset and, on success,
+    // WHAT: clicking "Reset tutorial" calls POST /tutorial/reset and, on success,
     //       overwrites the session keys with the new tenant and navigates
     //       to /dashboard — without ever visiting the landing page
-    // WHERE: handleReset() in DemoBanner
+    // WHERE: handleReset() in TutorialBanner
     // WHY: "start over" must work in place, not just via Exit + re-click
     localStorage.setItem('authToken', 'old-jwt');
     localStorage.setItem('tenantId', 'old-tenant-uuid');
-    setDemoSession(1800);
-    localStorage.setItem('demoTenantId', 'old-tenant-uuid');
+    setTutorialSession(1800);
+    localStorage.setItem('tutorialTenantId', 'old-tenant-uuid');
 
     const originalHref = window.location.href;
     delete (window as { location?: unknown }).location;
@@ -180,8 +180,8 @@ describe('DemoBanner', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<DemoBanner />);
-    const resetBtn = screen.getByRole('button', { name: /reset demo/i });
+    render(<TutorialBanner />);
+    const resetBtn = screen.getByRole('button', { name: /reset tutorial/i });
 
     await act(async () => {
       fireEvent.click(resetBtn);
@@ -190,7 +190,7 @@ describe('DemoBanner', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/demo/reset'),
+      expect.stringContaining('/tutorial/reset'),
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ Authorization: 'Bearer old-jwt' }),
@@ -198,31 +198,31 @@ describe('DemoBanner', () => {
     );
     expect(localStorage.getItem('authToken')).toBe('new-jwt');
     expect(localStorage.getItem('tenantId')).toBe('new-tenant-uuid');
-    expect(localStorage.getItem('demoTenantId')).toBe('new-tenant-uuid');
-    expect(localStorage.getItem('demoExpiresAt')).toBe(newExpiresAt);
+    expect(localStorage.getItem('tutorialTenantId')).toBe('new-tenant-uuid');
+    expect(localStorage.getItem('tutorialExpiresAt')).toBe(newExpiresAt);
     expect((window.location as unknown as { href: string }).href).toBe('/dashboard');
 
     vi.unstubAllGlobals();
   });
 
-  it('SAD: Reset demo shows an error and stays put when the backend refuses', async () => {
+  it('SAD: Reset tutorial shows an error and stays put when the backend refuses', async () => {
     // WHO: a caller whose demo session already expired/reset elsewhere
-    // WHAT: /demo/reset returns { success: false, error }
+    // WHAT: /tutorial/reset returns { success: false, error }
     // WHERE: handleReset()'s failure branch
     // WHY: the visitor must see why it didn't work, not a silent no-op —
     //      and their existing (still-valid) session must not be clobbered
-    setDemoSession(1800);
+    setTutorialSession(1800);
     localStorage.setItem('authToken', 'old-jwt');
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
-      json: async () => ({ success: false, error: 'Not an active demo session.' }),
+      json: async () => ({ success: false, error: 'Not an active tutorial session.' }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<DemoBanner />);
-    const resetBtn = screen.getByRole('button', { name: /reset demo/i });
+    render(<TutorialBanner />);
+    const resetBtn = screen.getByRole('button', { name: /reset tutorial/i });
 
     await act(async () => {
       fireEvent.click(resetBtn);
@@ -230,7 +230,7 @@ describe('DemoBanner', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Not an active demo session.')).toBeInTheDocument();
+    expect(screen.getByText('Not an active tutorial session.')).toBeInTheDocument();
     expect(localStorage.getItem('authToken')).toBe('old-jwt');
 
     vi.unstubAllGlobals();
@@ -240,20 +240,20 @@ describe('DemoBanner', () => {
     // WHO: demo visitor whose session expired while they were looking at the tab
     // WHAT: localStorage cleared, redirect to '/'
     // WHEN: remaining seconds hits 0
-    // WHERE: setInterval check in DemoBanner
+    // WHERE: setInterval check in TutorialBanner
     // WHY: expired JWT would cause every API call to 401; redirect is cleaner UX
-    setDemoSession(1); // 1 second remaining
+    setTutorialSession(1); // 1 second remaining
 
     delete (window as { location?: unknown }).location;
     (window as { location: unknown }).location = { href: '' };
 
-    render(<DemoBanner />);
+    render(<TutorialBanner />);
 
     act(() => {
       vi.advanceTimersByTime(2000); // advance past expiry
     });
 
     expect(localStorage.getItem('authToken')).toBeNull();
-    expect(localStorage.getItem('demoTenantId')).toBeNull();
+    expect(localStorage.getItem('tutorialTenantId')).toBeNull();
   });
 });
