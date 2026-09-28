@@ -49,6 +49,11 @@ export async function refreshUncustomizedQuestionTrees(
   pool: Pool,
   opts: { tenantId?: string } = {}
 ): Promise<RefreshResult> {
+  // Template businesses (is_template=true) never take calls and are
+  // read-only — refuse_template_write() rejects a write to
+  // tenant_question_trees for one. Excluded here for the same reason as
+  // deploy-question-trees.ts's convert step: a template has no use for a
+  // question tree in the first place.
   const tenants = await pool.query<TenantRow>(
     `SELECT t.tenant_id, t.business_type,
             (SELECT count(*)::int FROM tenant_question_trees q
@@ -57,6 +62,7 @@ export async function refreshUncustomizedQuestionTrees(
               WHERE q.tenant_id = t.tenant_id AND q.is_customized = true) AS customized_trees
        FROM tenants t
       WHERE (t.is_deleted IS NULL OR t.is_deleted = false)
+        AND t.is_template = false
         AND ($1::uuid IS NULL OR t.tenant_id = $1::uuid)
       ORDER BY t.name`,
     [opts.tenantId ?? null]
