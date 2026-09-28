@@ -151,6 +151,91 @@ describe('DemoBanner', () => {
     expect(updatedText).not.toBe(initialText);
   });
 
+  it('HAPPY: Reset demo swaps in the new session and reloads the dashboard', async () => {
+    // WHO: a prospect (or Dale) whose demo data has drifted mid-walkthrough
+    // WHAT: clicking "Reset demo" calls POST /demo/reset and, on success,
+    //       overwrites the session keys with the new tenant and navigates
+    //       to /dashboard — without ever visiting the landing page
+    // WHERE: handleReset() in DemoBanner
+    // WHY: "start over" must work in place, not just via Exit + re-click
+    localStorage.setItem('authToken', 'old-jwt');
+    localStorage.setItem('tenantId', 'old-tenant-uuid');
+    setDemoSession(1800);
+    localStorage.setItem('demoTenantId', 'old-tenant-uuid');
+
+    const originalHref = window.location.href;
+    delete (window as { location?: unknown }).location;
+    (window as { location: unknown }).location = { href: originalHref };
+
+    const newExpiresAt = new Date(Date.now() + 1800 * 1000).toISOString();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        token: 'new-jwt',
+        tenant_id: 'new-tenant-uuid',
+        user_id: 'new-user-uuid',
+        expires_at: newExpiresAt,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DemoBanner />);
+    const resetBtn = screen.getByRole('button', { name: /reset demo/i });
+
+    await act(async () => {
+      fireEvent.click(resetBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/demo/reset'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer old-jwt' }),
+      })
+    );
+    expect(localStorage.getItem('authToken')).toBe('new-jwt');
+    expect(localStorage.getItem('tenantId')).toBe('new-tenant-uuid');
+    expect(localStorage.getItem('demoTenantId')).toBe('new-tenant-uuid');
+    expect(localStorage.getItem('demoExpiresAt')).toBe(newExpiresAt);
+    expect((window.location as unknown as { href: string }).href).toBe('/dashboard');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('SAD: Reset demo shows an error and stays put when the backend refuses', async () => {
+    // WHO: a caller whose demo session already expired/reset elsewhere
+    // WHAT: /demo/reset returns { success: false, error }
+    // WHERE: handleReset()'s failure branch
+    // WHY: the visitor must see why it didn't work, not a silent no-op —
+    //      and their existing (still-valid) session must not be clobbered
+    setDemoSession(1800);
+    localStorage.setItem('authToken', 'old-jwt');
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ success: false, error: 'Not an active demo session.' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DemoBanner />);
+    const resetBtn = screen.getByRole('button', { name: /reset demo/i });
+
+    await act(async () => {
+      fireEvent.click(resetBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Not an active demo session.')).toBeInTheDocument();
+    expect(localStorage.getItem('authToken')).toBe('old-jwt');
+
+    vi.unstubAllGlobals();
+  });
+
   it('SAD: expired session redirects to home', () => {
     // WHO: demo visitor whose session expired while they were looking at the tab
     // WHAT: localStorage cleared, redirect to '/'

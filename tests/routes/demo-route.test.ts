@@ -18,7 +18,10 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 
 import { registerDemoRoutes, resetDemoRateLimitForTesting } from '../../src/routes/demo';
-import { generateToken as realGenerateToken } from '../../src/middleware/fastify-middleware';
+import {
+  generateToken as realGenerateToken,
+  registerJwtAuthHook,
+} from '../../src/middleware/fastify-middleware';
 import jwt from 'jsonwebtoken';
 import { jsonContentTypeParser } from '../../src/jsonContentTypeParser';
 
@@ -68,6 +71,52 @@ function buildApp(queryResponses: MockQueryResult[]): {
   registerDemoRoutes(app as never, mockPool, generateToken);
 
   return { app, mockPool, queries };
+}
+
+/**
+ * Same as buildApp, but with the real JWT auth hook registered so
+ * `Authorization: Bearer <token>` headers populate `req.auth` — needed to
+ * exercise /demo/reset, which is authenticated (unlike /demo/start).
+ *
+ * The hook does its own `password_changed_at` lookup via `pool.connect()`
+ * before the handler runs, consuming one entry off the shared response
+ * queue per authenticated request — callers must account for it.
+ */
+function buildAuthedApp(queryResponses: MockQueryResult[]): {
+  app: FastifyInstance;
+  mockPool: Pool;
+} {
+  const responses = [...queryResponses];
+
+  const mockPool = {
+    query: vi.fn(async () => responses.shift() ?? { rows: [], rowCount: 0 }),
+    connect: vi.fn(async () => ({
+      query: vi.fn(async () => responses.shift() ?? { rows: [], rowCount: 0 }),
+      release: vi.fn(),
+    })),
+  } as unknown as Pool;
+
+  const generateToken = vi.fn(realGenerateToken);
+
+  const app = Fastify({ logger: false });
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, jsonContentTypeParser);
+  registerJwtAuthHook(app as never, mockPool);
+  registerDemoRoutes(app as never, mockPool, generateToken);
+
+  return { app, mockPool };
+}
+
+function demoOwnerToken(tenantId: string, userId: string): string {
+  return realGenerateToken(
+    {
+      tenant_id: tenantId,
+      user_id: userId,
+      email: `demo+${tenantId}@quicklubedemo.invalid`,
+      role: 'owner',
+    },
+    1800
+  );
 }
 
 // Fresh per-test IP so the rate-limit map doesn't bleed between tests.
@@ -300,6 +349,139 @@ describe('POST /demo/start', () => {
       expect(r1.statusCode).not.toBe(429);
       expect(r2.statusCode).not.toBe(429);
     }
+  });
+});
+
+describe('POST /demo/reset', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetDemoRateLimitForTesting();
+  });
+
+  it('happy path: soft-deletes the old tenant and provisions a fresh one', async () => {
+    // WHO: a prospect (or Dale) mid-walkthrough whose demo data has drifted
+    // WHAT: the caller's own demo tenant is retired and a brand-new one issued
+    // WHEN: caller has a valid demo-owner JWT for a live is_demo tenant
+    // WHERE: POST /demo/reset
+    // WHY: "start over" must not require leaving the dashboard
+    const oldTenantId = 'demo-tenant-old';
+    const token = demoOwnerToken(oldTenantId, 'user-old');
+
+    const { app, mockPool } = buildAuthedApp([
+      { rows: [] }, // JWT hook: password_changed_at lookup
+      { rows: [{ is_demo: true, is_deleted: false }] }, // ownership check
+      { rows: [{ count: '1' }] }, // global cap check
+      { rows: [{ count: 1 }] }, // soft-delete UPDATE
+      {
+        rows: [
+          {
+            tenant_id: 'demo-tenant-new',
+            user_id: 'user-new',
+            email: 'demo+demo-tenant-new@quicklubedemo.invalid',
+          },
+        ],
+        rowCount: 1,
+      }, // provision CTE
+    ]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/demo/reset',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.tenant_id).toBe('demo-tenant-new');
+    expect(body.tenant_id).not.toBe(oldTenantId);
+
+    const queryMock = (mockPool as unknown as { query: ReturnType<typeof vi.fn> }).query;
+    const softDelete = queryMock.mock.calls
+      .map((c) => String(c[0]))
+      .find((sql) => sql.includes('UPDATE tenants SET is_deleted'));
+    expect(softDelete).toBeDefined();
+    expect(queryMock.mock.calls.find((c) => String(c[0]).includes('UPDATE tenants'))?.[1]).toEqual([
+      oldTenantId,
+    ]);
+  });
+
+  it('SAD: rejects with 401 when no auth token is presented', async () => {
+    // WHO: anonymous caller with no session
+    // WHAT: 401, no tenant is ever touched
+    // WHY: reset must never be reachable without proving which demo you're in
+    const { app } = buildAuthedApp([]);
+
+    const res = await app.inject({ method: 'POST', url: '/demo/reset' });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('SAD: rejects with 403 when the caller is not an is_demo tenant', async () => {
+    // WHO: any caller whose JWT tenant is not a live demo tenant
+    // WHAT: 403 — this must never be reachable against a real business
+    // WHERE: the is_demo ownership check in /demo/reset
+    // WHY: the whole point is this can never touch real tenant data
+    const token = demoOwnerToken('real-tenant', 'user-real');
+    const { app } = buildAuthedApp([
+      { rows: [] }, // JWT hook lookup
+      { rows: [{ is_demo: false, is_deleted: false }] }, // ownership check fails
+    ]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/demo/reset',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = JSON.parse(res.body) as Record<string, unknown>;
+    expect(body.success).toBe(false);
+  });
+
+  it('SAD: rejects with 403 when the demo tenant is already soft-deleted', async () => {
+    // WHO: a caller whose demo already expired/reset out from under them
+    // WHAT: 403, not a crash — the tenant row still exists but is retired
+    const token = demoOwnerToken('demo-tenant-gone', 'user-gone');
+    const { app } = buildAuthedApp([{ rows: [] }, { rows: [{ is_demo: true, is_deleted: true }] }]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/demo/reset',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': nextIp() },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('shares the /demo/start rate-limit bucket', async () => {
+    // WHY: a reset is exactly as expensive to provision as a fresh start, so
+    // it must count against the same per-IP abuse guard, not a separate one
+    // an attacker could use to double their throughput.
+    const ip = nextIp();
+    const token = demoOwnerToken('demo-tenant-a', 'user-a');
+
+    const { app } = buildAuthedApp([
+      // 3 allowed /demo/start calls
+      { rows: [{ count: '0' }] },
+      { rows: [{ tenant_id: 't1', user_id: 'u1' }], rowCount: 1 },
+      { rows: [{ count: '0' }] },
+      { rows: [{ tenant_id: 't2', user_id: 'u2' }], rowCount: 1 },
+      { rows: [{ count: '0' }] },
+      { rows: [{ tenant_id: 't3', user_id: 'u3' }], rowCount: 1 },
+    ]);
+
+    for (let i = 0; i < 3; i++) {
+      await app.inject({ method: 'POST', url: '/demo/start', headers: { 'x-forwarded-for': ip } });
+    }
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/demo/reset',
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': ip },
+    });
+
+    expect(blocked.statusCode).toBe(429);
   });
 });
 
