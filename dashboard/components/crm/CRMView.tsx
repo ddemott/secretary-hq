@@ -6,6 +6,7 @@ import { MOCK_CUSTOMERS, MOCK_SUMMARIES } from '@/lib/mockData';
 import { Api } from '../../lib/api';
 import { useActiveTenantId, useSessionContext } from '../../lib/SessionContext';
 import { CustomerDetailPanel } from './CustomerDetailPanel';
+import type { CustomerPreference } from './CustomerPreferencesCard';
 import { CustomerSidebar } from './CustomerSidebar';
 import { useCustomerForm } from '../../lib/useCustomerForm';
 import { useConfirm } from '../../lib/useConfirm';
@@ -29,6 +30,7 @@ export default function CRMView() {
       has_transcript?: boolean;
     }[]
   >([]);
+  const [preferences, setPreferences] = useState<CustomerPreference[]>([]);
   const [loading, setLoading] = useState(true);
   const [customersError, setCustomersError] = useState(false);
   const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
@@ -74,6 +76,7 @@ export default function CRMView() {
     if (selectedCustomer) {
       void fetchHistory(selectedCustomer.customer_id);
       void fetchCustomerAppointments(selectedCustomer.customer_id);
+      void fetchPreferences(selectedCustomer.customer_id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer]);
@@ -120,6 +123,16 @@ export default function CRMView() {
       );
     } catch {
       setSummaries(tenantId ? [] : MOCK_SUMMARIES.filter((s) => s.customer_id === customerId));
+    }
+  }
+
+  async function fetchPreferences(customerId: string) {
+    setPreferences([]);
+    try {
+      const data = await Api.customers.preferences(customerId, tenantId);
+      setPreferences(Array.isArray(data) ? data : []);
+    } catch {
+      setPreferences([]);
     }
   }
 
@@ -267,6 +280,7 @@ export default function CRMView() {
         showDetailOnMobile={showDetailOnMobile}
         editForm={editForm}
         summaries={summaries}
+        preferences={preferences}
         upcomingAppointments={upcomingAppointments}
         pastAppointments={pastAppointments}
         onEditFormChange={handleEditFormChange}

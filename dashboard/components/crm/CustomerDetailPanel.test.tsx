@@ -231,3 +231,48 @@ describe('CustomerDetailPanel — appointment history reactivate affordance', ()
     expect(onCloseMobile).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('CustomerDetailPanel — preferences the AI saved', () => {
+  it('HAPPY: shows each saved preference under its label', () => {
+    // WHO: an owner opening a returning caller's profile.
+    // WHAT: preferences the agent saved on calls are listed by label.
+    // WHY: before this card nothing in the dashboard showed them — the
+    //      agent used them but the owner never saw them.
+    renderPanel({
+      preferences: [
+        { pref_key: 'vehicle', pref_value: '2019 Honda CR-V', label: 'Vehicle' },
+        { pref_key: 'preferred_staff', pref_value: 'Alex', label: 'Preferred staff member' },
+      ],
+    });
+    expect(screen.getByRole('heading', { name: /preferences/i })).toBeInTheDocument();
+    expect(screen.getByText('Vehicle')).toBeInTheDocument();
+    expect(screen.getByText('2019 Honda CR-V')).toBeInTheDocument();
+    expect(screen.getByText('Preferred staff member')).toBeInTheDocument();
+    expect(screen.getByText('Alex')).toBeInTheDocument();
+  });
+
+  it('HAPPY: with none saved it explains where they come from', () => {
+    renderPanel({ preferences: [] });
+    expect(
+      screen.getByText(/when this caller mentions a preference on a call/i)
+    ).toBeInTheDocument();
+  });
+
+  it('HAPPY: the section nav links to it', () => {
+    renderPanel();
+    expect(screen.getByRole('link', { name: 'Preferences' })).toHaveAttribute(
+      'href',
+      '#customer-preferences'
+    );
+  });
+
+  it('SAD: hidden while editing the contact form', () => {
+    // WHY: the edit form is about contact details; preferences are not
+    //      editable there, so showing them would suggest they are.
+    renderPanel({
+      isEditing: true,
+      preferences: [{ pref_key: 'vehicle', pref_value: 'Camry', label: 'Vehicle' }],
+    });
+    expect(screen.queryByText('Camry')).toBeNull();
+  });
+});

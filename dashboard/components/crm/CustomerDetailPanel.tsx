@@ -10,6 +10,7 @@ import {
   type CustomerAppointment,
 } from './CustomerAppointmentsSection';
 import { CustomerCallHistory, type CallSummary } from './CustomerCallHistory';
+import { CustomerPreferencesCard, type CustomerPreference } from './CustomerPreferencesCard';
 
 interface CustomerDetailPanelProps {
   selectedCustomer: Customer | null;
@@ -19,6 +20,8 @@ interface CustomerDetailPanelProps {
   showDetailOnMobile: boolean;
   editForm: EditForm;
   summaries: CallSummary[];
+  /** What the caller told the AI they like; empty until a call saves one. */
+  preferences?: CustomerPreference[];
   upcomingAppointments: CustomerAppointment[];
   pastAppointments: CustomerAppointment[];
   onEditFormChange: (field: string, value: string) => void;
@@ -40,6 +43,7 @@ export function CustomerDetailPanel({
   showDetailOnMobile,
   editForm,
   summaries,
+  preferences = [],
   upcomingAppointments,
   pastAppointments,
   onEditFormChange,
@@ -79,7 +83,7 @@ export function CustomerDetailPanel({
                 className="flex gap-3 text-xs font-medium"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {['Contact', 'Upcoming', 'History', 'Calls'].map((label) => (
+                {['Contact', 'Preferences', 'Upcoming', 'History', 'Calls'].map((label) => (
                   <a
                     key={label}
                     href={`#customer-${label.toLowerCase()}`}
@@ -102,6 +106,7 @@ export function CustomerDetailPanel({
 
             {!isCreating && (
               <>
+                {!isEditing && <CustomerPreferencesCard preferences={preferences} />}
                 <CustomerAppointmentsSection
                   upcomingAppointments={upcomingAppointments}
                   pastAppointments={pastAppointments}
