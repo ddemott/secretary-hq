@@ -386,6 +386,14 @@ export const Api = {
     appointments: (customerId: string, tenantId: string | null) =>
       apiFetch<Appointment[]>(`/customers/${customerId}/appointments`, tenantParam(tenantId)),
 
+    // Preferences the AI receptionist saved for this caller, labelled in the
+    // business's own wording by the backend.
+    preferences: (customerId: string, tenantId: string | null) =>
+      apiFetch<{ pref_key: string; pref_value: string; label: string; updated_at?: string }[]>(
+        `/customers/${customerId}/preferences`,
+        tenantParam(tenantId)
+      ),
+
     // Bulk CSV onboarding — the caller reads the file client-side (FileReader)
     // and POSTs the raw text; the backend parses/validates/dedupes per row.
     importCsv: (tenantId: string | null, csv: string) =>

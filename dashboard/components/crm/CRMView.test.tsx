@@ -27,11 +27,13 @@ vi.mock('../../lib/SessionContext', () => ({
 const mockListCustomers = vi.fn();
 const mockListSummaries = vi.fn();
 const mockCustomerAppointments = vi.fn();
+const mockCustomerPreferences = vi.fn();
 vi.mock('../../lib/api', () => ({
   Api: {
     customers: {
       list: (...a: unknown[]) => mockListCustomers(...a),
       appointments: (...a: unknown[]) => mockCustomerAppointments(...a),
+      preferences: (...a: unknown[]) => mockCustomerPreferences(...a),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -50,12 +52,26 @@ vi.mock('../../lib/useConfirm', () => ({
 vi.mock('../ui/ConfirmModal', () => ({ ConfirmModal: () => null }));
 
 // Stub the detail pane so the test only exercises CRMView's own list + fetch
-// logic (the pane has its own dedicated tests).
-vi.mock('./CustomerDetailPanel', () => ({
-  CustomerDetailPanel: ({ selectedCustomer }: { selectedCustomer: { name?: string } | null }) => (
-    <div data-testid="detail">{selectedCustomer?.name ?? 'none'}</div>
-  ),
-}));
+// logic (the pane has its own dedicated tests). It still renders the REAL
+// Preferences card with the `preferences` prop CRMView hands down, so the
+// wiring from the fetch to the screen is covered.
+vi.mock('./CustomerDetailPanel', async () => {
+  const { CustomerPreferencesCard } = await import('./CustomerPreferencesCard');
+  return {
+    CustomerDetailPanel: ({
+      selectedCustomer,
+      preferences = [],
+    }: {
+      selectedCustomer: { name?: string } | null;
+      preferences?: { pref_key: string; pref_value: string; label: string }[];
+    }) => (
+      <div data-testid="detail">
+        {selectedCustomer?.name ?? 'none'}
+        <CustomerPreferencesCard preferences={preferences} />
+      </div>
+    ),
+  };
+});
 
 import CRMView from './CRMView';
 
@@ -65,6 +81,7 @@ beforeEach(() => {
   mockListCustomers.mockResolvedValue([]);
   mockListSummaries.mockResolvedValue([]);
   mockCustomerAppointments.mockResolvedValue([]);
+  mockCustomerPreferences.mockResolvedValue([]);
 });
 
 describe('CRMView — no mock-data leak into a real tenant', () => {
@@ -122,5 +139,39 @@ describe('CRMView — subdirectory pin', () => {
     );
     expect(settingsTest).toContain("vi.mock('../crm/CRMIntegrationCard'");
     expect(settingsTest).not.toContain("vi.mock('./CRMIntegrationCard'");
+  });
+});
+
+describe('CRMView — caller preferences', () => {
+  const customer = {
+    customer_id: 'cust-prefs-1',
+    tenant_id: 'tenant-real-123',
+    name: 'Maria Santos',
+    phone: '555-1001',
+  };
+
+  test("HAPPY: loads the selected customer's preferences and shows them", async () => {
+    // WHAT: selecting a customer fetches /customers/:id/preferences and the
+    //       card lists what the AI saved.
+    mockListCustomers.mockResolvedValue([customer]);
+    mockCustomerPreferences.mockResolvedValue([
+      { pref_key: 'vehicle', pref_value: '2019 Honda CR-V', label: 'Vehicle' },
+    ]);
+    render(<CRMView />);
+    await waitFor(() => expect(screen.getByText('2019 Honda CR-V')).toBeInTheDocument());
+    expect(mockCustomerPreferences).toHaveBeenCalledWith('cust-prefs-1', 'tenant-real-123');
+  });
+
+  test('SAD: a failed preferences fetch leaves the rest of the profile working', async () => {
+    // WHY: preferences are extra; a failure must not blank the customer.
+    mockListCustomers.mockResolvedValue([customer]);
+    mockCustomerPreferences.mockRejectedValue(new Error('network'));
+    render(<CRMView />);
+    await waitFor(() =>
+      expect(
+        screen.getByText(/when this caller mentions a preference on a call/i)
+      ).toBeInTheDocument()
+    );
+    expect(screen.getAllByText('Maria Santos').length).toBeGreaterThan(0);
   });
 });
