@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { type Client, Pool } from 'pg';
-import { getRootClient, skipIfDbDown, ROOT_DB_URL } from '../utils';
+import { getRootClient, skipIfDbDown, ROOT_DB_URL, ensureTemplates } from '../utils';
 import { seedTutorialTenant } from '../../src/services/tutorialSeed';
 import { TUTORIAL_BUSINESS_TYPE } from '../../src/routes/tutorial';
 import { cleanupExpiredTutorialTenants } from '../../src/workers/reminderScheduler';
@@ -33,6 +33,10 @@ describe('seedTutorialTenant', () => {
     try {
       client = await getRootClient();
       pool = new Pool({ connectionString: ROOT_DB_URL });
+
+      // The seed copies the Auto Shop Template; another file in this worker's
+      // database may have wiped the templates (clearDB).
+      await ensureTemplates(client);
 
       // Create a demo tenant + owner user (same as the route does before seeding).
       const tRes = await client.query<{ tenant_id: string }>(
@@ -102,47 +106,71 @@ describe('seedTutorialTenant', () => {
     );
     const names = res.rows.map((r: { name: string }) => r.name);
     // REGRESSION: with business_type 'auto-shop' the create_default_resources trigger
-    // adds a "Service Bay 1" on tenant insert; the seed must drop it, or the
-    // Tutorial's schedule shows three bays.
-    expect(names).toEqual(['Bay 1', 'Bay 2']);
+    // adds a "Service Bay 1" on tenant insert; the template copy must replace it with
+    // the template's own three bays, not leave a fourth.
+    expect(names).toEqual(['Alignment Bay', 'Bay 1', 'Bay 2']);
   });
 
-  it('HAPPY: services are created with duration and price', async () => {
+  it('HAPPY: services are a copy of the Auto Shop Template, with no prices', async () => {
     // WHO: demo visitor booking through the AI or quick-book
-    // WHAT: 4 services exist with non-zero durations
+    // WHAT: the tenant has exactly the template's services, durations kept, price NULL
     // WHEN: after seed
     // WHERE: services table
-    // WHY: missing services = "service-catalog" tool call returns empty list
-    const res = await client.query(
-      `SELECT name, duration_minutes, price
-       FROM services WHERE tenant_id = $1 ORDER BY name`,
+    // WHY: the Tutorial must show what a new shop gets; and the product never sets prices
+    const own = await client.query(
+      `SELECT name, duration_minutes, price FROM services
+        WHERE tenant_id = $1 AND is_deleted = false ORDER BY name`,
       [tenantId]
     );
-    expect(res.rows).toHaveLength(4);
-    for (const row of res.rows as { name: string; duration_minutes: number; price: string }[]) {
-      expect(row.duration_minutes).toBeGreaterThan(0);
+    const tpl = await client.query(
+      `SELECT s.name, s.duration_minutes FROM services s
+         JOIN tenants t ON t.tenant_id = s.tenant_id
+        WHERE t.is_template AND t.template_vertical = 'auto_shop' AND s.is_deleted = false
+        ORDER BY s.name`
+    );
+    expect(own.rows.length).toBeGreaterThan(0);
+    expect(own.rows.map((r) => [r.name, r.duration_minutes])).toEqual(
+      tpl.rows.map((r) => [r.name, r.duration_minutes])
+    );
+    for (const row of own.rows as { price: string | null }[]) {
+      expect(row.price).toBeNull();
     }
-    const svcNames = res.rows.map((r: { name: string }) => r.name);
-    expect(svcNames).toContain('Oil Change');
   });
 
-  it('HAPPY: employees are created and assigned to services', async () => {
+  it('HAPPY: the template placeholder staff are renamed to named people', async () => {
     // WHO: demo visitor; scheduler needs employees to display staff rows
-    // WHAT: 2 employees + service_employee assignments exist
+    // WHAT: two named mechanics (not "Mechanic 1") + service_employee links exist
     // WHEN: after seed
     // WHERE: employees + service_employee tables
-    // WHY: missing employees = no staff rows in scheduler = confusing empty UI
+    // WHY: the template's staff are placeholders for an owner to rename; the Tutorial
+    //      shows them renamed, and no placeholder name may be left over
     const empRes = await client.query(
-      'SELECT name FROM employees WHERE tenant_id = $1 ORDER BY name',
+      'SELECT name FROM employees WHERE tenant_id = $1 AND is_deleted = false ORDER BY name',
       [tenantId]
     );
-    expect(empRes.rows).toHaveLength(2);
+    expect(empRes.rows.map((r: { name: string }) => r.name)).toEqual(['Alex Rivera', 'Jordan Kim']);
 
     const mapRes = await client.query(
       'SELECT COUNT(*) AS cnt FROM service_employee WHERE tenant_id = $1',
       [tenantId]
     );
     expect(parseInt((mapRes.rows[0] as { cnt: string }).cnt, 10)).toBeGreaterThan(0);
+  });
+
+  it('HAPPY: knowledge starters are copied from the template', async () => {
+    // WHO: demo visitor on the Knowledge page
+    // WHAT: tenant_docs rows with source 'template', not yet embedded
+    // WHEN: after seed
+    // WHERE: tenant_docs
+    // WHY: a new shop starts with these; the AI must not read one until it is saved
+    const res = await client.query(
+      `SELECT COUNT(*) AS cnt, COUNT(embedding) AS embedded
+         FROM tenant_docs WHERE tenant_id = $1 AND source = 'template'`,
+      [tenantId]
+    );
+    const row = res.rows[0] as { cnt: string; embedded: string };
+    expect(parseInt(row.cnt, 10)).toBeGreaterThan(0);
+    expect(parseInt(row.embedded, 10)).toBe(0);
   });
 
   it('HAPPY: shifts are created for weekdays within 28-day window', async () => {

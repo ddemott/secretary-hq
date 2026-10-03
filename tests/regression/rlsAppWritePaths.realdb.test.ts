@@ -29,13 +29,17 @@
  * while production bypasses RLS.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 
 import { seedTutorialTenant } from '../../src/services/tutorialSeed';
 import { withTenantContext } from '../../src/database/index';
+import { TUTORIAL_BUSINESS_TYPE } from '../../src/routes/tutorial';
+import { ensureTemplates } from '../utils';
 
 const ADMIN_URL =
-  process.env.TEST_ADMIN_DATABASE_URL ?? process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/test_db';
+  process.env.TEST_ADMIN_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  'postgres://postgres:postgres@localhost:5433/test_db';
 
 const APP_USER_URL =
   process.env.TEST_APP_USER_DATABASE_URL ??
@@ -72,11 +76,20 @@ beforeAll(async () => {
   if (available) {
     // Fixtures go in as admin: creating the tenant is exactly the cross-tenant
     // act the app does through its own enumerated raw-pool paths.
+    // The Tutorial seed copies the Auto Shop Template, and an earlier file in the
+    // same worker database may have wiped the templates (clearDB).
+    const templateClient = new Client({ connectionString: ADMIN_URL });
+    await templateClient.connect();
+    try {
+      await ensureTemplates(templateClient);
+    } finally {
+      await templateClient.end();
+    }
     await admin.query('DELETE FROM tenants WHERE tenant_id = $1', [TENANT_ID]);
     await admin.query(
       `INSERT INTO tenants (tenant_id, name, business_type, timezone)
-       VALUES ($1, 'RLS Write Path Co', 'automotive', 'America/Chicago')`,
-      [TENANT_ID]
+       VALUES ($1, 'RLS Write Path Co', $2, 'America/Chicago')`,
+      [TENANT_ID, TUTORIAL_BUSINESS_TYPE]
     );
     await admin.query(
       `INSERT INTO users (user_id, tenant_id, email, password_hash, role, full_name)

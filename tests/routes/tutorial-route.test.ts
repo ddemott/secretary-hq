@@ -30,6 +30,13 @@ import {
 import jwt from 'jsonwebtoken';
 import { jsonContentTypeParser } from '../../src/jsonContentTypeParser';
 
+// The seed is covered against a real database in tests/services/tutorial-seed.test.ts.
+// Here the pool is a mock that answers every query with empty rows, which the seed
+// (correctly) treats as "no Auto Shop Template to copy", so it is stubbed out.
+vi.mock('../../src/services/tutorialSeed', () => ({
+  seedTutorialTenant: vi.fn(async () => undefined),
+}));
+
 type MockQueryResult = { rows: Record<string, unknown>[]; rowCount?: number };
 
 function buildApp(queryResponses: MockQueryResult[]): {
