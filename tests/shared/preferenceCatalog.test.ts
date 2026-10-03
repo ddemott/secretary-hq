@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  preferenceLabel,
   UNIVERSAL_PREFERENCES,
   VERTICAL_PREFERENCES,
   NOTES_PREFERENCE,
@@ -93,5 +94,30 @@ describe('preference catalog — shape', () => {
     for (const v of ['med_spa', 'law_firm']) {
       for (const p of VERTICAL_PREFERENCES[v]) expect(p.key).not.toMatch(risky);
     }
+  });
+});
+
+describe('preferenceLabel', () => {
+  it("HAPPY: uses the business's own wording for a key", () => {
+    // WHY: service_location reads differently by trade.
+    expect(preferenceLabel('service_location', 'mobile_tire')).toBe('Where to meet');
+    expect(preferenceLabel('service_location', 'car_detailing')).toBe('Where to detail');
+  });
+
+  it('HAPPY: universal keys are labelled for any business', () => {
+    expect(preferenceLabel('preferred_staff', 'salon')).toBe('Preferred staff member');
+    expect(preferenceLabel('contact_method', null)).toBe(
+      preferencesForVertical(null).find((p) => p.key === 'contact_method')!.label
+    );
+  });
+
+  it("HAPPY: a key from another trade's list still gets its label", () => {
+    // WHAT: a row saved before a business changed type, or by the other list.
+    expect(preferenceLabel('vehicle', 'salon')).toBe('Vehicle');
+  });
+
+  it('SAD: an unknown key is humanized, never shown as raw snake_case', () => {
+    expect(preferenceLabel('favorite_coffee_order', 'salon')).toBe('Favorite coffee order');
+    expect(preferenceLabel('', 'salon')).toBe('');
   });
 });

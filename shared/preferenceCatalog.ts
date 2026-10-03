@@ -288,3 +288,24 @@ export function preferencesForVertical(vertical: string | null | undefined): Pre
   }
   return out;
 }
+
+/**
+ * The owner-facing label for a stored preference key. The business's own
+ * vertical list is checked first, because a key can read differently by trade
+ * (`service_location` is "Where to meet" for mobile tire, "Where to detail"
+ * for detailing); then every other list. A key no list knows — an older or
+ * hand-written row — is humanized rather than shown raw.
+ */
+export function preferenceLabel(key: string, vertical?: string | null): string {
+  const lists: readonly (readonly PreferenceType[])[] = [
+    preferencesForVertical(vertical),
+    ...Object.values(VERTICAL_PREFERENCES),
+  ];
+  for (const list of lists) {
+    const hit = list.find((p) => p.key === key);
+    if (hit) return hit.label;
+  }
+  if (key === NOTES_PREFERENCE.key) return NOTES_PREFERENCE.label;
+  const words = key.replace(/[_-]+/g, ' ').trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : key;
+}

@@ -18,10 +18,12 @@ import {
   type AppRequest,
 } from '../middleware/fastify-middleware';
 import { syncAppointmentToAll, syncCustomerToAll } from '../services/syncOrchestrator';
-import { assertRowAffected } from './routeHelpers';
+import { assertRowAffected, requireValidUUID } from './routeHelpers';
 import { parseCsv, CsvParseError } from '../services/csv';
 import { normalizePhone } from '../../shared/phone';
 import { splitName } from '../../shared/name';
+import { preferenceLabel } from '../../shared/preferenceCatalog';
+import { verticalForBusinessType } from '../../shared/checklistPresetDerivation';
 
 const CustomerCreateSchema = z.object({
   tenant_id: z.string().uuid(),
@@ -560,6 +562,45 @@ export function registerCustomerRoutes(
       });
       return reply.send(res.rows);
     }, 'Failed to fetch customer appointments')
+  );
+
+  // What this caller told the receptionist they like — written by the agent's
+  // remember_preference tool (customer_preferences), shown on the profile.
+  // Before this route nothing in the dashboard read those rows: the agent used
+  // them on the next call, but the owner could never see them.
+  app.get(
+    '/customers/:id/preferences',
+    withHandler(async (req: AppRequest, reply) => {
+      const { id } = req.params as { id: string };
+      const tenantId = requireTenantId(req, reply);
+      if (!tenantId) return;
+      if (!requireValidUUID(id, reply, 'id')) return;
+
+      const res = await withTenantClient(tenantId, async (client) => {
+        return client.query<{
+          pref_key: string;
+          pref_value: string;
+          updated_at: string;
+          business_type: string | null;
+        }>(
+          `SELECT p.pref_key, p.pref_value, p.updated_at, t.business_type
+             FROM customer_preferences p
+             JOIN customers c USING (customer_id)
+             JOIN tenants t ON t.tenant_id = p.tenant_id
+            WHERE p.customer_id = $1 AND p.tenant_id = $2 AND c.is_deleted = false
+            ORDER BY p.pref_key`,
+          [id, tenantId]
+        );
+      });
+      // Labelled here, in this business's own wording, so the dashboard shows
+      // "Where to meet" rather than `service_location`.
+      return reply.send(
+        res.rows.map(({ business_type, ...row }) => ({
+          ...row,
+          label: preferenceLabel(row.pref_key, verticalForBusinessType(business_type)),
+        }))
+      );
+    }, 'Failed to fetch customer preferences')
   );
 
   app.delete(
