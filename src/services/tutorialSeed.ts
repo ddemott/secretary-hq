@@ -1,17 +1,20 @@
 /**
- * Seed a freshly-created tutorial tenant with realistic automotive data.
+ * Seed a freshly-created tutorial tenant: a copy of the Auto Shop Template plus sample customers and appointments.
  *
  * Seeds in a single transaction so partial failure leaves no orphaned rows
  * (the tenant itself lives outside this transaction — it is created by the
  * caller before invoking this function so the tenant_id is known up front).
  *
- * Data modelled on a generic mobile-tire shop but with fictional names/phones
- * so it doesn't collide with the real seed fixtures.
+ * Customers and staff are fictional names/phones so they don't collide with the
+ * real seed fixtures.
  */
 
 import type { Pool, PoolClient } from 'pg';
 
 import { withTenantContext } from '../database/index';
+
+/** The business_templates / tenants.template_vertical key of the template the Tutorial copies. */
+export const TUTORIAL_TEMPLATE_VERTICAL = 'auto_shop';
 
 export interface TutorialSeedParams {
   tenantId: string;
@@ -65,95 +68,56 @@ async function insertTutorialData(
   ]);
   if (already.rows.length > 0) return;
 
-  // ── Skill catalog (tenant_skills) ───────────────────────────────────
-  // Uses composite PK (tenant_id, name) — no skill_id column.
+  // ── Business shape: a COPY of the Auto Shop Template ─────────────────
+  // The Tutorial shows exactly what a new auto shop gets, so it starts the same
+  // way a real signup does: copy_business_template_to_tenant() duplicates the
+  // template's skills, bays, services (no prices), placeholder staff, who-does-
+  // what links and knowledge starters into this tenant's own rows. It also drops
+  // the generic default bay create_default_resources() added on tenant insert.
+  const copied = await client.query<{ copied: boolean }>(
+    'SELECT copy_business_template_to_tenant($1, $2) AS copied',
+    [tenantId, TUTORIAL_TEMPLATE_VERTICAL]
+  );
+  if (copied.rows[0]?.copied !== true) {
+    throw new Error(
+      `Tutorial seed: no "${TUTORIAL_TEMPLATE_VERTICAL}" template business to copy ` +
+        '(migrations/seed not applied?)'
+    );
+  }
+
+  // The template's staff are placeholders ("Mechanic 1") for an owner to rename.
+  // The Tutorial renames them to named people, as an owner would.
   await client.query(
-    `INSERT INTO tenant_skills (tenant_id, name, description)
-     VALUES
-       ($1, 'Oil Change',      'Engine oil and filter service'),
-       ($1, 'Tires',           'Mount, balance, rotate, repair'),
-       ($1, 'Brakes',          'Pad, rotor, caliper service'),
-       ($1, 'General Service', 'Inspections and minor repairs')
-     ON CONFLICT DO NOTHING`,
+    `UPDATE employees AS e
+        SET name = v.full_name, first_name = v.first_name, last_name = v.last_name,
+            email = v.email, phone = v.phone, is_auto_seeded = false
+       FROM (VALUES
+         ('Mechanic 1', 'Alex Rivera', 'Alex',   'Rivera', 'alex@quicklubedemo.com',   '555-0101'),
+         ('Mechanic 2', 'Jordan Kim',  'Jordan', 'Kim',    'jordan@quicklubedemo.com', '555-0102')
+       ) AS v(placeholder, full_name, first_name, last_name, email, phone)
+      WHERE e.tenant_id = $1 AND e.name = v.placeholder`,
     [tenantId]
   );
 
-  // ── Resources (bays) ────────────────────────────────────────────────
-  // The tenant's business type has a business_templates row, so the AFTER INSERT
-  // trigger create_default_resources() already added its default bay (tagged
-  // is_auto_seeded). The Tutorial brings its own bays; drop the default so the
-  // schedule shows exactly Bay 1 and Bay 2, not a third "Service Bay 1".
-  await client.query('DELETE FROM resources WHERE tenant_id = $1 AND is_auto_seeded = true', [
-    tenantId,
-  ]);
-
-  const resourceRes = await client.query<{ resource_id: string }>(
-    `INSERT INTO resources (tenant_id, name, description, is_active)
-     VALUES
-       ($1, 'Bay 1', 'Main service bay',     true),
-       ($1, 'Bay 2', 'Overflow service bay', true)
-     RETURNING resource_id`,
-    [tenantId]
-  );
-  const [bay1Id, bay2Id] = resourceRes.rows.map((r) => r.resource_id);
-
-  // ── Services ────────────────────────────────────────────────────────
-  // required_skills / required_resources are TEXT[] of names.
-  const serviceRes = await client.query<{ service_id: string }>(
-    `INSERT INTO services
-       (tenant_id, name, description, duration_minutes, price,
-        required_skills, required_resources)
-     VALUES
-       ($1, 'Oil Change',       'Full synthetic or conventional oil + filter', 45,  49.99,
-        ARRAY['Oil Change'],      ARRAY['Bay 1']),
-       ($1, 'Tire Rotation',    'Rotate and balance all four tires',           30,  29.99,
-        ARRAY['Tires'],           ARRAY['Bay 1']),
-       ($1, 'Brake Inspection', 'Visual + measurement inspection',             60,  19.99,
-        ARRAY['Brakes'],          ARRAY['Bay 1']),
-       ($1, 'Full Inspection',  '30-point vehicle safety inspection',          45,   0.00,
-        ARRAY['General Service'], ARRAY['Bay 1'])
-     RETURNING service_id`,
-    [tenantId]
-  );
-  const [svcOilId, svcTiresId, svcBrakesId, svcInspectId] = serviceRes.rows.map(
-    (r) => r.service_id
-  );
-
-  // ── Employees ────────────────────────────────────────────────────────
-  // employees.skills is TEXT[] (skill names matching tenant_skills.name).
-  const empRes = await client.query<{ employee_id: string }>(
-    `INSERT INTO employees (tenant_id, name, email, phone, skills, is_active)
-     VALUES
-       ($1, 'Alex Rivera', 'alex@quicklubedemo.com',   '555-0101',
-        ARRAY['Oil Change','Tires','Brakes','General Service'], true),
-       ($1, 'Jordan Kim',  'jordan@quicklubedemo.com', '555-0102',
-        ARRAY['Oil Change','Tires'], true)
-     RETURNING employee_id`,
-    [tenantId]
-  );
-  const [alexId, jordanId] = empRes.rows.map((r) => r.employee_id);
-
-  // ── Service → employee mappings ─────────────────────────────────────
-  await client.query(
-    `INSERT INTO service_employee (service_id, employee_id, tenant_id)
-     VALUES
-       ($1,$3,$5), ($1,$4,$5),
-       ($2,$3,$5), ($2,$4,$5),
-       ($6,$3,$5),
-       ($7,$3,$5)
-     ON CONFLICT DO NOTHING`,
-    [svcOilId, svcTiresId, alexId, jordanId, tenantId, svcBrakesId, svcInspectId]
-  );
-
-  // ── Service → resource mappings ──────────────────────────────────────
-  await client.query(
-    `INSERT INTO service_resource (service_id, resource_id, tenant_id)
-     VALUES
-       ($1,$3,$5), ($2,$3,$5), ($6,$3,$5), ($7,$3,$5),
-       ($1,$4,$5), ($2,$4,$5)
-     ON CONFLICT DO NOTHING`,
-    [svcOilId, svcTiresId, bay1Id, bay2Id, tenantId, svcBrakesId, svcInspectId]
-  );
+  const idByName = async (
+    table: 'services' | 'resources' | 'employees',
+    idCol: string,
+    name: string
+  ) => {
+    const r = await client.query<Record<string, string>>(
+      `SELECT ${idCol} FROM ${table} WHERE tenant_id = $1 AND name = $2 AND is_deleted = false`,
+      [tenantId, name]
+    );
+    if (!r.rows[0]) throw new Error(`Tutorial seed: template copy has no ${table} row "${name}"`);
+    return r.rows[0][idCol];
+  };
+  const bay1Id = await idByName('resources', 'resource_id', 'Bay 1');
+  const bay2Id = await idByName('resources', 'resource_id', 'Bay 2');
+  const alexId = await idByName('employees', 'employee_id', 'Alex Rivera');
+  const jordanId = await idByName('employees', 'employee_id', 'Jordan Kim');
+  const svcOilId = await idByName('services', 'service_id', 'Oil Change');
+  const svcTiresId = await idByName('services', 'service_id', 'Tire Rotation');
+  const svcBrakesId = await idByName('services', 'service_id', 'Brake Inspection');
 
   // ── Shifts (Mon–Fri 8am–5pm, 4 weeks) ───────────────────────────────
   await expandShifts(client, tenantId, alexId, '08:00', '17:00', 28);
