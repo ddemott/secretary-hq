@@ -314,6 +314,63 @@ describe('question tree DB round-trip equals the TypeScript library', () => {
   });
 
   /**
+   * WHO: `npm run trees:seed` / `trees:rollout --refresh-uncustomized` run
+   * against a DB that also holds template businesses (is_template=true, since
+   * #573/#574) | WHAT: a template must never be selected for conversion or
+   * refresh | WHEN: 2026-09-27 — the first real run against prod after #574
+   * added 30 template tenants crashed here: refuse_template_write() (migration
+   * 20260925000000) rejects any INSERT into tenant_question_trees for a
+   * template row, and neither this file's tenant-selection query nor
+   * deploy-question-trees.ts's excluded is_template tenants, so the very first
+   * one in alphabetical order aborted the whole rollout with an uncaught
+   * Postgres error | WHERE: the `AND t.is_template = false` clause in
+   * refreshUncustomizedQuestionTrees's SELECT (and the identical clause in
+   * deploy-question-trees.ts's convert query) | WHY: a template never takes a
+   * call, so it has no use for a question tree — exclusion is the fix, not a
+   * try/catch around the trigger's rejection.
+   */
+  it('SAD: a template business is excluded from refresh, never written to', async () => {
+    const templateId = randomUUID();
+    const maintClient = await pool.connect();
+    try {
+      await maintClient.query("SELECT set_config('app.template_maintenance', 'on', false)");
+      await maintClient.query(
+        `INSERT INTO tenants (tenant_id, name, business_type, timezone, is_template, template_vertical)
+         VALUES ($1, $2, 'answering-service', 'UTC', true, 'owner-for-hire')`,
+        [templateId, `RoundTrip Template ${templateId.slice(0, 8)}`]
+      );
+    } finally {
+      await maintClient.query("SELECT set_config('app.template_maintenance', 'off', false)");
+      maintClient.release();
+    }
+
+    try {
+      // Documents WHY exclusion is required: the DB itself refuses a direct
+      // write to a template's question trees.
+      await expect(
+        pool.query('SELECT copy_question_tree_templates_to_tenant($1, $2)', [
+          templateId,
+          ['owner_for_hire'],
+        ])
+      ).rejects.toThrow(/read-only/i);
+
+      // The JS-level query must exclude the template outright — scoping the
+      // refresh to exactly this tenant id must be a no-op, not an error.
+      const result = await refreshUncustomizedQuestionTrees(pool, { tenantId: templateId });
+      expect(result).toEqual({ refreshed: 0, skippedCustomized: 0, skippedEmpty: 0 });
+    } finally {
+      const cleanupClient = await pool.connect();
+      try {
+        await cleanupClient.query("SELECT set_config('app.template_maintenance', 'on', false)");
+        await cleanupClient.query('DELETE FROM tenants WHERE tenant_id = $1', [templateId]);
+      } finally {
+        await cleanupClient.query("SELECT set_config('app.template_maintenance', 'off', false)");
+        cleanupClient.release();
+      }
+    }
+  });
+
+  /**
    * WHO: refresh wipe | WHAT: deleting tenant_question_trees must take nodes
    * with it | WHEN: the CASCADE fk is the only delete we issue | WHERE:
    * tenant_question_nodes_tree_fk | WHY: a two-statement wipe (nodes then trees)

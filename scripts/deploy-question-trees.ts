@@ -161,12 +161,17 @@ async function main(): Promise<void> {
     }
 
     // ── 3. CONVERT ──────────────────────────────────────────────────────────
+    // Template businesses (is_template=true) never take calls and are
+    // read-only by design — refuse_template_write() rejects any write to
+    // tenant_question_trees for one. Excluded here, not worked around: a
+    // template has no reason to hold question trees in the first place.
     const tenantRows = await pool.query<TenantRow>(
       `SELECT t.tenant_id, t.name, t.business_type, t.checklist_preset_id,
               (SELECT count(*)::int FROM tenant_question_trees q WHERE q.tenant_id = t.tenant_id)
                 AS existing_trees
          FROM tenants t
         WHERE (t.is_deleted IS NULL OR t.is_deleted = false)
+          AND t.is_template = false
           AND ($1::uuid IS NULL OR t.tenant_id = $1::uuid)
         ORDER BY t.name`,
       [onlyTenant ?? null]
