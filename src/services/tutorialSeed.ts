@@ -12,6 +12,7 @@
 import type { Pool, PoolClient } from 'pg';
 
 import { withTenantContext } from '../database/index';
+import { insertTutorialActivity } from './tutorialActivity';
 
 /** The business_templates / tenants.template_vertical key of the template the Tutorial copies. */
 export const TUTORIAL_TEMPLATE_VERTICAL = 'auto_shop';
@@ -140,39 +141,41 @@ async function insertTutorialData(
   // ── Appointments (past, today, future) ───────────────────────────────
   // Appointments need a resource_id (NOT NULL). Use bay1Id / bay2Id.
   // Past appointments use 'completed' status, future use 'scheduled'.
-  await client.query(
+  //
+  // Times are the SHOP'S local wall-clock times. They used to be
+  // `CURRENT_DATE::timestamptz + TIME '10:00'`, which is 10:00 UTC: the
+  // Tutorial showed a 10 AM brake inspection at 5:00 AM Chicago time, before
+  // the shop opens. `local(day, time)` renders ((today in the shop's zone) + day)
+  // + time, AT TIME ZONE the shop's zone.
+  const tzRes = await client.query<{ timezone: string | null }>(
+    'SELECT timezone FROM tenants WHERE tenant_id = $1',
+    [tenantId]
+  );
+  const tz = tzRes.rows[0]?.timezone || 'America/Chicago';
+  const local = (dayOffset: number, time: string) =>
+    `(((now() AT TIME ZONE $15)::date + ${dayOffset}) + TIME '${time}') AT TIME ZONE $15`;
+  const apptRes = await client.query<{ appointment_id: string; description: string }>(
     `INSERT INTO appointments
        (tenant_id, resource_id, employee_id, customer_id, service_id,
         start_time, end_time, status, description)
      VALUES
        -- Yesterday — completed
-       ($1,$2,$3,$4,$5,
-        (CURRENT_DATE - 1)::timestamptz + TIME '09:00:00',
-        (CURRENT_DATE - 1)::timestamptz + TIME '09:45:00',
-        'completed', 'Demo: past oil change'),
-       ($1,$6,$7,$8,$9,
-        (CURRENT_DATE - 1)::timestamptz + TIME '11:00:00',
-        (CURRENT_DATE - 1)::timestamptz + TIME '11:30:00',
-        'completed', 'Demo: past tire rotation'),
+       ($1,$2,$3,$4,$5, ${local(-1, '09:00')}, ${local(-1, '09:45')},
+        'completed', 'Tutorial: past oil change'),
+       ($1,$6,$7,$8,$9, ${local(-1, '11:00')}, ${local(-1, '11:30')},
+        'completed', 'Tutorial: past tire rotation'),
        -- Today — scheduled
-       ($1,$2,$3,$10,$11,
-        CURRENT_DATE::timestamptz + TIME '10:00:00',
-        CURRENT_DATE::timestamptz + TIME '11:00:00',
-        'scheduled', 'Demo: today brake inspection'),
-       ($1,$6,$7,$12,$13,
-        CURRENT_DATE::timestamptz + TIME '14:00:00',
-        CURRENT_DATE::timestamptz + TIME '14:45:00',
-        'scheduled', 'Demo: today oil change'),
+       ($1,$2,$3,$10,$11, ${local(0, '10:00')}, ${local(0, '11:00')},
+        'scheduled', 'Tutorial: today brake inspection'),
+       ($1,$6,$7,$12,$13, ${local(0, '14:00')}, ${local(0, '14:45')},
+        'scheduled', 'Tutorial: today oil change'),
        -- Tomorrow — scheduled
-       ($1,$2,$3,$14,$5,
-        (CURRENT_DATE + 1)::timestamptz + TIME '09:00:00',
-        (CURRENT_DATE + 1)::timestamptz + TIME '09:45:00',
-        'scheduled', 'Demo: tomorrow oil change'),
+       ($1,$2,$3,$14,$5, ${local(1, '09:00')}, ${local(1, '09:45')},
+        'scheduled', 'Tutorial: tomorrow oil change'),
        -- Day after tomorrow — scheduled
-       ($1,$6,$7,$4,$9,
-        (CURRENT_DATE + 2)::timestamptz + TIME '10:00:00',
-        (CURRENT_DATE + 2)::timestamptz + TIME '10:30:00',
-        'scheduled', 'Demo: future tire rotation')`,
+       ($1,$6,$7,$4,$9, ${local(2, '10:00')}, ${local(2, '10:30')},
+        'scheduled', 'Tutorial: future tire rotation')
+     RETURNING appointment_id, description`,
     [
       tenantId,
       bay1Id,
@@ -188,7 +191,25 @@ async function insertTutorialData(
       cust4,
       svcOilId,
       cust5,
+      tz,
     ]
+  );
+  const apptBy = (description: string) => {
+    const row = apptRes.rows.find((r) => r.description === description);
+    if (!row) throw new Error(`Tutorial seed: appointment "${description}" missing`);
+    return row.appointment_id;
+  };
+
+  // ── A week of calls, messages, preferences and knowledge ────────────
+  await insertTutorialActivity(
+    client,
+    tenantId,
+    { maria: cust1, tyler: cust2, priya: cust3, james: cust4, carmen: cust5 },
+    {
+      mariaPastOilChange: apptBy('Tutorial: past oil change'),
+      priyaBrakeInspection: apptBy('Tutorial: today brake inspection'),
+      carmenOilChange: apptBy('Tutorial: tomorrow oil change'),
+    }
   );
 }
 

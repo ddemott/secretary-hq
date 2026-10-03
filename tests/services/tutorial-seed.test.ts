@@ -17,6 +17,15 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { type Client, Pool } from 'pg';
 import { getRootClient, skipIfDbDown, ROOT_DB_URL, ensureTemplates } from '../utils';
 import { seedTutorialTenant } from '../../src/services/tutorialSeed';
+import {
+  TUTORIAL_CALLS,
+  TUTORIAL_KNOWLEDGE,
+  TUTORIAL_MESSAGES,
+  TUTORIAL_PREFERENCES,
+  renderTranscript,
+} from '../../src/services/tutorialActivity';
+import { preferencesForVertical } from '../../shared/preferenceCatalog';
+import { verticalForBusinessType } from '../../shared/checklistPresetDerivation';
 import { TUTORIAL_BUSINESS_TYPE } from '../../src/routes/tutorial';
 import { cleanupExpiredTutorialTenants } from '../../src/workers/reminderScheduler';
 
@@ -219,13 +228,154 @@ describe('seedTutorialTenant', () => {
     expect(byStatus['scheduled']).toBeGreaterThanOrEqual(1);
   });
 
+  // ── Business-running activity (calls, messages, preferences, knowledge) ──
+  // WHY: without these the Calls / Analytics / Messages / Customers / Knowledge
+  //      pages are empty on the Tutorial, exactly where the product should prove itself.
+
+  it('HAPPY: calls are seeded with transcripts, summaries and agent-vocabulary outcomes', async () => {
+    const res = await client.query<{
+      outcome: string;
+      transcript: string;
+      summary: string;
+      duration_seconds: number;
+      started_at: Date;
+    }>(
+      `SELECT outcome, transcript, summary, duration_seconds, started_at
+         FROM voice_sessions WHERE tenant_id = $1 AND is_deleted = false`,
+      [tenantId]
+    );
+    expect(res.rows).toHaveLength(TUTORIAL_CALLS.length);
+    // Every outcome the Analytics "Why callers reached out" card is meant to show.
+    const outcomes = new Set(res.rows.map((r) => r.outcome));
+    for (const o of ['booked', 'message', 'transferred', 'info', 'price', 'no_availability']) {
+      expect(outcomes.has(o), o).toBe(true);
+    }
+    for (const r of res.rows) {
+      expect(r.transcript).toMatch(/^Assistant \[0:00\]: /);
+      expect(r.summary.length).toBeGreaterThan(20);
+      expect(r.duration_seconds).toBeGreaterThan(0);
+      // All in the past week, so "This week" and analytics count them.
+      expect(r.started_at.getTime()).toBeLessThan(Date.now());
+      expect(Date.now() - r.started_at.getTime()).toBeLessThan(7 * 24 * 3600 * 1000);
+    }
+  });
+
+  it('HAPPY: booked calls link to an appointment for the same customer', async () => {
+    const res = await client.query<{ call_customer: string; appt_customer: string }>(
+      `SELECT v.customer_id AS call_customer, a.customer_id AS appt_customer
+         FROM voice_sessions v JOIN appointments a USING (appointment_id)
+        WHERE v.tenant_id = $1 AND v.outcome = 'booked'`,
+      [tenantId]
+    );
+    expect(res.rows.length).toBe(TUTORIAL_CALLS.filter((c) => c.outcome === 'booked').length);
+    for (const r of res.rows) expect(r.call_customer).toBe(r.appt_customer);
+  });
+
+  it("HAPPY: a known caller's call also appears in their customer call history", async () => {
+    const res = await client.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM call_summaries WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(res.rows[0].n).toBe(TUTORIAL_CALLS.filter((c) => c.customer).length);
+  });
+
+  it('HAPPY: messages are seeded, one urgent, each tied to its call', async () => {
+    const res = await client.query<{ is_urgent: boolean; call_id: string; status: string }>(
+      'SELECT is_urgent, call_id, status FROM customer_messages WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(res.rows).toHaveLength(TUTORIAL_MESSAGES.length);
+    expect(res.rows.filter((r) => r.is_urgent)).toHaveLength(1);
+    const callIds = await client.query<{ call_id: string }>(
+      'SELECT call_id FROM voice_sessions WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const known = new Set(callIds.rows.map((r) => r.call_id));
+    for (const r of res.rows) {
+      expect(known.has(r.call_id)).toBe(true);
+      expect(r.status).toBe('new');
+    }
+  });
+
+  it("SAD: every seeded preference key is on this business type's preference list", async () => {
+    // WHY: a key the catalog does not know would show as a raw snake_case label and
+    //      is a key the live agent could never have written. The Tutorial is an auto
+    //      shop (its business_type must resolve to that vertical), so the keys come
+    //      from the auto_shop list.
+    expect(verticalForBusinessType(TUTORIAL_BUSINESS_TYPE)).toBe('auto_shop');
+    const allowed = new Set(preferencesForVertical('auto_shop').map((p) => p.key));
+    const res = await client.query<{ pref_key: string }>(
+      'SELECT pref_key FROM customer_preferences WHERE tenant_id = $1',
+      [tenantId]
+    );
+    expect(res.rows).toHaveLength(TUTORIAL_PREFERENCES.length);
+    for (const r of res.rows) expect(allowed.has(r.pref_key), r.pref_key).toBe(true);
+  });
+
+  it('HAPPY: knowledge answers are seeded without spending an embedding call', async () => {
+    const res = await client.query<{ title: string; embedded: boolean }>(
+      `SELECT title, embedding IS NOT NULL AS embedded
+         FROM tenant_docs WHERE tenant_id = $1 AND source = 'tutorial'`,
+      [tenantId]
+    );
+    expect(res.rows).toHaveLength(TUTORIAL_KNOWLEDGE.length);
+    expect(res.rows.every((r) => !r.embedded)).toBe(true);
+  });
+
+  it("REGRESSION: appointment times are the shop's local times, not UTC", async () => {
+    // WHAT: the 10 AM brake inspection is 10:00 in America/Chicago.
+    // WHY: the seed used to write 10:00 UTC, which the dashboard showed as 5:00 AM,
+    //      before the shop opens.
+    const res = await client.query<{ local_time: string }>(
+      `SELECT to_char(start_time AT TIME ZONE 'America/Chicago', 'HH24:MI') AS local_time
+         FROM appointments
+        WHERE tenant_id = $1 AND description = 'Tutorial: today brake inspection'`,
+      [tenantId]
+    );
+    expect(res.rows[0].local_time).toBe('10:00');
+  });
+
+  it('SAD: no seeded transcript has the assistant promising a text message or inventing a price', async () => {
+    // WHY: SMS is off until 10DLC, and the product never sets prices, so the
+    //      Tutorial must not show the AI promising a text or quoting a number it
+    //      was never given. An amount the CALLER stated (an approval limit they
+    //      want honoured) may be repeated back.
+    for (const call of TUTORIAL_CALLS) {
+      const lines = renderTranscript(call.turns).split('\n');
+      const callerText = lines.filter((l) => l.startsWith('Caller')).join(' ');
+      for (const line of lines.filter((l) => l.startsWith('Assistant'))) {
+        expect(line, call.key).not.toMatch(/\b(text|texts|texting|sms)\b/i);
+        for (const amount of line.match(/\$\d[\d,.]*/g) ?? []) {
+          const spoken = amount.replace('$', '');
+          expect(callerText, `${call.key} quotes ${amount}`).toMatch(
+            new RegExp(`${spoken}|two hundred`, 'i')
+          );
+        }
+      }
+    }
+    for (const doc of TUTORIAL_KNOWLEDGE) expect(doc.content, doc.title).not.toMatch(/\$\d/);
+  });
+
   it('SAD: calling seed twice is idempotent (ON CONFLICT DO NOTHING)', async () => {
     // WHO: provisioning retry / network hiccup causing double-seed
     // WHAT: second call should not throw (ON CONFLICT DO NOTHING on shifts)
     // WHEN: race or retry on POST /tutorial/start
     // WHERE: seedTutorialTenant → expandShifts ON CONFLICT
     // WHY: a duplicate error would leave the tenant partially seeded
+    const count = async () =>
+      (
+        await client.query<{ n: number }>(
+          `SELECT (SELECT count(*) FROM voice_sessions WHERE tenant_id = $1)::int
+                + (SELECT count(*) FROM customer_messages WHERE tenant_id = $1)::int
+                + (SELECT count(*) FROM customer_preferences WHERE tenant_id = $1)::int
+                + (SELECT count(*) FROM tenant_docs WHERE tenant_id = $1)::int AS n`,
+          [tenantId]
+        )
+      ).rows[0].n;
+    const before = await count();
     await expect(seedTutorialTenant(pool, { tenantId, userId })).resolves.not.toThrow();
+    // ...and it must not double the sample activity either.
+    expect(await count()).toBe(before);
   });
 });
 
