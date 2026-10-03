@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { User, Settings, Keyboard, LogOut } from 'lucide-react';
+import { User, Settings, Keyboard, LogOut, Compass } from 'lucide-react';
 
 interface ProfileMenuDropdownProps {
   userName: string | null | undefined;
@@ -10,6 +10,7 @@ interface ProfileMenuDropdownProps {
   onClose: () => void;
   onSelectTab: (tab: string) => void;
   onShowShortcuts?: () => void;
+  onStartTour?: () => void;
   onLogout?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function ProfileMenuDropdown({
   onClose,
   onSelectTab,
   onShowShortcuts,
+  onStartTour,
   onLogout,
 }: ProfileMenuDropdownProps) {
   return (
@@ -85,6 +87,19 @@ export function ProfileMenuDropdown({
             >
               <Keyboard className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
               Keyboard shortcuts
+            </button>
+          )}
+          {onStartTour && (
+            <button
+              onClick={() => {
+                onClose();
+                onStartTour();
+              }}
+              className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-colors hover:brightness-125"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              <Compass className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+              Take the product tour
             </button>
           )}
         </div>

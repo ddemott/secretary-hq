@@ -54,6 +54,7 @@ vi.mock('../../lib/api', () => ({
 }));
 
 import VoiceCallsView from './VoiceCallsView';
+import { CALLS_SUBTAB_EVENT } from '../../lib/productTour';
 
 const mockCall = {
   id: 'call-1',
@@ -942,6 +943,35 @@ describe('VoiceCallsView', () => {
 
       await waitFor(() => expect(screen.getByText('Nil Caller')).toBeInTheDocument());
       expect(screen.queryByText('Bea Booked')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Product tour sub-tab switching', () => {
+    test('HAPPY: the tour event switches the Calls sub-tab', async () => {
+      // WHO: the product tour, which cannot reach this component's state.
+      // WHAT: a secretary-hq:calls-subtab event selects the named sub-tab.
+      // WHY: Calls sub-tabs are not in the URL, so without this listener the
+      //      tour's Analytics/Messages steps would spotlight a missing panel.
+      render(<VoiceCallsView />);
+      act(() => {
+        window.dispatchEvent(new CustomEvent(CALLS_SUBTAB_EVENT, { detail: { subtab: 'sent' } }));
+      });
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: 'Sent' })).toHaveAttribute('aria-selected', 'true')
+      );
+    });
+
+    test('SAD: an unknown sub-tab name is ignored', async () => {
+      render(<VoiceCallsView />);
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent(CALLS_SUBTAB_EVENT, { detail: { subtab: 'not-a-tab' } })
+        );
+      });
+      expect(screen.getByRole('tab', { name: 'Recent Calls' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
     });
   });
 });

@@ -80,7 +80,8 @@
 - ✅ **A new business starts from a ready-made copy of its business type (2026-09-25, #573)** — each business type has a read-only template business; at signup (and on a business-type switch before setup is finished) it is copied into the business's own rows: typical services with **no prices** (we never set a business's prices), bays/chairs/rooms/vans, two placeholder staff named for the trade ("Mechanic 1") to rename, who-does-what links, and knowledge-base starters the AI will not use until the owner reviews and saves them ("Not used yet — edit and save"). Never customers, calls, appointments, or hours. Every business type offered at signup has one (30 templates: Auto Shop + Salon in #573, the other 28 from researched defaults in #574); CI fails if a signup type lacks a template. Med spa was removed from signup (HIPAA).
 - ✅ Knowledge-base management (the receptionist's answers)
 - ✅ Role-based access — owner / front-desk (`users_role_check`), plus platform super-admin. Server-side owner gating on staffing/catalog/billing/knowledge/calendar/provisioning routes shipped 2026-09-16 (#522, #523)
-- ✅ Demo mode — instant, isolated, self-expiring demo tenant with sample data
+- ✅ Tutorial — instant, isolated, self-expiring Tutorial tenant (a copy of the Auto Shop Template) with a week of sample calls, messages and preferences
+- ✅ Guided product tour (Driver.js, MIT) — 17-step spotlight walk across every tab; auto-starts once on the Tutorial, offered on the first-run welcome card, replayable from the account menu; front desk gets an 8-step version
 
 ## 9. Multi-Tenancy, Auth & Security
 

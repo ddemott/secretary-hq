@@ -36,6 +36,16 @@ Dale: when a customer picks a business, "the row is duplicated and used for them
 - Follow-up in progress (not merged): a template for every other signup business type (28 more, 30 total) and `med-spa` removed from signup as HIPAA — see `docs/planning/TODO.md` → Template businesses.
 
 ---
+## 2026-09-25 — Guided product tour (Driver.js)
+
+Dale asked for a demo that "both teaches a person and shows off all the features", naming Intro.js; Driver.js (MIT) was chosen instead because Intro.js is AGPL / paid for commercial use.
+
+- `dashboard/lib/productTour.ts` holds the 17 steps as data plus the runner; `components/tour/ProductTour.tsx` decides when it runs. It auto-starts once per Tutorial tenant on `/tutorial`, starts from the account menu ("Take the product tour") and from the first-run card ("Show me around"). Real owners never get it sprung on them.
+- Steps cross tabs through channels the app already had (`?tab=` + `popstate`, the `secretary-hq:setup-subtab` event) plus one new `secretary-hq:calls-subtab` listener in `VoiceCallsView`, whose sub-tabs are not in the URL.
+- Spotlight anchors are `data-tour="…"` attributes; `lib/productTourAnchors.test.ts` fails CI if one is renamed away, because a missing anchor fails no other test — the tour would just show an unanchored card.
+- `e2e/product-tour.spec.ts` walks all 17 steps on a real Tutorial tenant and asserts Driver.js marked each step's actual target (not its fallback element), then checks Finish, no replay on reload, and the menu replay.
+- Copy rule: no step promises a text (SMS is off until 10DLC); a unit test enforces it.
+- Found on the way, not fixed: local `next dev` (Turbopack) panics on `app/globals.css` ("reading file …/dashboard — Is a directory") on pristine `main` too. CI builds with `next build --webpack` and is unaffected. Run the local e2e against `npm run build && npx next start -p 4000` with `DASHBOARD_URL=http://localhost:4000`.
 
 ## 2026-09-24 — Overnight autonomous batch (Dale asleep): 5 fixes + doc pass
 

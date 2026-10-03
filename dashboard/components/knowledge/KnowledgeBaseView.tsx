@@ -287,7 +287,10 @@ export default function KnowledgeBaseView() {
       style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
     >
       {/* Header */}
-      <header className="mb-6 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <header
+        className="mb-6 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4"
+        data-tour="knowledge"
+      >
         <div className="flex items-center">
           <div className="bg-orange-100 dark:bg-orange-900/30 p-2 rounded-lg mr-4 text-orange-600 dark:text-orange-400">
             <BookOpen className="w-6 h-6" />

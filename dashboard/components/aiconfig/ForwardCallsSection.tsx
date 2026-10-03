@@ -21,7 +21,7 @@ export function ForwardCallsSection({
 }: ForwardCallsSectionProps) {
   return (
     <>
-      <section className="space-y-4">
+      <section className="space-y-4" data-tour="forward-calls">
         <h2
           className="text-lg font-bold flex items-center"
           style={{ color: 'var(--text-primary)' }}

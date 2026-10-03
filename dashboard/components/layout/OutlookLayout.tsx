@@ -45,6 +45,8 @@ interface LayoutProps {
   setActiveTab: (tab: Tab) => void;
   onLogout?: () => void;
   onShowShortcuts?: () => void;
+  /** Replays the guided product tour (account menu). */
+  onStartTour?: () => void;
   userName?: string | null;
   role?: UserRole;
   isAdmin?: boolean;
@@ -89,6 +91,7 @@ export function OutlookLayout({
   setActiveTab,
   onLogout,
   onShowShortcuts,
+  onStartTour,
   userName,
   role = 'owner',
   isAdmin,
@@ -341,6 +344,7 @@ export function OutlookLayout({
               </button>
               <button
                 ref={profileBtnRef}
+                data-tour="account-menu"
                 aria-label={userName ? `Account menu for ${userName}` : 'Account menu'}
                 aria-expanded={profileMenuOpen}
                 aria-haspopup="menu"
@@ -469,6 +473,7 @@ export function OutlookLayout({
           onClose={() => setProfileMenuOpen(false)}
           onSelectTab={(tab) => setActiveTab(tab as Tab)}
           onShowShortcuts={onShowShortcuts}
+          onStartTour={onStartTour}
           onLogout={onLogout}
         />
       )}

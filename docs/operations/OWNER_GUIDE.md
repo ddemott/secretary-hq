@@ -39,6 +39,12 @@ When you log in you land on **Home**. The top navigation has two groups:
 > Front-desk logins only see the everyday tabs. If a front-desk user opens an
 > owner-only link, they're sent back to Home.
 
+**Want a walkthrough?** Open the account menu (the person icon, top right) and
+choose **Take the product tour**. It steps through every tab and points at each
+feature, switching tabs for you; press Esc to leave at any time. Front-desk
+logins get a shorter tour of the tabs they can see. New owners are offered the
+tour on the welcome card after setup ("Show me around").
+
 ---
 
 ## Your business starts from a ready-made setup
