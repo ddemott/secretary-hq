@@ -3,6 +3,8 @@
 > Kept at repo root (not `docs/`) on purpose so it doesn't get lost. This is a
 > live worklist, not history. Move to `docs/` + `RESOLVED.md` once shipped.
 
+> **Naming (2026-09-28, PR #575):** the dashboard walkthrough this doc calls the "dashboard demo" is now the **Tutorial** — `POST /tutorial/start`, `tenants.is_tutorial`, `src/routes/tutorial.ts`. `/demo` stays as a permanent redirect alias. The checklist items below that predate the rename (the "Try live demo" fixes) are left as written because they describe what was true then.
+
 **Status: BLOCKED.** Do not start the demo build until the prerequisite below is
 fixed. The demo talks to the **same** LiveKit agent pipeline a real caller uses —
 if real calls don't book meetings, the demo won't either, and we'd be showing a
@@ -40,7 +42,7 @@ broken product.
 
 Goal: a public, browser-based **voice** demo (mic + speakers over WebRTC, **no
 phone, no Telnyx/PSTN**). Each prospect gets their own isolated ephemeral demo
-tenant (the existing `/demo/start` flow → `is_demo=true`, 30-min TTL). They talk
+tenant (the existing `/tutorial/start` flow → `is_tutorial=true`, 30-min TTL). They talk
 to the receptionist, it books into _their_ demo schedule, they watch it land in
 the dashboard live.
 
@@ -57,10 +59,10 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
 
 ### Already in place (don't rebuild)
 
-- Dashboard demo: `POST /demo/start` → ephemeral tenant (`src/routes/demo.ts` +
-  `src/services/demoSeed.ts`). Guards today: per-IP **3 starts / 15 min**, global
+- Dashboard demo: `POST /tutorial/start` → ephemeral tenant (`src/routes/tutorial.ts` +
+  `src/services/tutorialSeed.ts`). Guards today: per-IP **3 starts / 15 min**, global
   cap **50 concurrent** demo tenants, **30-min TTL**, expired-tenant soft-delete in
-  `reminderScheduler`, and `is_demo=true` suppresses **calendar/CRM sync**
+  `reminderScheduler`, and `is_tutorial=true` suppresses **calendar/CRM sync**
   (`syncOrchestrator`).
 - Browser voice join mechanism exists internally: `scripts/simulate.sh call` /
   `agent/scripts/sim-call.mjs` (dispatch agent into a room + print a browser join
@@ -93,9 +95,9 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
 ### Subtasks
 
 - [ ] **1. Demo-aware capability lockdown — the toll-fraud / spam fix (highest priority).**
-      Today `is_demo` only gates calendar/CRM sync; the agent's **outward-firing
+      Today `is_tutorial` only gates calendar/CRM sync; the agent's **outward-firing
       tools are NOT gated**, which is the real abuse vector even without PSTN.
-  - [ ] **Agent (primary):** surface `is_demo` from the per-call `tenantConfig`;
+  - [ ] **Agent (primary):** surface `is_tutorial` from the per-call `tenantConfig`;
         in `buildTools`, a demo tenant gets the capability subset
         **`['knowledge','scheduling']` only**. **Drop** `verification` (SMS OTP),
         `transfer` (dial-out), `messaging` (`take_message` / `capture_job_inquiry`
@@ -106,14 +108,14 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
         ladder-era `buildTools` capability subset — the demo gate has to land there too.)
   - [ ] **Backend (backstop / defense-in-depth):** `/agent-tools/send-verification-code`,
         `verify-phone-code`, transfer, and message endpoints **reject when the
-        tenant is `is_demo`** → return a graceful
+        tenant is `is_tutorial`** → return a graceful
         `{ success: true, result: "not available in the demo" }`. Even if a tool
         leaked into the set, the outward action (SMS / email / dial-out) can't fire.
   - Closes: SMS-pumping/toll-fraud via OTP, owner-inbox spam via messages,
     outbound minutes via transfer.
 
 - [ ] **2. Voice-call admission control — new `POST /demo/voice-token`.**
-      Separate gate from `/demo/start` (a voice call costs far more than a
+      Separate gate from `/tutorial/start` (a voice call costs far more than a
       dashboard spin-up). Before dispatching the agent into a room, enforce
       (reuse the existing in-process limiter shape from `demo.ts`):
   - [ ] per-IP: N voice calls / window (IP is the everyday gate — stops ~95% of
@@ -135,11 +137,11 @@ Realtime-vs-pipeline voice-quality choice are **separate** and out of scope here
 
 ```
 prospect
-  → POST /demo/start            (existing — isolated demo tenant + scoped JWT, is_demo=true)
+  → POST /tutorial/start            (existing — isolated demo tenant + scoped JWT, is_tutorial=true)
   → click "🎙️ Talk to the receptionist"
   → POST /demo/voice-token      (NEW — per-IP + concurrent + daily admission control)
   → browser joins LiveKit room over WebRTC (mic)
-  → agent dispatched, sees is_demo
+  → agent dispatched, sees is_tutorial
        → buildTools = ['knowledge','scheduling']   (no verification/transfer/messaging)
        → per-call duration cap armed
   → prospect: "book an oil change Tuesday afternoon"
@@ -152,7 +154,7 @@ prospect
 - [ ] Agent unit: demo tenant ⇒ `buildTools` excludes verification/transfer/messaging;
       non-demo tenant ⇒ full set (no regression).
 - [ ] Backend: `/agent-tools/send-verification-code` (and transfer/message) with an
-      `is_demo` tenant ⇒ refused gracefully; non-demo ⇒ unchanged.
+      `is_tutorial` tenant ⇒ refused gracefully; non-demo ⇒ unchanged.
 - [ ] Admission control: per-IP / global-concurrent / daily limits ⇒ 429/503
       (reuse `demo.ts` limiter test pattern).
 - [ ] Agent unit: duration cap fires → wrap-up + hangup for a demo call.
