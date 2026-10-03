@@ -109,7 +109,7 @@ src/
 │   ├── communications.ts    ✓
 │   ├── crmRouteScaffold.ts  ✓
 │   ├── customers.ts         ✓
-│   ├── demo.ts              ✓
+│   ├── tutorial.ts          ✓
 │   ├── employees.ts         ✓
 │   ├── exportData.ts        ✓
 │   ├── health.ts            ✓
@@ -140,7 +140,7 @@ src/
 │   ├── envWarnings.ts       ✓
 │   ├── featureReadiness.ts  ✓
 │   ├── setupGraph.ts        ✓
-│   ├── demoSeed.ts          ✓
+│   ├── tutorialSeed.ts      ✓
 │   ├── aiCost.ts            ✓
 │   │
 │   ├── scheduling/          ○ NEW grouping (item — future)

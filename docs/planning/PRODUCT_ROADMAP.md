@@ -1722,7 +1722,7 @@ OWNER: Claude-able
 PRIORITY: MEDIUM
 EFFORT: 8–10h
 DEPENDS_ON: T-101 (onboarding), T-000 (verticals)
-CONTEXT: _(As-built note 2026-09-18: a different shape of this already ships — `POST /demo/start` (`src/routes/demo.ts`, seeder `src/services/demoSeed.ts`) provisions an ephemeral tenant with `tenants.is_demo` / `demo_expires_at`, 30-minute TTL, reaped by the demo-expiry worker; there is no per-vertical picker or 7-day trial.)_ A prospect can spin up a fully-seeded demo tenant for a chosen vertical (sample services, schedule, KB, persona) and place a simulated call — no billing, auto-expires in 7 days. Drives conversion.
+CONTEXT: _(As-built note 2026-09-18, names updated 2026-09-28 for the Tutorial rename, #575: a different shape of this already ships — `POST /tutorial/start` (`src/routes/tutorial.ts`, seeder `src/services/tutorialSeed.ts`) provisions an ephemeral tenant with `tenants.is_tutorial` / `tutorial_expires_at`, 30-minute TTL, reaped by the demo-expiry worker; there is no per-vertical picker or 7-day trial.)_ A prospect can spin up a fully-seeded demo tenant for a chosen vertical (sample services, schedule, KB, persona) and place a simulated call — no billing, auto-expires in 7 days. Drives conversion.
 FILES: `src/services/demoTenant.ts` (new seeder), `src/routes/demo.ts`, `supabase/migrations/<new>_demo_flag.sql` (`tenants.is_demo`, `tenants.expires_at`), reuse simulator for the fake call.
 STEPS:
 
