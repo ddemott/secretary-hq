@@ -79,6 +79,14 @@ async function insertTutorialData(
   );
 
   // ── Resources (bays) ────────────────────────────────────────────────
+  // The tenant's business type has a business_templates row, so the AFTER INSERT
+  // trigger create_default_resources() already added its default bay (tagged
+  // is_auto_seeded). The Tutorial brings its own bays; drop the default so the
+  // schedule shows exactly Bay 1 and Bay 2, not a third "Service Bay 1".
+  await client.query('DELETE FROM resources WHERE tenant_id = $1 AND is_auto_seeded = true', [
+    tenantId,
+  ]);
+
   const resourceRes = await client.query<{ resource_id: string }>(
     `INSERT INTO resources (tenant_id, name, description, is_active)
      VALUES

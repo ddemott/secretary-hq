@@ -17,6 +17,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { type Client, Pool } from 'pg';
 import { getRootClient, skipIfDbDown, ROOT_DB_URL } from '../utils';
 import { seedTutorialTenant } from '../../src/services/tutorialSeed';
+import { TUTORIAL_BUSINESS_TYPE } from '../../src/routes/tutorial';
 import { cleanupExpiredTutorialTenants } from '../../src/workers/reminderScheduler';
 
 describe('seedTutorialTenant', () => {
@@ -36,8 +37,9 @@ describe('seedTutorialTenant', () => {
       // Create a demo tenant + owner user (same as the route does before seeding).
       const tRes = await client.query<{ tenant_id: string }>(
         `INSERT INTO tenants (name, business_type, timezone, is_tutorial, tutorial_expires_at)
-         VALUES ('Seed Test Demo', 'automotive', 'America/Chicago', true, NOW() + INTERVAL '30 minutes')
-         RETURNING tenant_id`
+         VALUES ('Seed Test Demo', $1, 'America/Chicago', true, NOW() + INTERVAL '30 minutes')
+         RETURNING tenant_id`,
+        [TUTORIAL_BUSINESS_TYPE]
       );
       tenantId = tRes.rows[0].tenant_id;
 
@@ -99,6 +101,9 @@ describe('seedTutorialTenant', () => {
       [tenantId]
     );
     const names = res.rows.map((r: { name: string }) => r.name);
+    // REGRESSION: with business_type 'auto-shop' the create_default_resources trigger
+    // adds a "Service Bay 1" on tenant insert; the seed must drop it, or the
+    // Tutorial's schedule shows three bays.
     expect(names).toEqual(['Bay 1', 'Bay 2']);
   });
 

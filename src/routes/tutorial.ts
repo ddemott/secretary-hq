@@ -42,6 +42,14 @@ const MAX_ACTIVE_TUTORIAL_TENANTS = 50;
 // Tutorial TTL in minutes.
 const TUTORIAL_TTL_MINUTES = 30;
 
+/**
+ * The Tutorial is an auto shop. This was 'automotive', which no preset maps to,
+ * so the Tutorial ran the generic local_service setup: none of the auto-shop
+ * intake questions or vehicle preferences a new auto shop actually gets.
+ * 'auto-shop' resolves to auto_shop_front_desk (defaultChecklistPresetIdForBusinessType).
+ */
+export const TUTORIAL_BUSINESS_TYPE = 'auto-shop';
+
 // In-process per-IP store: { ip → count of starts in current window }
 // Resets when the process restarts, which is fine — tutorial rate-limiting
 // is a soft DoS guard, not a hard security boundary.
@@ -111,7 +119,7 @@ async function provisionTutorialTenant(
   }>(
     `WITH new_tenant AS (
        INSERT INTO tenants (name, business_type, timezone, is_tutorial, tutorial_expires_at)
-       VALUES ('Quick Lube Demo', 'automotive', 'America/Chicago', true, $1)
+       VALUES ('Quick Lube Demo', $2, 'America/Chicago', true, $1)
        RETURNING tenant_id
      ),
      new_user AS (
@@ -132,7 +140,7 @@ async function provisionTutorialTenant(
      )
      SELECT new_tenant.tenant_id, new_user.user_id, new_user.email
      FROM new_tenant JOIN new_user ON new_tenant.tenant_id = new_user.tenant_id`,
-    [expiresAt.toISOString()]
+    [expiresAt.toISOString(), TUTORIAL_BUSINESS_TYPE]
   );
 
   const { tenant_id: tenantId, user_id: userId, email: tutorialEmail } = provisionRes.rows[0];
