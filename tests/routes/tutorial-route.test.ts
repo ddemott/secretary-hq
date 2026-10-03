@@ -17,7 +17,12 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 
-import { registerTutorialRoutes, resetTutorialRateLimitForTesting } from '../../src/routes/tutorial';
+import {
+  registerTutorialRoutes,
+  resetTutorialRateLimitForTesting,
+  TUTORIAL_BUSINESS_TYPE,
+} from '../../src/routes/tutorial';
+import { defaultChecklistPresetIdForBusinessType } from '../../shared/checklistPresetDerivation';
 import {
   generateToken as realGenerateToken,
   registerJwtAuthHook,
@@ -192,6 +197,41 @@ describe('POST /tutorial/start', () => {
     expect(body.ttl_minutes).toBe(30);
   });
 
+  it('REGRESSION: the Tutorial tenant is created as an auto shop, which runs the auto-shop preset', async () => {
+    // WHO: visitor taking the Tutorial
+    // WHAT: the business_type written to the new tenant row
+    // WHEN: POST /tutorial/start
+    // WHERE: the tenant+user provisioning CTE
+    // WHY: it was 'automotive', which no preset maps to, so the Tutorial ran the generic
+    //      local_service setup: no auto-shop intake questions or vehicle preferences.
+    const { app, mockPool } = buildApp([
+      { rows: [{ count: '0' }] },
+      {
+        rows: [{ tenant_id: 't-1', user_id: 'u-1', email: 'demo+t-1@quicklubedemo.invalid' }],
+        rowCount: 1,
+      },
+    ]);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/tutorial/start',
+      headers: { 'x-forwarded-for': nextIp() },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const provisionCall = (
+      mockPool.query as unknown as { mock: { calls: [string, unknown[]][] } }
+    ).mock.calls.find(([sql]) => sql.includes('INSERT INTO tenants'));
+    expect(provisionCall).toBeDefined();
+    const params = provisionCall![1];
+    expect(params).toContain('auto-shop');
+    expect(params).not.toContain('automotive');
+    expect(TUTORIAL_BUSINESS_TYPE).toBe('auto-shop');
+    expect(defaultChecklistPresetIdForBusinessType(TUTORIAL_BUSINESS_TYPE)).toBe(
+      'auto_shop_front_desk'
+    );
+  });
+
   it('REGRESSION: each demo gets its own owner email, so a second demo cannot collide', async () => {
     // WHO: two visitors starting demos one after the other.
     // WHAT: the provisioning INSERT builds the owner email from the new tenant id
@@ -279,7 +319,11 @@ describe('POST /tutorial/start', () => {
     ]);
 
     for (let i = 0; i < 3; i++) {
-      await app.inject({ method: 'POST', url: '/tutorial/start', headers: { 'x-forwarded-for': ip } });
+      await app.inject({
+        method: 'POST',
+        url: '/tutorial/start',
+        headers: { 'x-forwarded-for': ip },
+      });
     }
 
     const blocked = await app.inject({
@@ -479,7 +523,10 @@ describe('POST /tutorial/reset', () => {
     // WHO: a caller whose demo already expired/reset out from under them
     // WHAT: 403, not a crash — the tenant row still exists but is retired
     const token = demoOwnerToken('demo-tenant-gone', 'user-gone');
-    const { app } = buildAuthedApp([{ rows: [] }, { rows: [{ is_tutorial: true, is_deleted: true }] }]);
+    const { app } = buildAuthedApp([
+      { rows: [] },
+      { rows: [{ is_tutorial: true, is_deleted: true }] },
+    ]);
 
     const res = await app.inject({
       method: 'POST',
@@ -508,7 +555,11 @@ describe('POST /tutorial/reset', () => {
     ]);
 
     for (let i = 0; i < 3; i++) {
-      await app.inject({ method: 'POST', url: '/tutorial/start', headers: { 'x-forwarded-for': ip } });
+      await app.inject({
+        method: 'POST',
+        url: '/tutorial/start',
+        headers: { 'x-forwarded-for': ip },
+      });
     }
 
     const blocked = await app.inject({
