@@ -10,6 +10,8 @@ import { useKeyboardShortcuts, type Shortcut } from '@/lib/useKeyboardShortcuts'
 import { useSessionContext } from '@/lib/SessionContext';
 import { setSubscriptionRequiredCallback } from '@/lib/api';
 import { showToast } from '@/components/ui/Toast';
+import { ProductTour } from '@/components/tour/ProductTour';
+import { requestProductTour } from '@/lib/productTour';
 
 // Lazy load tab content — only loads the JS for the active tab
 const DashboardHome = dynamic(() => import('@/components/home/DashboardHome'), { ssr: false });
@@ -273,6 +275,7 @@ export default function DashboardPage() {
       setActiveTab={handleSetActiveTab}
       onLogout={logout}
       onShowShortcuts={() => setShortcutsHelpOpen(true)}
+      onStartTour={requestProductTour}
       userName={userName}
       role={role}
       isAdmin={isAdmin}
@@ -296,6 +299,7 @@ export default function DashboardPage() {
         {activeTab === 'settings' && <SettingsView />}
         {activeTab === 'profile' && <ProfileView />}
       </ErrorBoundary>
+      <ProductTour />
       <ShortcutsHelpModal
         isOpen={shortcutsHelpOpen}
         onClose={() => setShortcutsHelpOpen(false)}

@@ -34,6 +34,7 @@ vi.mock('@/lib/VocabularyContext', () => ({
 }));
 
 import { FirstRunTour, markFirstRunTourPending } from './FirstRunTour';
+import { TOUR_START_EVENT } from '../../lib/productTour';
 
 const KEY = 'firstRunTour_tenant-XYZ';
 
@@ -191,5 +192,23 @@ describe('markFirstRunTourPending', () => {
     //      latent bug — null-key flags collide across tenants.
     markFirstRunTourPending(null);
     expect(localStorage.getItem('firstRunTour_null')).toBeNull();
+  });
+});
+
+describe('FirstRunTour — guided tour hand-off', () => {
+  test('HAPPY: "Show me around" closes the card and starts the product tour', () => {
+    // WHO: a new owner who just finished the setup wizard.
+    // WHAT: the button closes this overview and dispatches the tour start
+    //       event that <ProductTour /> listens for.
+    // WHY: this card is how real owners are offered the tour — it never
+    //      auto-starts for them the way it does on the Tutorial.
+    localStorage.setItem(KEY, 'pending');
+    const started = vi.fn();
+    window.addEventListener(TOUR_START_EVENT, started);
+    render(<FirstRunTour onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show me around' }));
+    window.removeEventListener(TOUR_START_EVENT, started);
+    expect(started).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

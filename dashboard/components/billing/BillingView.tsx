@@ -221,7 +221,7 @@ export default function BillingView() {
   const hasActiveAccount = currentStatus === 'active' || currentStatus === 'past_due';
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-4xl mx-auto space-y-6" data-tour="billing">
       {emailUnverified && (
         <div
           role="status"

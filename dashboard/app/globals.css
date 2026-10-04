@@ -407,3 +407,61 @@ body {
   background-color: var(--accent);
   color: #ffffff;
 }
+
+/* Product tour (Driver.js) — themed from the app tokens so every theme,
+   including high-contrast, gets a readable popover. */
+.driver-popover.shq-tour {
+  background-color: var(--surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-width: 360px;
+  padding: 18px;
+  font-family: inherit;
+}
+.driver-popover.shq-tour .driver-popover-title {
+  font-size: 17px;
+}
+.driver-popover.shq-tour .driver-popover-description {
+  color: var(--text-secondary);
+}
+.driver-popover.shq-tour .driver-popover-progress-text {
+  color: var(--text-muted);
+}
+.driver-popover.shq-tour .driver-popover-close-btn {
+  color: var(--text-muted);
+}
+.driver-popover.shq-tour .driver-popover-close-btn:hover,
+.driver-popover.shq-tour .driver-popover-close-btn:focus {
+  color: var(--text-primary);
+}
+.driver-popover.shq-tour .driver-popover-footer-btn {
+  background-color: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  text-shadow: none;
+}
+.driver-popover.shq-tour .driver-popover-next-btn {
+  background-color: var(--primary);
+  color: var(--primary-text);
+  border-color: var(--primary);
+}
+.driver-popover.shq-tour .driver-popover-footer-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.driver-popover.shq-tour .driver-popover-arrow-side-left {
+  border-left-color: var(--surface-elevated);
+}
+.driver-popover.shq-tour .driver-popover-arrow-side-right {
+  border-right-color: var(--surface-elevated);
+}
+.driver-popover.shq-tour .driver-popover-arrow-side-top {
+  border-top-color: var(--surface-elevated);
+}
+.driver-popover.shq-tour .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--surface-elevated);
+}

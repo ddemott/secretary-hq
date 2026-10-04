@@ -200,7 +200,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-5xl mx-auto" data-tour="home">
       {/* Greeting + New Booking */}
       <div className="flex items-start justify-between gap-4">
         <div>

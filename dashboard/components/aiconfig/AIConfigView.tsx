@@ -259,7 +259,7 @@ export default function AIConfigView() {
         {/* Go Live — provisioning, test-call verification, and the
             forwarding/porting fork. Owns forwarded_from_phone end-to-end
             (its own immediate save) — deliberately NOT part of handleSave. */}
-        <section className="space-y-4">
+        <section className="space-y-4" data-tour="go-live">
           <GoLivePanel />
         </section>
 

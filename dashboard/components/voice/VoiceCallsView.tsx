@@ -8,17 +8,30 @@ import { useConfirm } from '../../lib/useConfirm';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { showToast } from '../ui/Toast';
 import { FolderTab, FolderTabBar } from '../ui/FolderTabs';
+import { CALLS_SUBTAB_EVENT } from '../../lib/productTour';
 import AnalyticsView from '../analytics/AnalyticsView';
 import { CommsSentView } from '../communications/CommsSentView';
 import { MessagesInbox } from './MessagesInbox';
 import { CallListPanel } from './CallListPanel';
 import { CallDetailPanel } from './CallDetailPanel';
 
-type CallsSubTab = 'calls' | 'analytics' | 'messages' | 'sent';
+const CALLS_SUB_TABS = ['calls', 'analytics', 'messages', 'sent'] as const;
+type CallsSubTab = (typeof CALLS_SUB_TABS)[number];
 
 export default function VoiceCallsView() {
   const tenantId = useActiveTenantId();
   const [activeSubTab, setActiveSubTab] = useState<CallsSubTab>('calls');
+  // The product tour switches sub-tabs from outside (this state is not in the URL).
+  useEffect(() => {
+    const onTourSubTab = (e: Event) => {
+      const next = (e as CustomEvent<{ subtab?: string }>).detail?.subtab;
+      if (next && (CALLS_SUB_TABS as readonly string[]).includes(next)) {
+        setActiveSubTab(next as CallsSubTab);
+      }
+    };
+    window.addEventListener(CALLS_SUBTAB_EVENT, onTourSubTab);
+    return () => window.removeEventListener(CALLS_SUBTAB_EVENT, onTourSubTab);
+  }, []);
   const [activeCalls, setActiveCalls] = useState<VoiceSessionDisplay[]>([]);
   const [callHistory, setCallHistory] = useState<VoiceSession[]>([]);
   const [selectedCall, setSelectedCall] = useState<VoiceSession | null>(null);
@@ -228,12 +241,12 @@ export default function VoiceCallsView() {
         />
       </FolderTabBar>
       {activeSubTab === 'analytics' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" data-tour="call-analytics">
           <AnalyticsView />
         </div>
       )}
       {activeSubTab === 'messages' && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden" data-tour="call-messages">
           <MessagesInbox tenantId={tenantId} />
         </div>
       )}

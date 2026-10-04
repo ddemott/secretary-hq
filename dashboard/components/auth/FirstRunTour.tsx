@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { useActiveTenantId } from '../../lib/SessionContext';
 import { useVocabulary } from '@/lib/VocabularyContext';
 import type { Tab } from '../../app/dashboard/page';
+import { requestProductTour } from '../../lib/productTour';
 
 interface FirstRunTourProps {
   onNavigate?: (tab: Tab) => void;
@@ -145,9 +146,21 @@ export function FirstRunTour({ onNavigate }: FirstRunTourProps) {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             You can revisit any time from the Setup Assistant.
           </p>
-          <Button variant="primary" size="sm" onClick={() => setOpen(false)}>
-            Got it
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setOpen(false);
+                requestProductTour();
+              }}
+            >
+              Show me around
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setOpen(false)}>
+              Got it
+            </Button>
+          </div>
         </div>
       </div>
     </div>

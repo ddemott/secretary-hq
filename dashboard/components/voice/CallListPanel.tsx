@@ -54,6 +54,7 @@ export function CallListPanel({
 }: CallListPanelProps) {
   return (
     <div
+      data-tour="call-list"
       className="w-80 border-r flex flex-col"
       style={{ borderColor: 'var(--border-soft)', backgroundColor: 'var(--bg-surface)' }}
     >
