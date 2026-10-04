@@ -144,7 +144,10 @@ export class MockStripe implements StripeGateway {
           subscriptionId: null,
         };
         this.sessions.set(id, session);
-        return Promise.resolve({ id, url: `${mockBackendBase()}/billing/mock/checkout/${id}` });
+        return Promise.resolve({
+          id,
+          url: `${mockBackendBase()}/billing/mock/checkout?session=${id}`,
+        });
       },
     },
   };

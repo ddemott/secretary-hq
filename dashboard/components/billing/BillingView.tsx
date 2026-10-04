@@ -15,8 +15,11 @@ type SubscriptionStatus = 'inactive' | 'active' | 'past_due' | 'canceled';
 interface BillingStatus {
   subscription_status: SubscriptionStatus;
   subscription_plan: PlanKey | null;
-  /** `fixture` when the backend is activating plans locally, with no Stripe account. */
-  billing_mode?: 'fixture' | 'stripe';
+  /**
+   * `fixture` when the backend activates plans locally with no Stripe account; `mock` when it runs
+   * the full flow against the in-process Stripe mock (STRIPE_MODE=mock); `stripe` is the real thing.
+   */
+  billing_mode?: 'fixture' | 'mock' | 'stripe';
 }
 
 const PLANS: {
@@ -260,6 +263,13 @@ export default function BillingView() {
                 Local fixture billing is on. Choosing a plan activates it on this machine and does
                 not charge a card. A Stripe account is still required before this business can take
                 money.
+              </p>
+            )}
+            {status?.billing_mode === 'mock' && (
+              <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
+                Test billing is on (a mock of Stripe). Checkout and the billing portal open practice
+                pages and no real card is charged. A Stripe account is still required before this
+                business can take money.
               </p>
             )}
             {currentStatus === 'past_due' && (

@@ -108,7 +108,7 @@ describe('MockStripe', () => {
     const { customer, session } = await checkout();
     expect(customer).toMatch(/^cus_mock_\d+$/);
     expect(session.id).toMatch(/^cs_mock_\d+$/);
-    expect(session.url).toContain(`/billing/mock/checkout/${session.id}`);
+    expect(session.url).toContain(`/billing/mock/checkout?session=${session.id}`);
   });
 
   it('HAPPY: paying completes the session and emits checkout.session.completed with our metadata', async () => {

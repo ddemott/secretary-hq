@@ -259,6 +259,9 @@ const TENANT_EXEMPT_ROUTES = [
   '/',
   '/tutorial/start',
   '/billing/webhook',
+  // Mock-Stripe hosted pages: only registered (and only answer) when STRIPE_MODE=mock outside production.
+  '/billing/mock/checkout',
+  '/billing/mock/portal',
   // OAuth callbacks (redirects from external providers)
   '/calendar/auth/google/callback',
   '/calendar/auth/outlook/callback',
@@ -666,6 +669,9 @@ const PUBLIC_ROUTES = [
   '/call-simulator',
   '/call-simulator/start',
   '/billing/webhook',
+  // Mock-Stripe hosted pages: only registered (and only answer) when STRIPE_MODE=mock outside production.
+  '/billing/mock/checkout',
+  '/billing/mock/portal',
   // Prometheus scrape endpoint — auth is via METRICS_TOKEN bearer header
   // checked inside the route handler (not JWT). When the env var is unset
   // the route returns 404, so adding it here doesn't expose anything.
