@@ -72,6 +72,16 @@ Check in order:
 2. **Webhook registered at the right URL?** `https://secretary-hq-production.up.railway.app/billing/webhook`, subscribed to `checkout.session.completed`, `invoice.payment_failed`, `invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated`, `customer.subscription.deleted`.
 3. **Price IDs.** A missing `STRIPE_SOLO/GROWTH/PRO_PRICE_ID` makes that plan's checkout 503 before any webhook.
 4. **Verify the round-trip locally** with `stripe listen` + `./scripts/simulate.sh stripe` before blaming prod.
+5. **No Stripe account yet / local dev:** run the backend with `STRIPE_MODE=mock` (ignored in production). Checkout and the billing portal then open practice pages under `/billing/mock/*` and every result reaches `/billing/webhook` as a signed POST, so a 400 here means the real signature gate rejected something, not that Stripe is missing. `GET /billing/status` reports `billing_mode`.
+
+### 4b. Overage billing (calls past the plan allowance)
+
+Off unless `ENABLE_OVERAGE_BILLING=true` (production included). To see what it has done for a tenant: `SELECT month, overage_calls, amount_cents, status, stripe_invoice_item_id FROM overage_charges WHERE tenant_id = '...' ORDER BY month;`
+
+- `created` = handed to Stripe once; never charged again. `pending` = claimed but not confirmed (a Stripe error or a crash): the next daily run retries it with the SAME amount and idempotency key, so do not edit or delete the row to "fix" it unless you have confirmed in Stripe that no invoice item exists.
+- A `pending` row that stays `pending` across runs: look for `errors_total{event="overage_charge_failed"}` and the `overageBiller:` log lines. Typical causes: the customer id no longer exists at Stripe, or the key lacks invoice-item permission.
+- To stop all overage charging at once: unset `ENABLE_OVERAGE_BILLING` and restart. Already-created invoice items are in Stripe; remove them there if they must not bill.
+- Tenants are skipped (never billed) when not `active`, without a Stripe customer, on a free/unknown plan, or a template/tutorial/deleted tenant.
 
 ---
 

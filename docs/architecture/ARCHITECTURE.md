@@ -423,7 +423,7 @@ Releases the Telnyx number via the API and clears `telnyx_phone_number_id`, `inb
 
 ### 9.1 Route modules (29 + `agentTools/` dir)
 
-29 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, demo, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
+31 top-level route modules live directly under `src/routes/`: health, callerSimulator, auth, tenants, appointments, customers, employees, users, shifts, resources, services, mappings, skills, calendar, knowledge, analytics, setup, vocabulary, billing, billingMock (the mock-Stripe hosted pages, mock mode only), provisioning, square (sole surviving external CRM after competitor removals 2026-06-12), voice, versionHistory, communications, reminders, tutorial (the public Tutorial, was demo), consent, selfService, exportData (tenant data portability), and auditLog (owner change history). `src/index.ts` also wires the `agentTools/` module dir, which owns the `/agent-tools/*` surface behind a shared `index.ts`. Recent additions include callerSimulator, data export, and audit surfaces. `src/index.ts` is slim — imports each `register*Routes(...)` and wires them. The `withTenantClient` it passes is built from `createWithTenantClient(pool)` (see `src/database/index.ts`); the pool itself comes from `getPool()` so the reminder scheduler and communications service share the same singleton.
 
 ### 9.2 Middleware layer (`src/middleware/fastify-middleware.ts`)
 
@@ -735,7 +735,26 @@ Tenant-scoped routes behind `subscriptionGateMiddleware` check `tenants.subscrip
 
 ### 15.5 Status endpoint
 
-`GET /billing/status` → `{ subscription_status, subscription_plan, billing_mode }` (`stripe` or `fixture`) for the dashboard to decide what to gate and whether to say a card was charged.
+`GET /billing/status` → `{ subscription_status, subscription_plan, billing_mode }` (`stripe`, `mock` or `fixture`) for the dashboard to decide what to gate and whether to say a card was charged.
+
+
+### 15.6 The Stripe gateway seam, the mock, and overage billing
+
+Every Stripe call the app makes goes through one interface, `StripeGateway` (`src/services/stripe/gateway.ts`): customers, subscription history, Checkout sessions, the billing portal, invoice items and webhook verification. The real SDK satisfies it as-is (type-checked, no cast). `resolveStripeMode()` picks the implementation:
+
+| Mode     | Chosen when                                        | What it is                                                        |
+| -------- | -------------------------------------------------- | ----------------------------------------------------------------- |
+| `mock`   | `STRIPE_MODE=mock` and `NODE_ENV` is not production | `MockStripe` (`mockStripe.ts`): in memory, Stripe-shaped ids, no account |
+| `stripe` | `STRIPE_SECRET_KEY` is set                          | the real SDK                                                      |
+| none     | neither                                            | billing routes answer 503 "Billing not configured"               |
+
+**The mock keeps faithful what the app's logic depends on:** canceled subscriptions stay in `subscriptions.list({status:'all'})` (so the one-trial-per-customer rule behaves exactly as against Stripe), a trial checkout starts `trialing`, and webhook payloads are signed in **Stripe's real scheme** (`t=…,v1=HMAC-SHA256`) and verified with the same 5-minute tolerance. `tests/services/stripe-mock.test.ts` proves the mock's headers are accepted by the real SDK and the SDK's by the mock.
+
+**Hosted pages** (`src/routes/billingMock.ts`, `/billing/mock/checkout` and `/billing/mock/portal`) exist only in mock mode: a practice checkout (test card, declined card, back) and a portal (cancel, simulate a failed renewal, simulate recovery). Every result is delivered as a SIGNED POST to the real `/billing/webhook` via `app.inject`, so the production handler and its signature gate are what run; nothing writes to the database around them.
+
+**Overage billing** (`src/services/overageBilling.ts`, `src/workers/overageBiller.ts`, table `overage_charges`): each CLOSED UTC month's `overageChargeUsd` becomes one Stripe invoice item on the customer's next invoice. Exactly once: the `(tenant_id, month)` ledger row is claimed `pending` BEFORE Stripe is called (committed on its own, never inside the caller's transaction), then flipped to `created` with the invoice item id. A Stripe error leaves it `pending`; the retry charges the ORIGINAL ledger amount, never a recomputed one; a crash after Stripe succeeded reuses the idempotency key `overage-<tenant>-<month>`. Only `active` paid subscriptions with a Stripe customer; never template, tutorial or deleted tenants. The worker runs daily behind a Postgres advisory lock and is **off unless `ENABLE_OVERAGE_BILLING=true`, production included**.
+
+**Attaching the real account** is configuration only (`docs/operations/DEPLOYMENT.md` → "Stripe: mock now, real later").
 
 ---
 
