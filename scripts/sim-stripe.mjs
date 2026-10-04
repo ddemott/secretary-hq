@@ -84,7 +84,8 @@ async function main() {
   const status = await req('/billing/status', { auth: jwt });
   if (status.status === 200) {
     const plan = status.json?.plan ?? status.json?.result?.plan ?? 'unknown';
-    pass('GET /billing/status', `plan=${plan}`);
+    const mode = status.json?.billing_mode ?? 'unknown';
+    pass('GET /billing/status', `plan=${plan}  billing_mode=${mode}${mode === 'mock' ? ' (NOT real Stripe)' : ''}`);
   } else if (status.status === 401 || status.status === 403) {
     fail('GET /billing/status', `auth rejected (${status.status}) — JWT not accepted`);
   } else {

@@ -7,7 +7,7 @@
 import type { Pool } from 'pg';
 import type { FastifyReply } from 'fastify';
 import type { AppFastifyInstance } from '../types/fastify';
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
 import {
   withHandler,
   logEvent,
@@ -18,24 +18,18 @@ import {
 } from '../middleware/fastify-middleware';
 import { computeUsageStatements } from '../services/billingUsage';
 import { webhookSignatureFailuresTotal, errorsTotal } from '../services/metrics';
-
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
-const STRIPE_SOLO_PRICE_ID = process.env.STRIPE_SOLO_PRICE_ID || '';
-const STRIPE_GROWTH_PRICE_ID = process.env.STRIPE_GROWTH_PRICE_ID || '';
-const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || '';
+import {
+  getStripeGateway,
+  stripePriceIds,
+  stripeWebhookSecret,
+  type StripeGateway,
+} from '../services/stripe/gateway';
 
 const SUPER_ADMIN_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** Local stand-in. Ignored in production so a stray flag cannot grant a plan. */
 export function stripeFixtureMode(): boolean {
   return process.env.STRIPE_FIXTURE_MODE === 'true' && process.env.NODE_ENV !== 'production';
-}
-
-function getStripe(): Stripe | null {
-  if (!STRIPE_SECRET_KEY) return null;
-  // Omit apiVersion so the installed SDK sends the version its own types match.
-  return new Stripe(STRIPE_SECRET_KEY);
 }
 
 function stripeId(value: unknown): string | null {
@@ -49,9 +43,10 @@ function stripeId(value: unknown): string | null {
 
 function planFromPriceId(priceId: string | null): string | null {
   if (!priceId) return null;
-  if (priceId === STRIPE_SOLO_PRICE_ID) return 'solo';
-  if (priceId === STRIPE_GROWTH_PRICE_ID) return 'growth';
-  if (priceId === STRIPE_PRO_PRICE_ID) return 'professional';
+  const ids = stripePriceIds();
+  if (priceId === ids.solo) return 'solo';
+  if (priceId === ids.growth) return 'growth';
+  if (priceId === ids.professional) return 'professional';
   return null;
 }
 
@@ -79,7 +74,7 @@ function validPlan(plan: unknown): string | null {
  * still proceeds, the owner just pays from day one.
  */
 async function isFirstSubscription(
-  stripe: Stripe,
+  stripe: StripeGateway,
   existingCustomerId: string | null,
   existingSubscriptionId: string | null
 ): Promise<boolean> {
@@ -194,16 +189,12 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
         });
       }
 
-      const stripe = getStripe();
+      const stripe = getStripeGateway();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });
       }
 
-      const priceMap: Record<string, string> = {
-        solo: STRIPE_SOLO_PRICE_ID,
-        growth: STRIPE_GROWTH_PRICE_ID,
-        professional: STRIPE_PRO_PRICE_ID,
-      };
+      const priceMap: Record<string, string> = { ...stripePriceIds() };
       const priceId = priceMap[plan];
       if (!priceId) {
         return reply
@@ -277,7 +268,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       } as Record<string, unknown>,
     },
     async (req: AppRequest, reply) => {
-      const stripe = getStripe();
+      const stripe = getStripeGateway();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });
       }
@@ -302,7 +293,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
           throw new Error('Raw body not available — ensure Fastify rawBody is configured');
         }
         const bodyStr = typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
-        event = stripe.webhooks.constructEvent(bodyStr, sig, STRIPE_WEBHOOK_SECRET);
+        event = stripe.webhooks.constructEvent(bodyStr, sig, stripeWebhookSecret());
       } catch (err) {
         webhookSignatureFailuresTotal.inc({ provider: 'stripe', endpoint: 'billing_webhook' });
         logError(req, 'stripe_webhook_signature_failed', err);
@@ -440,7 +431,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       }
       return reply.send({
         ...res.rows[0],
-        billing_mode: stripeFixtureMode() ? 'fixture' : 'stripe',
+        billing_mode: stripeFixtureMode() ? 'fixture' : (getStripeGateway()?.mode ?? 'stripe'),
       });
     }, 'Failed to check billing status')
   );
@@ -489,7 +480,7 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
             'Billing portal needs a Stripe account. Fixture mode activates a plan locally and cannot manage a card.',
         });
       }
-      const stripe = getStripe();
+      const stripe = getStripeGateway();
       if (!stripe) {
         return reply.status(503).send({ success: false, error: 'Billing not configured' });
       }

@@ -154,6 +154,27 @@ The backend exits on startup if any of these are missing in production (the chec
 | `STRIPE_SECRET_KEY` | Stripe API key (test or live)                                     |
 | `NODE_ENV`          | Set to `production` (skips local TLS, trusts `x-forwarded-proto`) |
 
+#### Stripe: mock now, real later
+
+All Stripe calls go through one seam (`src/services/stripe/`), so billing is built and tested on a mock and attached to the real account by configuration alone.
+
+| Variable                    | Mock (local / CI)                                            | Real Stripe                                      |
+| --------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| `STRIPE_MODE`               | `mock` (ignored when `NODE_ENV=production`)                  | unset                                            |
+| `STRIPE_SECRET_KEY`         | not needed                                                   | `sk_test_…` first, then `sk_live_…`              |
+| `STRIPE_SOLO_PRICE_ID` etc. | not needed (`price_mock_solo` / `_growth` / `_professional`) | the three Stripe price ids (Solo / Growth / Pro) |
+| `STRIPE_WEBHOOK_SECRET`     | optional (defaults to `whsec_mock`)                          | the signing secret of the registered endpoint    |
+| `BACKEND_PUBLIC_URL`        | where the mock pages live (default `https://localhost:4001`) | not used                                         |
+
+In mock mode `GET /billing/status` reports `billing_mode: "mock"` and the Billing page says test billing is on. Try it locally: start the backend with `STRIPE_MODE=mock`, choose a plan in Billing, and use the practice checkout page (a test card, a declined card, and a billing portal that can cancel or simulate a failed or recovered renewal). Every result is delivered as a signed POST to the real `/billing/webhook`.
+
+**Attaching the real Stripe account (when the keys exist):**
+
+1. In Stripe (test mode first): create the three recurring monthly prices ($29.95 / $59.95 / $149.95) and copy their ids.
+2. Register a webhook endpoint at `https://secretary-hq-production.up.railway.app/billing/webhook` with the six events listed in `CLAUDE.md` → Production, and copy its signing secret.
+3. On Railway set `STRIPE_SECRET_KEY`, `STRIPE_SOLO_PRICE_ID`, `STRIPE_GROWTH_PRICE_ID`, `STRIPE_PRO_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`. Make sure `STRIPE_MODE` is NOT set.
+4. Run `./scripts/simulate.sh stripe --env prod`, then one test-card checkout end to end. No code change is involved.
+
 #### Backend — required for full functionality
 
 The backend boots without these but specific features fail or warn loudly.

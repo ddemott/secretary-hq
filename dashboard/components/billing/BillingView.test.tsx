@@ -486,6 +486,30 @@ describe('BillingView — post-checkout status refetch', () => {
     expect(await screen.findByText(/Local fixture billing is on/)).toBeInTheDocument();
   });
 
+  test('HAPPY: billing_mode mock explains that checkout is a practice page and no card is charged', async () => {
+    // WHY: with the Stripe mock on, checkout opens a mock page; nobody should mistake it for real billing.
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'inactive',
+      subscription_plan: null,
+      billing_mode: 'mock',
+    });
+    render(<BillingView />);
+    expect(await screen.findByText(/Test billing is on/)).toBeInTheDocument();
+    expect(screen.queryByText(/Local fixture billing is on/)).not.toBeInTheDocument();
+  });
+
+  test('SAD: real Stripe billing shows neither test notice', async () => {
+    mockApi.billing.status.mockResolvedValue({
+      subscription_status: 'active',
+      subscription_plan: 'solo',
+      billing_mode: 'stripe',
+    });
+    render(<BillingView />);
+    await screen.findAllByText(/solo/i); // wait for the status to render
+    expect(screen.queryByText(/Test billing is on/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Local fixture billing is on/)).not.toBeInTheDocument();
+  });
+
   test('HAPPY: ?billing=fixture refetches and does not claim a payment', async () => {
     stubLocation('?billing=fixture');
     mockApi.billing.status

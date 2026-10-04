@@ -42,6 +42,8 @@ import { registerAnalyticsRoutes } from './routes/analytics';
 import { registerSetupRoutes } from './routes/setup';
 import { registerVocabularyRoutes } from './routes/vocabulary';
 import { registerBillingRoutes, subscriptionGate } from './routes/billing';
+import { registerBillingMockRoutes } from './routes/billingMock';
+import { resolveStripeMode } from './services/stripe/gateway';
 import { registerProvisioningRoutes } from './routes/provisioning';
 import { registerSquareRoutes } from './routes/square';
 import { registerAgentToolRoutes } from './routes/agentTools/index';
@@ -276,6 +278,7 @@ registerAnalyticsRoutes(app, pool, withTenantClient);
 registerSetupRoutes(app, pool, withTenantClient);
 registerVocabularyRoutes(app, pool, withTenantClient);
 registerBillingRoutes(app, pool);
+if (resolveStripeMode() === 'mock') registerBillingMockRoutes(app);
 
 // PROVISIONING_E2E_STUB: lets the provisioning routes stay "configured" (past
 // the `if (!telnyx) return 503` guard) with zero real Telnyx credentials, so
