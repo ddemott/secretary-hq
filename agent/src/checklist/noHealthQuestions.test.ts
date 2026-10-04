@@ -8,9 +8,8 @@
  * fixed on 2026-09-25 (personal-trainer "injuries or limitations", spa
  * "comfort or safety").
  *
- * Deliberate exceptions, each decided by Dale, not by this file:
- *   - med_spa_intake: the whole vertical is being deleted (HIPAA).
- * The law firm's personal-injury intake lives in trees.ts (case_intake), not in
+ * No vertical tree is exempt (the med-spa intake that used to be was deleted
+ * 2026-10-03). The law firm's personal-injury intake lives in trees.ts (case_intake), not in
  * VERTICAL_INTAKE_TREES. Dale 2026-09-25: left as is for now — injury data should
  * never be stored ("we are just the phonebook"); to be decided before any law
  * firm is accepted (docs/planning/TODO.md).
@@ -18,7 +17,6 @@
 import { describe, it, expect } from 'vitest';
 import { VERTICAL_INTAKE_TREES } from './verticalIntakeTrees.js';
 
-const PENDING_DELETION = new Set(['med_spa_intake']);
 // "condition" alone is NOT health — a car's paint condition is fine; only the
 // medical senses count.
 const HEALTH =
@@ -35,7 +33,7 @@ function collect(nodes: AnyNode[], out: { id: string; ask: string }[] = []) {
 }
 
 describe('non-medical call intakes collect no health information', () => {
-  const trees = VERTICAL_INTAKE_TREES.filter((t) => !PENDING_DELETION.has(t.tree_id));
+  const trees = VERTICAL_INTAKE_TREES;
 
   it.each(trees.map((t) => [t.tree_id, t] as const))(
     'SAD: %s never asks for injuries, conditions or medications',

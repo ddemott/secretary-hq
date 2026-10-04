@@ -196,7 +196,7 @@ Square also verifies HMAC against `${notificationUrl}${body}` rather than the bo
 **Control: a preference the AI hears is only ever written to a profile the caller has actually proven ownership of.**
 
 - The host (`agent/src/checklist/checklistTools.ts`) holds every preference the caller mentions in call memory first, keyed by a fixed per-vertical catalog (`shared/preferenceCatalog.ts`) — the model cannot invent a free-form key. A write to `save_customer_preference` only fires against: the carrier-attested caller-ID number for a recognized returning caller, a profile `identify_caller` saved this call (never one that answered `requires_verification`), or a spoken number the caller proved with `verify_phone_code`. **A spoken number that has not been proven gets nothing written to it, new profile or not** — there is no SMS/10DLC path yet to confirm it belongs to the person on the line, so a save would otherwise let a caller plant data on an arbitrary phone number just by reciting it.
-- `agent/src/checklist/callerPreferences.test.ts` covers the ownership gate; `tests/shared/preferenceCatalog.test.ts` covers the catalog (no medical keys anywhere — med_spa is appearance-only, consistent with the platform-wide HIPAA-vertical exclusion).
+- `agent/src/checklist/callerPreferences.test.ts` covers the ownership gate; `tests/shared/preferenceCatalog.test.ts` covers the catalog (no medical keys anywhere; there is no med_spa list at all, consistent with the platform-wide HIPAA-vertical exclusion, and `shared/hipaaVerticalDenylist.test.ts` fails if a HIPAA vertical gets a preference list or preset again).
 
 ## Open follow-ups
 

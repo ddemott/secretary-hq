@@ -15,7 +15,7 @@
  * dashboard for labels.
  *
  * Deliberately NOT here: anything medical (HIPAA verticals are excluded from
- * the platform, and med_spa lists appearance preferences only), payment
+ * the platform), payment
  * details, or anything a caller would not expect a front desk to remember.
  */
 
@@ -147,13 +147,6 @@ export const VERTICAL_PREFERENCES: Readonly<Record<string, readonly PreferenceTy
     pt('pressure_preference', 'Pressure', 'Light, medium, firm, deep.'),
     pt('therapist_gender', 'Therapist preference', 'A preference for a male or female therapist.'),
     pt('product_sensitivities', 'Product sensitivities', 'Oils, scents or products to avoid.'),
-  ],
-  med_spa: [
-    // Appearance preferences only — no medical history, conditions or treatment
-    // plans (HIPAA verticals are excluded from the platform).
-    USUAL_SERVICE('The service they come in for.'),
-    pt('provider_preference', 'Provider', 'A provider they want to see.'),
-    pt('product_sensitivities', 'Product sensitivities', 'Products or scents to avoid.'),
   ],
   lash_studio: [
     pt('lash_style', 'Lash style', 'Classic, hybrid, volume, a look they want.'),
