@@ -171,6 +171,21 @@ test('cancel-ui-list: Cancel button in AppointmentPopover from List sub-tab soft
   //      reproduce the flow with better synchronization (response wait +
   //      explicit status polling) so regressions in the cross-view wiring
   //      are caught reliably.
+  // This test needs a FUTURE SLOT LEFT TODAY: the List view shows today, the shift runs to 23:45, the
+  // appointment is 30 minutes, and the start must clear PAST_TIME by a real margin (20 min). Past about
+  // 22:50 local no such slot exists, and the quarter-hour rounding below used to push the start onto
+  // 00:00, i.e. TOMORROW, so the row never appeared in today's list (every CI run between ~23:00 and
+  // midnight Central failed here, 2026-10-03). Skip in that window rather than fail for a reason that
+  // has nothing to do with cancel-from-list; the flow is exercised the rest of the day.
+  const nowLocal = new Date();
+  const msToLocalMidnight =
+    new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate() + 1).getTime() -
+    nowLocal.getTime();
+  test.skip(
+    msToLocalMidnight < 70 * 60_000,
+    'no bookable same-day slot is left in the last ~70 minutes before local midnight'
+  );
+
   let tenant: RegisteredTenant | null = null;
   let apptId: string | null = null;
 
