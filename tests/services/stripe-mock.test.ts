@@ -188,6 +188,65 @@ describe('MockStripe', () => {
   });
 });
 
+describe('MockStripe invoice items', () => {
+  it('HAPPY: an item is queued for the customer, in integer cents', async () => {
+    const mock = new MockStripe();
+    const { id: customer } = await mock.customers.create({});
+    const { id } = await mock.invoiceItems.create({
+      customer,
+      amount: 300,
+      currency: 'usd',
+      description: 'Overage',
+      metadata: { month: '2026-09' },
+    });
+    expect(id).toMatch(/^ii_mock_\d+$/);
+    expect(mock.getInvoiceItems(customer)).toEqual([
+      {
+        id,
+        customer,
+        amount: 300,
+        currency: 'usd',
+        description: 'Overage',
+        metadata: { month: '2026-09' },
+      },
+    ]);
+  });
+
+  it('REGRESSION: the same idempotency key returns the same item and charges nothing new', async () => {
+    const mock = new MockStripe();
+    const { id: customer } = await mock.customers.create({});
+    const a = await mock.invoiceItems.create(
+      { customer, amount: 300, currency: 'usd' },
+      { idempotencyKey: 'k1' }
+    );
+    const b = await mock.invoiceItems.create(
+      { customer, amount: 300, currency: 'usd' },
+      { idempotencyKey: 'k1' }
+    );
+    const c = await mock.invoiceItems.create(
+      { customer, amount: 300, currency: 'usd' },
+      { idempotencyKey: 'k2' }
+    );
+    expect(b.id).toBe(a.id);
+    expect(c.id).not.toBe(a.id);
+    expect(mock.getInvoiceItems(customer)).toHaveLength(2);
+  });
+
+  it('SAD: an unknown customer, a zero, negative or fractional amount are refused like Stripe refuses them', async () => {
+    const mock = new MockStripe();
+    const { id: customer } = await mock.customers.create({});
+    await expect(
+      mock.invoiceItems.create({ customer: 'cus_nope', amount: 100, currency: 'usd' })
+    ).rejects.toThrow(/No such customer/);
+    for (const amount of [0, -5, 1.5]) {
+      await expect(mock.invoiceItems.create({ customer, amount, currency: 'usd' })).rejects.toThrow(
+        /Invalid amount/
+      );
+    }
+    expect(mock.getInvoiceItems(customer)).toHaveLength(0);
+  });
+});
+
 describe('webhook signing', () => {
   const secret = 'whsec_test';
   const body = JSON.stringify({ id: 'evt_1', type: 'invoice.paid', data: { object: {} } });
