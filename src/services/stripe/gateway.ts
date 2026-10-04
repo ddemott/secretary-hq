@@ -32,6 +32,13 @@ export interface StripeGateway {
       ): Promise<{ id: string; url: string | null }>;
     };
   };
+  invoiceItems: {
+    /** Adds a one-off charge to the customer's next invoice. `idempotencyKey` makes a retry a no-op. */
+    create(
+      params: Stripe.InvoiceItemCreateParams,
+      options?: { idempotencyKey?: string }
+    ): Promise<{ id: string }>;
+  };
   billingPortal: {
     sessions: {
       create(params: Stripe.BillingPortal.SessionCreateParams): Promise<{ url: string }>;

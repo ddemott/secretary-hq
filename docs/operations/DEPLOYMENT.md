@@ -168,12 +168,15 @@ All Stripe calls go through one seam (`src/services/stripe/`), so billing is bui
 
 In mock mode `GET /billing/status` reports `billing_mode: "mock"` and the Billing page says test billing is on. Try it locally: start the backend with `STRIPE_MODE=mock`, choose a plan in Billing, and use the practice checkout page (a test card, a declined card, and a billing portal that can cancel or simulate a failed or recovered renewal). Every result is delivered as a signed POST to the real `/billing/webhook`.
 
+**Overage billing** (calls past a plan's allowance) is built on the same seam and is **off unless `ENABLE_OVERAGE_BILLING=true`**, production included, because it moves money. Once a day it adds each active paid tenant's unbilled closed month to their Stripe customer as an invoice item (`overage_charges` is the exactly-once ledger). `OVERAGE_BILLER_INTERVAL_MS` tunes the interval (default 24h, clamped to 1h to 7d). Against the mock the items accumulate in memory; against real Stripe they ride the next subscription invoice. Enable it only after the real account is attached and a test-mode month has been checked.
+
 **Attaching the real Stripe account (when the keys exist):**
 
 1. In Stripe (test mode first): create the three recurring monthly prices ($29.95 / $59.95 / $149.95) and copy their ids.
 2. Register a webhook endpoint at `https://secretary-hq-production.up.railway.app/billing/webhook` with the six events listed in `CLAUDE.md` → Production, and copy its signing secret.
 3. On Railway set `STRIPE_SECRET_KEY`, `STRIPE_SOLO_PRICE_ID`, `STRIPE_GROWTH_PRICE_ID`, `STRIPE_PRO_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`. Make sure `STRIPE_MODE` is NOT set.
 4. Run `./scripts/simulate.sh stripe --env prod`, then one test-card checkout end to end. No code change is involved.
+5. When a test-mode month looks right, set `ENABLE_OVERAGE_BILLING=true` to start charging overage.
 
 #### Backend — required for full functionality
 

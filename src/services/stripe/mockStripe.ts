@@ -44,6 +44,16 @@ export interface MockSubscription {
   status: 'trialing' | 'active' | 'past_due' | 'canceled';
 }
 
+export interface MockInvoiceItem {
+  id: string;
+  customer: string;
+  /** Integer cents, as Stripe takes it. */
+  amount: number;
+  currency: string;
+  description: string;
+  metadata: Record<string, string>;
+}
+
 export interface SignedWebhook {
   body: string;
   header: string;
@@ -99,6 +109,8 @@ export class MockStripe implements StripeGateway {
   private readonly sessions = new Map<string, MockCheckoutSession>();
   private readonly subscriptionsById = new Map<string, MockSubscription>();
   private readonly customerIds = new Set<string>();
+  private readonly invoiceItemsById = new Map<string, MockInvoiceItem>();
+  private readonly invoiceItemsByKey = new Map<string, string>();
 
   private nextId(prefix: string): string {
     this.seq += 1;
@@ -152,6 +164,37 @@ export class MockStripe implements StripeGateway {
     },
   };
 
+  readonly invoiceItems = {
+    create: (params: Stripe.InvoiceItemCreateParams, options?: { idempotencyKey?: string }) => {
+      // Like Stripe, the same idempotency key returns the original object and creates nothing new.
+      const key = options?.idempotencyKey;
+      const existing = key ? this.invoiceItemsByKey.get(key) : undefined;
+      if (existing) return Promise.resolve({ id: existing });
+
+      if (typeof params.customer !== 'string' || !this.customerIds.has(params.customer)) {
+        return Promise.reject(new Error(`No such customer: '${String(params.customer)}'`));
+      }
+      if (!Number.isInteger(params.amount) || (params.amount ?? 0) <= 0) {
+        return Promise.reject(new Error('Invalid amount: must be a positive integer of cents'));
+      }
+      const id = this.nextId('ii');
+      this.invoiceItemsById.set(id, {
+        id,
+        customer: params.customer,
+        amount: params.amount as number,
+        currency: params.currency ?? 'usd',
+        description: params.description ?? '',
+        metadata: Object.fromEntries(
+          Object.entries(params.metadata ?? {})
+            .filter(([, v]) => v !== null)
+            .map(([k, v]) => [k, String(v)])
+        ),
+      });
+      if (key) this.invoiceItemsByKey.set(key, id);
+      return Promise.resolve({ id });
+    },
+  };
+
   readonly billingPortal = {
     sessions: {
       create: (params: Stripe.BillingPortal.SessionCreateParams) =>
@@ -178,6 +221,11 @@ export class MockStripe implements StripeGateway {
   };
 
   // ── What a person does on Stripe's hosted pages ──────────────────────────
+
+  /** The charges queued for a customer's next invoice (what an owner would see added to it). */
+  getInvoiceItems(customerId: string): MockInvoiceItem[] {
+    return [...this.invoiceItemsById.values()].filter((i) => i.customer === customerId);
+  }
 
   getSession(id: string): MockCheckoutSession | undefined {
     return this.sessions.get(id);

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict xmAikfeLOEDTeRyD4wdMaMabfeaL4ey9DQCH7KEMUuJnYCTDRuUh5DLDFI1vKx2
+\restrict JHHAdHYTxDkriBeYZeSI7HHDQHYMZ0lecKfA8eB3eI6A1h4m7Mj76vFm2pSDOLt
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4300,6 +4300,42 @@ ALTER SEQUENCE public.opt_out_records_id_seq OWNED BY public.opt_out_records.opt
 
 
 --
+-- Name: overage_charges; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.overage_charges (
+    tenant_id uuid NOT NULL,
+    month text NOT NULL,
+    overage_calls integer NOT NULL,
+    amount_cents integer NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    stripe_invoice_item_id text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT overage_charges_item_matches_status CHECK ((((status = 'created'::text) AND (stripe_invoice_item_id IS NOT NULL)) OR ((status = 'pending'::text) AND (stripe_invoice_item_id IS NULL)))),
+    CONSTRAINT overage_charges_month_format CHECK ((month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'::text)),
+    CONSTRAINT overage_charges_positive CHECK (((overage_calls > 0) AND (amount_cents > 0))),
+    CONSTRAINT overage_charges_status_valid CHECK ((status = ANY (ARRAY['pending'::text, 'created'::text])))
+);
+
+ALTER TABLE ONLY public.overage_charges FORCE ROW LEVEL SECURITY;
+
+
+--
+-- Name: TABLE overage_charges; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.overage_charges IS 'One row per tenant per closed UTC month: the overage amount handed to Stripe as an invoice item. Claimed pending before the Stripe call, flipped to created after, so a retry can never double-charge and a crash can never drop the charge.';
+
+
+--
+-- Name: COLUMN overage_charges.amount_cents; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.overage_charges.amount_cents IS 'Integer cents, exactly what was sent to Stripe (overage_calls x the plan rate, rounded to cents once on the total).';
+
+
+--
 -- Name: password_resets; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -5488,6 +5524,14 @@ ALTER TABLE ONLY public.message_delivery_status
 
 ALTER TABLE ONLY public.opt_out_records
     ADD CONSTRAINT opt_out_records_pkey PRIMARY KEY (opt_out_record_id);
+
+
+--
+-- Name: overage_charges overage_charges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.overage_charges
+    ADD CONSTRAINT overage_charges_pkey PRIMARY KEY (tenant_id, month);
 
 
 --
@@ -7030,6 +7074,14 @@ ALTER TABLE ONLY public.opt_out_records
 
 
 --
+-- Name: overage_charges overage_charges_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.overage_charges
+    ADD CONSTRAINT overage_charges_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(tenant_id) ON DELETE CASCADE;
+
+
+--
 -- Name: password_resets password_resets_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7771,6 +7823,26 @@ CREATE POLICY opt_out_records_tenant_isolation ON public.opt_out_records USING (
 
 
 --
+-- Name: overage_charges; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.overage_charges ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: overage_charges overage_charges_admin_bypass; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY overage_charges_admin_bypass ON public.overage_charges USING ((public.tenant_ctx() = ''::text)) WITH CHECK ((public.tenant_ctx() = ''::text));
+
+
+--
+-- Name: overage_charges overage_charges_tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY overage_charges_tenant_isolation ON public.overage_charges USING ((tenant_id = public.tenant_ctx_uuid())) WITH CHECK ((tenant_id = public.tenant_ctx_uuid()));
+
+
+--
 -- Name: password_resets; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -8095,5 +8167,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xmAikfeLOEDTeRyD4wdMaMabfeaL4ey9DQCH7KEMUuJnYCTDRuUh5DLDFI1vKx2
+\unrestrict JHHAdHYTxDkriBeYZeSI7HHDQHYMZ0lecKfA8eB3eI6A1h4m7Mj76vFm2pSDOLt
 

@@ -64,6 +64,11 @@ import { startReminderScheduler, stopReminderScheduler } from './workers/reminde
 import { startVoiceSessionReaper, stopVoiceSessionReaper } from './workers/voiceSessionReaper';
 import { startScheduleExtender, stopScheduleExtender } from './workers/scheduleExtender';
 import {
+  startOverageBiller,
+  stopOverageBiller,
+  overageBillingEnabled,
+} from './workers/overageBiller';
+import {
   startWebsiteRescanScheduler,
   stopWebsiteRescanScheduler,
 } from './workers/websiteRescanScheduler';
@@ -346,6 +351,14 @@ if (workerEnabled(process.env.ENABLE_WEBSITE_RESCAN_SCHEDULER, isProduction)) {
   startWebsiteRescanScheduler();
 }
 
+// --- Start Overage Biller ---
+// Charges each active paid tenant the overage for any closed month not yet on the ledger, as a
+// Stripe invoice item (src/services/overageBilling.ts). OFF unless ENABLE_OVERAGE_BILLING=true,
+// in production too: this one moves money. Does not run at boot; the first tick waits an interval.
+if (overageBillingEnabled()) {
+  startOverageBiller();
+}
+
 // --- Feature-readiness boot report ---
 // One structured line (not 12 warns) naming each optional capability's status
 // (ready/mocked/disabled/missing_config). Same conditions as the prod-only
@@ -444,6 +457,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     stopVoiceSessionReaper();
     stopScheduleExtender();
     stopWebsiteRescanScheduler();
+    stopOverageBiller();
     await app.close();
     await closePool();
     process.exit(0);
