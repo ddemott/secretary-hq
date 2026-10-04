@@ -3,7 +3,7 @@
 > **Design/history doc, frozen at 2026-08-13 — NOT the live source of truth for
 > current counts.** Numbers below (e.g. "the first three real preset bundles")
 > describe the state as of that date. #388 (2026-08-31) added 28 more
-> vertical-intake presets; the platform runs **33 presets** today. For the
+> vertical-intake presets; the platform runs **32 presets** today (the HIPAA med-spa preset was deleted 2026-10-03). For the
 > live, maintained catalog and counts, see `CLAUDE.md`'s `/agent/src/checklist/`
 > bullet — where the code and this doc differ, the code wins.
 

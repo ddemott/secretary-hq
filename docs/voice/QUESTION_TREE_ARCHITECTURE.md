@@ -19,7 +19,7 @@
 > the agent receives, and the **preset decides which trees are selectable at all**.
 > Overrides can only SUBTRACT — there is no ADD verb — so **a tree missing from the
 > tenant's preset is unreachable no matter what the model asks for.** There are
-> **33 presets as of #388 (2026-08-31)**: the original five —
+> **32 presets** (33 as of #388, 2026-08-31, until the HIPAA med-spa preset was deleted 2026-10-03): the original five —
 > `auto_shop_front_desk`, `salon_front_desk`, `local_service_front_desk`,
 > `owner_for_hire_front_desk`, and `law_firm_front_desk` — plus 28 more
 > vertical-intake presets (`VERTICAL_INTAKE_PRESETS`), one per additional
