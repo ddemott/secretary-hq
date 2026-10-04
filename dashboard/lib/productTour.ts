@@ -51,6 +51,12 @@ export const SETUP_SUBTAB_EVENT = 'secretary-hq:setup-subtab';
 
 /** How long a step waits for its target to render after a tab switch. */
 export const TARGET_WAIT_MS = 4000;
+/**
+ * After TARGET_WAIT_MS the step is shown anyway (a floating card beats a stuck
+ * tour), but a target that mounts later, on a slow connection or a cold server,
+ * still gets spotlighted: the tour keeps watching this long and re-anchors.
+ */
+export const LATE_TARGET_WAIT_MS = 20_000;
 
 export const TOUR_STEPS: readonly TourStep[] = [
   {
@@ -326,6 +332,8 @@ export interface RunTourOptions {
   driverFactory?: DriverFactory;
   onFinish?: () => void;
   targetWaitMs?: number;
+  /** How long to keep watching for a target that missed targetWaitMs. */
+  lateTargetWaitMs?: number;
 }
 
 /**
@@ -337,7 +345,10 @@ export async function runProductTour(opts: RunTourOptions = {}): Promise<Driver>
   const steps = stepsForRole(opts.role);
   const factory = opts.driverFactory ?? (await import('driver.js')).driver;
   const waitMs = opts.targetWaitMs ?? TARGET_WAIT_MS;
+  const lateWaitMs = opts.lateTargetWaitMs ?? LATE_TARGET_WAIT_MS;
   let moving = false;
+  /** Bumped on every step change and on destroy, so a stale late-anchor watcher stands down. */
+  let stepToken = 0;
 
   const tour = factory({
     showProgress: true,
@@ -355,7 +366,10 @@ export async function runProductTour(opts: RunTourOptions = {}): Promise<Driver>
     })),
     onNextClick: () => void show((tour.getActiveIndex() ?? 0) + 1),
     onPrevClick: () => void show((tour.getActiveIndex() ?? 0) - 1),
-    onDestroyed: () => opts.onFinish?.(),
+    onDestroyed: () => {
+      stepToken++;
+      opts.onFinish?.();
+    },
   });
 
   // Navigate first, wait for the target, THEN move — Driver.js would
@@ -370,10 +384,20 @@ export async function runProductTour(opts: RunTourOptions = {}): Promise<Driver>
     moving = true;
     try {
       const step = steps[index];
+      const token = ++stepToken;
       if (step.place) goTo(step.place);
-      if (step.target) await waitForElement(step.target, waitMs);
+      const found = step.target ? await waitForElement(step.target, waitMs) : null;
       if (tour.isActive()) tour.moveTo(index);
       else tour.drive(index);
+      // The target missed its window: the card is up, unanchored. Keep watching,
+      // and spotlight the target if it does appear while this step is still showing.
+      if (step.target && !found && lateWaitMs > 0) {
+        void waitForElement(step.target, lateWaitMs).then((el) => {
+          if (el && token === stepToken && tour.isActive() && tour.getActiveIndex() === index) {
+            tour.moveTo(index);
+          }
+        });
+      }
     } finally {
       moving = false;
     }

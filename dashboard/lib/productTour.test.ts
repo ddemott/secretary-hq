@@ -56,6 +56,13 @@ function fakeDriver() {
   };
 }
 
+/** Mount an element matching a simple `[attr="value"]...` selector (all the tour targets). */
+function mountTarget(selector: string): void {
+  const el = document.createElement('div');
+  for (const m of selector.matchAll(/\[([\w-]+)="([^"]*)"\]/g)) el.setAttribute(m[1], m[2]);
+  document.body.appendChild(el);
+}
+
 /** Let the runner's async show() settle (goTo + waitForElement + move). */
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -305,6 +312,37 @@ describe('runProductTour', () => {
     d.next();
     await new Promise((r) => setTimeout(r, 120));
     expect(d.calls.filter((c) => c.startsWith('moveTo'))).toEqual(['moveTo:1']);
+  });
+
+  test('REGRESSION: a target that mounts after the wait window is spotlighted once it appears', async () => {
+    // WHO: a prospect on a slow connection or a cold server.
+    // WHAT: Business Settings shows "Loading settings..." until a config request settles; the
+    //       tour used to give up after 4 s and leave the step as an unanchored floating card
+    //       for good (this failed the e2e on a loaded CI machine).
+    const d = fakeDriver();
+    document.body.innerHTML = '';
+    await runProductTour({ driverFactory: d.factory, targetWaitMs: 0, lateTargetWaitMs: 400 });
+    d.next(); // step 1 is shown at once, with no target on the page
+    await new Promise((r) => setTimeout(r, 60));
+    expect(d.calls.filter((c) => c.startsWith('moveTo'))).toEqual(['moveTo:1']);
+
+    // Now the target mounts, late.
+    mountTarget(TOUR_STEPS[1].target!);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(d.calls.filter((c) => c.startsWith('moveTo'))).toEqual(['moveTo:1', 'moveTo:1']);
+  });
+
+  test('SAD: a late target does not yank the tour back after the user moved on', async () => {
+    const d = fakeDriver();
+    document.body.innerHTML = '';
+    await runProductTour({ driverFactory: d.factory, targetWaitMs: 0, lateTargetWaitMs: 400 });
+    d.next(); // -> step 1, target missing
+    await new Promise((r) => setTimeout(r, 30));
+    d.next(); // -> step 2 before step 1's target ever appears
+    await new Promise((r) => setTimeout(r, 30));
+    mountTarget(TOUR_STEPS[1].target!);
+    await new Promise((r) => setTimeout(r, 150));
+    expect(d.calls.filter((c) => c.startsWith('moveTo')).at(-1)).toBe('moveTo:2');
   });
 
   test('HAPPY: front desk runs the shorter tour', async () => {
