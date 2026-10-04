@@ -486,46 +486,6 @@ export const SPA_INTAKE_TREE: QuestionTreeDef = {
   ],
 };
 
-export const MED_SPA_INTAKE_TREE: QuestionTreeDef = {
-  tree_id: 'med_spa_intake',
-  description:
-    'The caller wants to book a consultation or aesthetic service at a med spa \u2014 injectables, laser, skincare. Select alongside booking so the consultation carries their area of interest. Never collect medical history on the call; that is for the provider.',
-  nodes: [
-    {
-      node_id: 'med_spa_treatment_interest',
-      type: 'text',
-      ask: 'which service or treatment they are asking about, in their own words \u2014 record it to book the right consultation, and leave any medical detail for the provider.',
-    },
-    {
-      node_id: 'med_spa_client_status',
-      type: 'choice',
-      ask: 'whether they are a new client or returning, since new clients start with a consultation.',
-      options: {
-        new_client: [],
-        returning: [],
-      },
-    },
-    {
-      node_id: 'med_spa_area_of_interest',
-      type: 'text',
-      listen: true,
-      ask: 'the area or concern they want addressed, if they describe it.',
-    },
-    {
-      node_id: 'med_spa_event_date',
-      type: 'text',
-      listen: true,
-      ask: 'any date they are preparing for, if they mention one.',
-    },
-    {
-      node_id: 'med_spa_prior_treatments',
-      type: 'text',
-      listen: true,
-      ask: 'whether they have had similar treatments before, only if they volunteer it.',
-    },
-  ],
-};
-
 export const LASH_STUDIO_INTAKE_TREE: QuestionTreeDef = {
   tree_id: 'lash_studio_intake',
   description:
@@ -1468,7 +1428,6 @@ export const VERTICAL_INTAKE_TREES: QuestionTreeDef[] = [
   BARBERSHOP_INTAKE_TREE,
   NAIL_SALON_INTAKE_TREE,
   SPA_INTAKE_TREE,
-  MED_SPA_INTAKE_TREE,
   LASH_STUDIO_INTAKE_TREE,
   PLUMBER_INTAKE_TREE,
   ELECTRICIAN_INTAKE_TREE,
@@ -1581,14 +1540,6 @@ export const VERTICAL_INTAKE_BLOCKS: Record<string, ConversationBlockDef> = {
     kind: 'conversation',
     description: 'Spa intake - captures service details that ride into the booking or message.',
     tree_refs: ['spa_intake'],
-    pairs_with: ['identity', 'booking', 'message'],
-    sink: 'composed',
-  },
-  med_spa_intake: {
-    block_id: 'med_spa_intake',
-    kind: 'conversation',
-    description: 'Med spa intake - captures service details that ride into the booking or message.',
-    tree_refs: ['med_spa_intake'],
     pairs_with: ['identity', 'booking', 'message'],
     sink: 'composed',
   },
@@ -1914,25 +1865,6 @@ export const VERTICAL_INTAKE_PRESETS: VerticalPresetDef[] = [
     outcome_blocks: [],
     forbidden_trees: ['job', 'buy_service'],
     defaults: { booking_mode: 'offer_once', primary_intake: 'spa_intake' },
-  },
-  {
-    preset_id: 'med_spa_front_desk',
-    vertical: 'med_spa',
-    description:
-      'Starter preset for med spa: capture intake details, book work, take messages, answer questions, and handle schedule changes.',
-    conversation_blocks: [
-      'identity',
-      'med_spa_intake',
-      'booking',
-      'message',
-      'qa',
-      'schedule_change',
-    ],
-    policy_blocks: [],
-    knowledge_blocks: [],
-    outcome_blocks: [],
-    forbidden_trees: ['job', 'buy_service'],
-    defaults: { booking_mode: 'offer_once', primary_intake: 'med_spa_intake' },
   },
   {
     preset_id: 'lash_studio_front_desk',

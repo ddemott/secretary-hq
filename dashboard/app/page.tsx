@@ -1123,7 +1123,6 @@ const LANDING_HTML = `
       <div class="biz-chip">Nail Salon</div>
       <div class="biz-chip">Spa &amp; Wellness</div>
       <div class="biz-chip">Lash &amp; Brow Studio</div>
-      <div class="biz-chip">Med Spa</div>
       <div class="biz-chip">Personal Training</div>
       <div class="biz-chip">Yoga Studio</div>
       <div class="biz-chip">Bakery</div>

@@ -87,13 +87,13 @@ describe('preference catalog — shape', () => {
     }
   });
 
-  it('med spa and law firm carry no medical or case-fact keys', () => {
-    // HIPAA verticals are excluded from the platform; a law firm's case facts
-    // belong in the intake, not a profile read back on every future call.
+  it('a law firm carries no case-fact keys, and the removed med spa has no list at all', () => {
+    // A law firm's case facts belong in the intake, not a profile read back on
+    // every future call. Med spa is a HIPAA vertical, excluded from the platform
+    // (its list was deleted 2026-10-03); it must not come back.
     const risky = /medical|condition|diagnos|medication|treatment_plan|case_/;
-    for (const v of ['med_spa', 'law_firm']) {
-      for (const p of VERTICAL_PREFERENCES[v]) expect(p.key).not.toMatch(risky);
-    }
+    for (const p of VERTICAL_PREFERENCES['law_firm']) expect(p.key).not.toMatch(risky);
+    expect(VERTICAL_PREFERENCES['med_spa']).toBeUndefined();
   });
 });
 

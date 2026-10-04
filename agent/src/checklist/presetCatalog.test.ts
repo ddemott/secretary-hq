@@ -35,7 +35,6 @@ describe('preset catalog', () => {
       'barbershop_front_desk',
       'nail_salon_front_desk',
       'spa_front_desk',
-      'med_spa_front_desk',
       'lash_studio_front_desk',
       'plumber_front_desk',
       'electrician_front_desk',
