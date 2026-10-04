@@ -4,6 +4,25 @@ Historical session journals, completed phases, and resolved bug logs. Moved out 
 
 ---
 
+## 2026-10-03/04 — Tutorial rebuilt on the Auto Shop Template, Stripe mocked in, overage billing, HIPAA cleanup (#575–#587)
+
+Dale: "finish all the items you can finish without me. As for Stripe mock it in. Once I get Stripe in, then we can attach it."
+
+- **#575 — the public demo became the Tutorial** (`/tutorial/start`, `/tutorial/reset`, `is_tutorial`), with an in-place Reset button; `/demo` kept as a permanent alias.
+- **#576** — the question-tree rollout scripts skip template tenants (a commit stranded on a branch after #574).
+- **#578–#582 — the Tutorial rebuilt in four pieces.** Created as an auto shop (`auto-shop`, not `automotive`, which no preset maps to); starts as a COPY of the Auto Shop Template (no prices, Alignment Bay, knowledge starters) with the placeholder staff renamed; a week of sample calls, messages, caller preferences and knowledge answers (no invented prices); appointment times fixed from UTC to the shop's timezone (a 10 AM brake inspection had shown at 5 AM Chicago time); a customer Preferences card on the profile (`GET /customers/:id/preferences`; nothing in the dashboard read those rows before); and the Driver.js product tour, ported with the `tutorialTenantId` rename (the old `demoTenantId` key would have made the tour silently never start). CI caught a real timing bug in the tour's target wait, fixed by re-anchoring when a late target appears.
+- **#584 — the leftover med-spa code deleted** (preset, intake tree, preference list, landing chips; presets 33 to 32, intake trees 30 to 29). Migration `20261004000000` resets any pinned tenant and narrows the preset CHECK. New guard: no checklist preset or preference list may be keyed by a HIPAA vertical.
+- **#585 — Stripe mocked in.** One seam, `src/services/stripe/` (`StripeGateway`): the real SDK satisfies it as-is, and `MockStripe` runs checkout, the trial and one-trial rule, webhooks, the billing portal, cancel and failed/recovered renewals with no account. `STRIPE_MODE=mock` selects it and is ignored in production. Mock results reach the real `/billing/webhook` as SIGNED POSTs in Stripe's real signature scheme (cross-verified against the real SDK both ways). Attaching the real account is configuration only (checklist in `docs/operations/DEPLOYMENT.md`).
+- **#587 — overage billing through the gateway**, exactly once: a month-end Stripe invoice item per closed month, an `overage_charges` ledger (PK tenant+month) claimed BEFORE Stripe is called, retries reuse the original ledger amount, a crash after Stripe succeeded reuses the idempotency key. OFF unless `ENABLE_OVERAGE_BILLING=true`, production too. Migration `20261004000100`.
+- **#586 — the e2e `cancel-ui-list` test skips in the last 70 minutes before local midnight.** It had failed every CI run between ~23:00 and midnight Central: it clamped the appointment before midnight and then rounded the start UP to the next quarter hour, landing on 00:00 (tomorrow), and past ~22:50 no valid same-day slot exists at all.
+- Closed: the OpenAI-credits item (Dale reports it topped up), the "#573 deploy skipped" item, the "template for every business type" item.
+
+**Left for Dale:** apply migrations `20261004000000` and `20261004000100` to prod (the code runs without them); create the Stripe products/prices and register the webhook once the account exists, then set `ENABLE_OVERAGE_BILLING`; decide whether to delete the local-only `feat/product-tour` branch (its content is all ported).
+
+**Lessons (added to `docs/workflow/LESSONS_LEARNED.md`):** a payment must be claimed on a ledger before the external call; a test that "fails at night" is a date-boundary bug; `pgrep -f` inside a command matches the command itself.
+
+---
+
 ## 2026-09-24/25 — Billing decided, signup gated, caller preferences wired (#560–#571)
 
 Pricing research (#560), SMS cost correction (#561), and the three per-tier pricing decisions (#562–#564) landed first as docs-only PRs; #565–#571 shipped the code behind them.

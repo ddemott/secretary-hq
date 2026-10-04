@@ -138,6 +138,8 @@ Out of scope (not a multi-tenant SaaS concern at this stage): DDoS, application-
 
 Square also verifies HMAC against `${notificationUrl}${body}` rather than the body alone, so the registered notification URL must match exactly.
 
+**Stripe mock mode (added 2026-10-04).** With `STRIPE_MODE=mock` the app serves practice pages at `/billing/mock/checkout` and `/billing/mock/portal`, which are in the public-route lists. Controls: `STRIPE_MODE=mock` is **ignored when `NODE_ENV=production`**, the pages are only registered in mock mode and every handler re-checks the mode and answers 404 otherwise, request values are HTML-escaped and passed through `data-` attributes (never into inline script), and the portal only redirects to the dashboard origin. The webhook signature gate is unchanged in mock mode: mock events are signed with the same scheme and a forged or unsigned POST is rejected 400 (`tests/routes/billing-mock.test.ts`).
+
 ## Password reset flow
 
 **Control: short-lived single-use tokens + per-user invalidation timestamp + RLS.**
