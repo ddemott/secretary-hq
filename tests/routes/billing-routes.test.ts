@@ -30,6 +30,7 @@ const mockCheckoutCreate = vi.fn();
 const mockConstructEvent = vi.fn();
 const mockPortalCreate = vi.fn();
 const mockCustomersCreate = vi.fn();
+const mockCustomersUpdate = vi.fn();
 const mockSubscriptionsList = vi.fn();
 
 vi.mock('stripe', () => ({
@@ -39,7 +40,7 @@ vi.mock('stripe', () => ({
       checkout: { sessions: { create: mockCheckoutCreate } },
       webhooks: { constructEvent: mockConstructEvent },
       billingPortal: { sessions: { create: mockPortalCreate } },
-      customers: { create: mockCustomersCreate },
+      customers: { create: mockCustomersCreate, update: mockCustomersUpdate },
       subscriptions: { list: mockSubscriptionsList },
     };
   }),
@@ -161,6 +162,7 @@ beforeEach(() => {
   mockConstructEvent.mockReset();
   mockPortalCreate.mockReset();
   mockCustomersCreate.mockReset();
+  mockCustomersUpdate.mockReset();
   mockSubscriptionsList.mockReset();
   mockSubscriptionsList.mockResolvedValue({ data: [] }); // default: no Stripe history
 });
@@ -197,6 +199,118 @@ describe('POST /billing/checkout', () => {
     );
     // DB: email gate read + tenant lookup, no customer_id UPDATE
     expect(queries).toHaveLength(2);
+  });
+
+  describe('service address (Stripe Tax)', () => {
+    const ADDRESS_ROW = {
+      tenant_id: TENANT_ID,
+      name: 'Test Biz',
+      stripe_subscription_id: null,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
+      service_country: 'US',
+    };
+    const STRIPE_ADDRESS = {
+      line1: '1 N State St',
+      city: 'Chicago',
+      state: 'IL',
+      postal_code: '60602',
+      country: 'US',
+    };
+
+    it('HAPPY: a new Stripe customer is created WITH the service address (WHO: owner starting checkout | WHY: Stripe Tax prices from where the service is used)', async () => {
+      mockCustomersCreate.mockResolvedValue({ id: 'cus_new' });
+      mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_addr' });
+      const { app } = buildApp({
+        poolResponses: [{ rows: [{ ...ADDRESS_ROW, stripe_customer_id: null }] }],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockCustomersCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ address: STRIPE_ADDRESS })
+      );
+      expect(mockCustomersUpdate).not.toHaveBeenCalled();
+    });
+
+    it('HAPPY: an existing customer gets its address refreshed before checkout (WHO: owner who moved | WHY: the invoice must be taxed at the current address)', async () => {
+      mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_addr2' });
+      const { app } = buildApp({
+        poolResponses: [{ rows: [{ ...ADDRESS_ROW, stripe_customer_id: STRIPE_CUSTOMER_ID }] }],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockCustomersUpdate).toHaveBeenCalledWith(STRIPE_CUSTOMER_ID, {
+        address: STRIPE_ADDRESS,
+      });
+    });
+
+    it('SAD: automatic tax ON and no address is refused 422 before any Stripe call (WHO: tenant that signed up before addresses existed | WHY: Stripe cannot place the customer and checkout would fail)', async () => {
+      vi.stubEnv('STRIPE_AUTO_TAX', 'true');
+      const { app } = buildApp({
+        poolResponses: [
+          { rows: [{ tenant_id: TENANT_ID, name: 'Old Biz', stripe_customer_id: null }] },
+        ],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json<{ error_code: string }>().error_code).toBe('service_address_required');
+      expect(mockCustomersCreate).not.toHaveBeenCalled();
+      expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    });
+
+    it('HAPPY: automatic tax ON with an address turns on automatic_tax in the session', async () => {
+      vi.stubEnv('STRIPE_AUTO_TAX', 'true');
+      mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_tax' });
+      const { app } = buildApp({
+        poolResponses: [{ rows: [{ ...ADDRESS_ROW, stripe_customer_id: STRIPE_CUSTOMER_ID }] }],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockCheckoutCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ automatic_tax: { enabled: true } })
+      );
+    });
+
+    it('HAPPY: automatic tax OFF — a tenant with no address still checks out, and no address is sent', async () => {
+      mockCustomersCreate.mockResolvedValue({ id: 'cus_noaddr' });
+      mockCheckoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/pay/cs_off' });
+      const { app } = buildApp({
+        poolResponses: [
+          { rows: [{ tenant_id: TENANT_ID, name: 'Old Biz', stripe_customer_id: null }] },
+        ],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockCustomersCreate.mock.calls[0][0]).not.toHaveProperty('address');
+      expect(mockCheckoutCreate.mock.calls[0][0]).not.toHaveProperty('automatic_tax');
+    });
+
+    it('SAD: a half-filled address is treated as no address (WHO: row missing a part | WHY: a partial address cannot place a customer)', async () => {
+      vi.stubEnv('STRIPE_AUTO_TAX', 'true');
+      const { app } = buildApp({
+        poolResponses: [
+          {
+            rows: [{ ...ADDRESS_ROW, service_zip: null, stripe_customer_id: STRIPE_CUSTOMER_ID }],
+          },
+        ],
+      });
+
+      const res = await post(app, '/billing/checkout', { plan: 'solo' });
+
+      expect(res.statusCode).toBe(422);
+    });
   });
 
   it('HAPPY: first subscription gets a 14-day trial and Checkout must collect a card', async () => {

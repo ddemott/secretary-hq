@@ -285,3 +285,69 @@ describe('webhook signing', () => {
     expect(() => verifyWebhookSignature(body, '', secret)).toThrow();
   });
 });
+
+describe('MockStripe customer address and automatic tax', () => {
+  const address = {
+    line1: '1 N State St',
+    city: 'Chicago',
+    state: 'IL',
+    postal_code: '60602',
+    country: 'US',
+  };
+  it('HAPPY: a customer created with an address holds it; update replaces it', async () => {
+    const mock = new MockStripe();
+    const { id } = await mock.customers.create({ address });
+    expect(mock.getCustomerAddress(id)).toEqual(address);
+    await mock.customers.update(id, { address: { ...address, postal_code: '60603' } });
+    expect(mock.getCustomerAddress(id)?.postal_code).toBe('60603');
+  });
+
+  it('SAD: updating an unknown customer fails like Stripe', async () => {
+    await expect(new MockStripe().customers.update('cus_nope', { address })).rejects.toThrow(
+      /No such customer/
+    );
+  });
+
+  it('SAD: automatic tax for a customer with no address is refused, as Stripe does (WHY: this is the failure that setting STRIPE_AUTO_TAX=true would have caused)', async () => {
+    const mock = new MockStripe();
+    const { id } = await mock.customers.create({ name: 'No address' });
+    await expect(
+      mock.checkout.sessions.create({
+        customer: id,
+        mode: 'subscription',
+        line_items: [{ price: 'price_mock_growth', quantity: 1 }],
+        success_url: 'https://app/ok',
+        cancel_url: 'https://app/no',
+        automatic_tax: { enabled: true },
+      })
+    ).rejects.toThrow(/requires a valid address on the Customer/);
+  });
+
+  it('HAPPY: automatic tax works once the customer has an address', async () => {
+    const mock = new MockStripe();
+    const { id } = await mock.customers.create({ address });
+    const created = await mock.checkout.sessions.create({
+      customer: id,
+      mode: 'subscription',
+      line_items: [{ price: 'price_mock_growth', quantity: 1 }],
+      success_url: 'https://app/ok',
+      cancel_url: 'https://app/no',
+      automatic_tax: { enabled: true },
+    });
+    expect(created.id).toMatch(/^cs_mock_/);
+  });
+
+  it('HAPPY: automatic tax off never needs an address', async () => {
+    const mock = new MockStripe();
+    const { id } = await mock.customers.create({});
+    await expect(
+      mock.checkout.sessions.create({
+        customer: id,
+        mode: 'subscription',
+        line_items: [{ price: 'price_mock_growth', quantity: 1 }],
+        success_url: 'https://app/ok',
+        cancel_url: 'https://app/no',
+      })
+    ).resolves.toBeDefined();
+  });
+});

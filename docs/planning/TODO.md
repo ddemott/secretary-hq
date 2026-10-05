@@ -137,7 +137,7 @@ SaaS tax follows where the customer USES the service. Every business gives a ser
 
 - [x] 1. `tenants.service_street/city/state/zip/country` + constraints (migration `20261005000000`, #590). **Prod migration not applied yet — Dale's go.**
 - [x] 2. Shared validator (`shared/serviceAddress.ts`), required on `/register` + the signup form; stored by `createTenantWithOwner`. Admin-created tenants may omit it.
-- [ ] 3. Send the address to Stripe (`customers.create` / update + `customer_update: { address: 'auto' }`), `MockStripe` support; checkout refuses a tenant with no address. **Do before setting `STRIPE_AUTO_TAX=true`** — automatic tax without a customer address likely fails checkout.
+- [x] 3. The address goes to Stripe: `customers.create` carries it, an existing customer is updated before checkout (`customers.update` on the gateway; `MockStripe` holds it and refuses automatic tax for a customer with no address, exactly as Stripe does). With `STRIPE_AUTO_TAX=true`, checkout refuses a tenant with no address (422 `service_address_required`); with it off the address is still sent when present. **Do not set `STRIPE_AUTO_TAX=true` until step 4 lands** — tenants that signed up before addresses existed (e.g. Thinking Hammer) have no way to add one yet.
 - [ ] 4. Owner can view/edit the address in Billing settings.
 - [ ] 5. Per-state sales report + flag Chicago-zip customers.
 - [ ] 6. Verify in Stripe's docs whether Stripe Tax covers Chicago's lease tax. Stripe does NOT register us with states or file returns — that stays Dale's.
@@ -241,7 +241,7 @@ _Post-live voice enhancements (recording disclaimer, etc.) live in **🎙️ Voi
   3. **Re-create products + prices in LIVE mode** — test-mode objects do not carry over. New price IDs.
   4. **Register the webhook again in LIVE mode**, same URL and same events as part A, and copy the new `whsec_`. Live-mode endpoints are separate objects from test-mode ones and sign with their own secret — this must come BEFORE the env swap, because the secret does not exist until the endpoint does.
   5. **Swap the 5 Railway env vars to live values** — live secret key, live price IDs, and the **new** `STRIPE_WEBHOOK_SECRET` from step 4. The moment this lands, the test-mode endpoint's events start failing signature verification; that is expected, and it is why part A must be finished first.
-- [ ] **(Dale)** **Stripe Tax** (after round-trip verified): enable Stripe Tax in Stripe dashboard → Tax → Settings; register nexus for IL + customer states; set `STRIPE_AUTO_TAX=true` on Railway. (Code done — `automatic_tax` gated behind the flag.)
+- [ ] **(Dale)** **Stripe Tax** (after round-trip verified AND the service-address section above is through step 4): enable Stripe Tax in Stripe dashboard → Tax → Settings; register nexus for IL + customer states; set `STRIPE_AUTO_TAX=true` on Railway. (Code done — `automatic_tax` gated behind the flag.)
 
 ### 3. Security housekeeping
 
