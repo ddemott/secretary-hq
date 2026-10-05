@@ -20,6 +20,7 @@ import {
   stripeCustomerAddress,
   type TenantServiceAddressRow,
 } from '../services/stripe/customerAddress';
+import { normalizeServiceAddress } from '../../shared/serviceAddress';
 import { computeUsageStatements } from '../services/billingUsage';
 import { webhookSignatureFailuresTotal, errorsTotal } from '../services/metrics';
 import {
@@ -496,6 +497,95 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
         throw err;
       }
     }, 'Failed to compute usage')
+  );
+
+  // GET /billing/service-address — where the business uses the service (sales tax).
+  // Nulls when the business never gave one (tenants from before signup asked for it).
+  app.get(
+    '/billing/service-address',
+    withHandler(async (req: AppRequest, reply) => {
+      const tenantId = requireTenantId(req, reply);
+      if (!tenantId) return;
+      const res = await pool.query(
+        `SELECT service_street, service_city, service_state, service_zip
+           FROM tenants WHERE tenant_id = $1 AND is_deleted = false`,
+        [tenantId]
+      );
+      if (res.rows.length === 0) {
+        return reply.status(404).send({ success: false, error: 'Tenant not found' });
+      }
+      const row = res.rows[0] as Record<string, string | null>;
+      return reply.send({
+        success: true,
+        address: {
+          street: row.service_street,
+          city: row.service_city,
+          state: row.service_state,
+          zip: row.service_zip,
+        },
+      });
+    }, 'Failed to load service address')
+  );
+
+  // PUT /billing/service-address — owner sets or corrects the service address.
+  // Billing prefix is exempt from the subscription gate on purpose: an owner who has not paid
+  // yet (or who signed up before addresses existed) must be able to add it to reach checkout.
+  app.put(
+    '/billing/service-address',
+    withHandler(async (req: AppRequest, reply) => {
+      if (!requireOwnerRole(req, reply)) return;
+      const tenantId = requireTenantId(req, reply);
+      if (!tenantId) return;
+
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const parsed = normalizeServiceAddress({
+        street: body.street,
+        city: body.city,
+        state: body.state,
+        zip: body.zip,
+      });
+      if (!parsed.ok) {
+        return reply
+          .status(400)
+          .send({ success: false, error: 'Validation failed', details: parsed.errors });
+      }
+      const a = parsed.address;
+      const res = await pool.query(
+        `UPDATE tenants
+            SET service_street = $2, service_city = $3, service_state = $4, service_zip = $5
+          WHERE tenant_id = $1 AND is_deleted = false
+          RETURNING stripe_customer_id, service_country`,
+        [tenantId, a.street, a.city, a.state, a.zip]
+      );
+      if (res.rows.length === 0) {
+        return reply.status(404).send({ success: false, error: 'Tenant not found' });
+      }
+
+      // Keep Stripe's copy current so the next invoice is taxed at the new address. The saved
+      // address is the source of truth and checkout re-sends it, so a Stripe hiccup here must not
+      // fail the save — it is counted and logged instead.
+      const customerId = stripeId(res.rows[0].stripe_customer_id);
+      const stripe = customerId ? getStripeGateway() : null;
+      let stripeSynced = false;
+      if (customerId && stripe) {
+        try {
+          const address = stripeCustomerAddress({
+            service_street: a.street,
+            service_city: a.city,
+            service_state: a.state,
+            service_zip: a.zip,
+            service_country: res.rows[0].service_country as string | null,
+          });
+          if (address) await stripe.customers.update(customerId, { address });
+          stripeSynced = true;
+        } catch (err) {
+          logError(req, 'stripe_address_sync_failed', err);
+        }
+      }
+
+      logEvent(req, 'service_address_updated', { tenantId, stripeSynced });
+      return reply.send({ success: true, address: a, stripe_synced: stripeSynced });
+    }, 'Failed to save service address')
   );
 
   // POST /billing/portal — create a Stripe Customer Portal session

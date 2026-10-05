@@ -24,6 +24,8 @@ const { mockApi } = vi.hoisted(() => ({
       portal: vi.fn(),
       usage: vi.fn(),
       resendVerification: vi.fn(),
+      getServiceAddress: vi.fn(),
+      saveServiceAddress: vi.fn(),
     },
   },
 }));
@@ -43,6 +45,9 @@ beforeEach(() => {
   mockApi.billing.status.mockResolvedValue({
     subscription_status: 'inactive',
     subscription_plan: null,
+  });
+  mockApi.billing.getServiceAddress.mockResolvedValue({
+    address: { street: null, city: null, state: null, zip: null },
   });
   mockApi.billing.usage.mockResolvedValue({
     plan: null,
@@ -708,5 +713,40 @@ describe('BillingView — network failures', () => {
 
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Failed to fetch', 'error'));
     expect(screen.getByRole('button', { name: /manage billing/i })).not.toBeDisabled();
+  });
+});
+
+describe('BillingView — business address', () => {
+  test('HAPPY: the address card is on the Billing page', async () => {
+    // WHO: an owner opening Billing | WHY: it is the only place a business that signed up before addresses existed can add one
+    render(<BillingView />);
+    expect(await screen.findByRole('heading', { name: /business address/i })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockApi.billing.getServiceAddress).toHaveBeenCalledWith('tenant-test')
+    );
+  });
+
+  test('SAD: a checkout refused as service_address_required points the owner at the card', async () => {
+    // WHO: a pre-address tenant choosing a plan with automatic tax on
+    // WHAT: Upgrade → 422 service_address_required → toast + notice above the form
+    mockApi.billing.checkout.mockResolvedValue({
+      success: false,
+      error_code: 'service_address_required',
+      error: 'Add your business address before starting your subscription.',
+    });
+    render(<BillingView />);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /upgrade/i })).toHaveLength(3)
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /upgrade/i })[0]);
+
+    expect(
+      await screen.findByText(/add your business address, then choose your plan again/i)
+    ).toBeInTheDocument();
+    expect(mockToast).toHaveBeenCalledWith(
+      'Add your business address before starting your subscription.',
+      'error'
+    );
   });
 });

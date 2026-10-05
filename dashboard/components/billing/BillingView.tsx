@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { Api } from '../../lib/api';
 import { useActiveTenantId } from '../../lib/SessionContext';
 import { showToast } from '../ui/Toast';
+import { ServiceAddressCard } from './ServiceAddressCard';
 import type { UsageStatementResult } from '../../lib/types';
 
 type PlanKey = 'solo' | 'growth' | 'professional';
@@ -91,6 +92,8 @@ export default function BillingView() {
   // checkout attempt comes back email_not_verified.
   const [emailUnverified, setEmailUnverified] = useState(false);
   const [resending, setResending] = useState(false);
+  // Checkout came back service_address_required: point the owner at the address card.
+  const [addressRequired, setAddressRequired] = useState(false);
 
   useEffect(() => {
     try {
@@ -166,6 +169,9 @@ export default function BillingView() {
         if (res.error_code === 'email_not_verified') {
           setEmailUnverified(true);
           showToast(res.error || 'Confirm your email first.', 'error');
+        } else if (res.error_code === 'service_address_required') {
+          setAddressRequired(true);
+          showToast(res.error || 'Add your business address first.', 'error');
         } else {
           showToast(res.error || 'Could not start checkout — try again.', 'error');
         }
@@ -300,6 +306,8 @@ export default function BillingView() {
           </p>
         )}
       </Card>
+
+      {tenantId && <ServiceAddressCard tenantId={tenantId} required={addressRequired} />}
 
       {/* Plan cards */}
       <div>
