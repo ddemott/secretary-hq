@@ -107,6 +107,14 @@ describe('resolvePlanQuota / planCallLimit — configurable tier caps', () => {
     expect(usageCapStatus(FREE_TIER_INCLUDED_CALLS, planCallLimit(null))).toBe('blocked');
   });
 
+  it('C1: free tier is 30 calls, no more than the cheapest paid plan', () => {
+    // WHO: unpaid tenant. WHY: Dale 2026-10-05 — free must not out-give Solo (30).
+    expect(FREE_TIER_INCLUDED_CALLS).toBe(30);
+    expect(freeTierCallLimit()).toBe(30);
+    expect(planCallLimit('solo')).toBe(30);
+    expect(freeTierCallLimit()).toBeLessThanOrEqual(planCallLimit('solo') as number);
+  });
+
   it('C1: PLAN_CAP_FREE env retunes free-tier; 0 cannot mean unlimited', () => {
     setEnv('PLAN_CAP_FREE', '25');
     expect(freeTierCallLimit()).toBe(25);
