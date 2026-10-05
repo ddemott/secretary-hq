@@ -4,6 +4,7 @@
  * These are the remaining dynamic/any-heavy areas after previous tranches.
  */
 
+import { summarizeTaxLocations, loadTaxLocationRows } from '../services/taxReport';
 import type { AppFastifyInstance } from '../types/fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -262,6 +263,18 @@ export function registerTenantRoutes(
       );
       return reply.send(res.rows);
     }, 'Failed to fetch tenants')
+  );
+
+  // GET /tenants/tax-summary — where our paying customers use the service, by state, with
+  // Chicago (lease tax) called out. Super-admin only: it spans every tenant. Figures are
+  // estimates from list price; Stripe Tax's reports are the source of truth for filing.
+  app.get(
+    '/tenants/tax-summary',
+    withHandler(async (req: AppRequest, reply) => {
+      if (!requireSuperAdmin(req, reply)) return;
+      const summary = summarizeTaxLocations(await loadTaxLocationRows(pool));
+      return reply.send({ success: true, generated_at: new Date().toISOString(), ...summary });
+    }, 'Failed to build the tax summary')
   );
 
   app.delete(
