@@ -29,6 +29,7 @@ import type { Pool } from 'pg';
 import { verticalForBusinessType } from '../../../shared/checklistPresetDerivation';
 import { isHipaaVertical } from '../../../shared/hipaaVerticalDenylist';
 import { copyBusinessTemplate } from './businessTemplate';
+import type { ServiceAddress } from '../../../shared/serviceAddress';
 
 /**
  * Shown when someone signs up with an email that already has an account.
@@ -46,6 +47,12 @@ export interface CreateTenantWithOwnerParams {
   ownerFullName: string;
   ownerFirstName?: string | null;
   ownerLastName?: string | null;
+  /**
+   * Where the business uses the service, for sales tax. Already validated by the caller
+   * (shared/serviceAddress.ts). Required on the self-serve /register path; optional here because
+   * an admin creating a tenant on someone's behalf may not know it yet — checkout asks for it.
+   */
+  serviceAddress?: ServiceAddress;
   /**
    * Which duplicate key blocks creation:
    *   - 'email':       fail if this email already exists on any user
@@ -144,8 +151,16 @@ export async function createTenantWithOwner(
     const consentGateRequired = !params.legalConsent;
 
     const tenantRes = await client.query(
-      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
-      [params.tenantName, params.businessType, consentGateRequired]
+      'INSERT INTO tenants (name, business_type, consent_gate_required, service_street, service_city, service_state, service_zip) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING tenant_id',
+      [
+        params.tenantName,
+        params.businessType,
+        consentGateRequired,
+        params.serviceAddress?.street ?? null,
+        params.serviceAddress?.city ?? null,
+        params.serviceAddress?.state ?? null,
+        params.serviceAddress?.zip ?? null,
+      ]
     );
     const tenantId = tenantRes.rows[0].tenant_id as string;
 

@@ -82,6 +82,10 @@ async function registerSoloTenant(req: APIRequestContext): Promise<RegisteredTen
       email,
       password: 'password123',
       consent_attested: true,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
     },
   });
   expect(res.status(), 'register must succeed').toBe(201);

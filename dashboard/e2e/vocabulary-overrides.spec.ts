@@ -69,6 +69,10 @@ async function registerFreshTenant(
       email,
       password,
       consent_attested: true,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
     },
   });
   expect(res.status(), `register must succeed for business_type=${businessType}`).toBe(201);

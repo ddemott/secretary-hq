@@ -16,6 +16,11 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL, Api } from '@/lib/api';
 import type { BusinessTemplate } from '@/lib/types';
+import {
+  US_STATE_CODES,
+  normalizeServiceAddress,
+  type ServiceAddressField,
+} from '../../../shared/serviceAddress';
 
 /**
  * Self-serve signup page. Wires the long-existing public POST /register
@@ -31,6 +36,14 @@ import type { BusinessTemplate } from '@/lib/types';
 export default function RegisterPage() {
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
+  // Where the business USES the service — Stripe Tax prices the sale from it.
+  const [street, setStreet] = useState('');
+  const [city, setCity] = useState('');
+  const [usState, setUsState] = useState('');
+  const [zip, setZip] = useState('');
+  const [addressErrors, setAddressErrors] = useState<Partial<Record<ServiceAddressField, string>>>(
+    {}
+  );
   const [ownerName, setOwnerName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,6 +95,13 @@ export default function RegisterPage() {
     // brief race window where two in-flight registers could both pass the
     // pre-insert email check.
     if (loading) return;
+    // Same validator the backend runs, so the owner sees what is wrong before a round-trip.
+    const address = normalizeServiceAddress({ street, city, state: usState, zip });
+    if (!address.ok) {
+      setAddressErrors(address.errors);
+      return;
+    }
+    setAddressErrors({});
     setLoading(true);
     setError(null);
     setAccountExists(false);
@@ -96,6 +116,10 @@ export default function RegisterPage() {
           owner_name: ownerName.trim(),
           email: email.trim(),
           password,
+          service_street: address.address.street,
+          service_city: address.address.city,
+          service_state: address.address.state,
+          service_zip: address.address.zip,
           // Mirrors the checked legal-consent checkbox below. The backend
           // requires this to be the literal `true` (RegisterSchema) — a
           // client-side-only checkbox was bypassable via a direct API call.
@@ -309,6 +333,120 @@ export default function RegisterPage() {
                 )}
               </div>
             </div>
+
+            <fieldset className="space-y-3">
+              <legend
+                className="block text-xs font-bold uppercase tracking-wider mb-2 ml-1"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Where do you use Secretary HQ?
+              </legend>
+              <p className="ml-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                The address of your business. We use it to work out sales tax.
+              </p>
+              <div>
+                <label htmlFor="reg-street" className="sr-only">
+                  Street address
+                </label>
+                <input
+                  id="reg-street"
+                  type="text"
+                  required
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
+                  autoComplete="address-line1"
+                  aria-invalid={addressErrors.street ? true : undefined}
+                  aria-describedby={addressErrors.street ? 'reg-street-error' : undefined}
+                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 outline-none transition-all text-sm"
+                  style={inputStyle}
+                  placeholder="Street address"
+                />
+                {addressErrors.street && (
+                  <p id="reg-street-error" role="alert" className="mt-1 ml-1 text-xs text-red-600">
+                    {addressErrors.street}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="reg-city" className="sr-only">
+                  City
+                </label>
+                <input
+                  id="reg-city"
+                  type="text"
+                  required
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  autoComplete="address-level2"
+                  aria-invalid={addressErrors.city ? true : undefined}
+                  aria-describedby={addressErrors.city ? 'reg-city-error' : undefined}
+                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 outline-none transition-all text-sm"
+                  style={inputStyle}
+                  placeholder="City"
+                />
+                {addressErrors.city && (
+                  <p id="reg-city-error" role="alert" className="mt-1 ml-1 text-xs text-red-600">
+                    {addressErrors.city}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="reg-state" className="sr-only">
+                    State
+                  </label>
+                  <select
+                    id="reg-state"
+                    required
+                    value={usState}
+                    onChange={(e) => setUsState(e.target.value)}
+                    autoComplete="address-level1"
+                    aria-invalid={addressErrors.state ? true : undefined}
+                    aria-describedby={addressErrors.state ? 'reg-state-error' : undefined}
+                    className="w-full px-4 py-3 border rounded-xl focus:ring-2 outline-none transition-all text-sm"
+                    style={inputStyle}
+                  >
+                    <option value="" disabled>
+                      State
+                    </option>
+                    {US_STATE_CODES.map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </select>
+                  {addressErrors.state && (
+                    <p id="reg-state-error" role="alert" className="mt-1 ml-1 text-xs text-red-600">
+                      {addressErrors.state}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="reg-zip" className="sr-only">
+                    Zip code
+                  </label>
+                  <input
+                    id="reg-zip"
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    value={zip}
+                    onChange={(e) => setZip(e.target.value)}
+                    autoComplete="postal-code"
+                    aria-invalid={addressErrors.zip ? true : undefined}
+                    aria-describedby={addressErrors.zip ? 'reg-zip-error' : undefined}
+                    className="w-full px-4 py-3 border rounded-xl focus:ring-2 outline-none transition-all text-sm"
+                    style={inputStyle}
+                    placeholder="Zip code"
+                  />
+                  {addressErrors.zip && (
+                    <p id="reg-zip-error" role="alert" className="mt-1 ml-1 text-xs text-red-600">
+                      {addressErrors.zip}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </fieldset>
 
             <div>
               <label

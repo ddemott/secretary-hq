@@ -67,6 +67,10 @@ async function register(email: string) {
       email,
       password: 'secure123',
       consent_attested: true,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
     },
   });
   if (res.statusCode === 201) tenantsToClean.push(res.json().tenant_id as string);

@@ -124,6 +124,10 @@ async function registerTenant(
       email: `industry-${businessType}-${suffix}@example.test`,
       password: 'password123',
       consent_attested: true,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
     },
   });
   expect(res.status(), `register for business_type=${businessType}`).toBe(201);

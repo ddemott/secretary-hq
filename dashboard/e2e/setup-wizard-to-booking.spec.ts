@@ -111,6 +111,10 @@ async function registerFreshTenant(req: APIRequestContext): Promise<RegisteredTe
       email,
       password: 'password123',
       consent_attested: true,
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
     },
   });
   expect(res.status(), 'register must succeed for a brand-new tenant').toBe(201);

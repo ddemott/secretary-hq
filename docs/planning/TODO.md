@@ -131,6 +131,17 @@ A new business starts as a COPY of its type's template business ("Auto Shop Temp
 
 ---
 
+## 🧾 Service address for Stripe Tax — 2026-10-05 (Dale)
+
+SaaS tax follows where the customer USES the service. Every business gives a service address; Stripe Tax prices from it. Built in steps, one PR each:
+
+- [x] 1. `tenants.service_street/city/state/zip/country` + constraints (migration `20261005000000`, #590). **Prod migration not applied yet — Dale's go.**
+- [x] 2. Shared validator (`shared/serviceAddress.ts`), required on `/register` + the signup form; stored by `createTenantWithOwner`. Admin-created tenants may omit it.
+- [ ] 3. Send the address to Stripe (`customers.create` / update + `customer_update: { address: 'auto' }`), `MockStripe` support; checkout refuses a tenant with no address. **Do before setting `STRIPE_AUTO_TAX=true`** — automatic tax without a customer address likely fails checkout.
+- [ ] 4. Owner can view/edit the address in Billing settings.
+- [ ] 5. Per-state sales report + flag Chicago-zip customers.
+- [ ] 6. Verify in Stripe's docs whether Stripe Tax covers Chicago's lease tax. Stripe does NOT register us with states or file returns — that stays Dale's.
+
 ## 🔐 Signup identity — 2026-09-24 (Dale)
 
 - [x] **(code) Email verification at signup** — branch `feat/email-verification`. `/register` emails a single-use `/verify-email?token=` link (48 h, SHA-256-hashed in `email_verifications`); `POST /billing/checkout` answers 403 `email_not_verified` until `users.email_verified_at` is set, so no trial and no phone line on an unproven address. Resend: `POST /verify-email/resend` (signed-in, 3/hour) + a "Confirm your email" notice with **Resend email** on the Billing page. A completed password reset or admin-tenant consent confirmation also verifies (both are clicks on a link we emailed). **Every user that existed when migration `20260924000000` ran is backfilled as verified** — nobody is locked out; seed users are marked verified too. Tests: `tests/integration/emailVerification.realdb.test.ts` (real DB end to end) + route/unit/dashboard tests.
