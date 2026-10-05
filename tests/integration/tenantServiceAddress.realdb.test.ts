@@ -8,9 +8,9 @@
  * WHY  — SaaS tax follows where the customer uses the service. Existing tenants have no address, so
  *        the columns are nullable; but a value that IS stored must be well-formed and complete.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { Client } from 'pg';
-import { getRootClient, createTenant } from '../utils';
+import { getRootClient, createTenant, skipIfDbDown } from '../utils';
 
 let root: Client;
 let dbAvailable = false;
@@ -52,9 +52,10 @@ afterAll(async () => {
   await root.end();
 });
 
+beforeEach((ctx) => skipIfDbDown(ctx, () => dbAvailable));
+
 describe('tenants.service_* address columns', () => {
-  it('a new tenant has no address and defaults the country to US', async (ctx) => {
-    if (!dbAvailable) return ctx.skip();
+  it('a new tenant has no address and defaults the country to US', async () => {
     const id = await newTenant();
     const r = await root.query('SELECT * FROM tenants WHERE tenant_id = $1', [id]);
     expect(r.rows[0].service_street).toBeNull();
@@ -62,8 +63,7 @@ describe('tenants.service_* address columns', () => {
     expect(r.rows[0].service_country).toBe('US');
   });
 
-  it('stores a complete, well-formed address (zip and zip+4)', async (ctx) => {
-    if (!dbAvailable) return ctx.skip();
+  it('stores a complete, well-formed address (zip and zip+4)', async () => {
     const id = await newTenant();
     await setAddress(id, '1 N State St', 'Chicago', 'IL', '60602');
     await setAddress(id, '1 N State St', 'Chicago', 'IL', '60602-1234');
@@ -73,8 +73,7 @@ describe('tenants.service_* address columns', () => {
     expect(r.rows[0]).toEqual({ service_city: 'Chicago', service_zip: '60602-1234' });
   });
 
-  it('refuses a half-filled address', async (ctx) => {
-    if (!dbAvailable) return ctx.skip();
+  it('refuses a half-filled address', async () => {
     const id = await newTenant();
     await expect(setAddress(id, '1 N State St', null, null, null)).rejects.toThrow(
       /tenants_service_address_complete/
@@ -87,21 +86,18 @@ describe('tenants.service_* address columns', () => {
     ['short zip', 'IL', '6060', /tenants_service_zip_format/],
     ['lettered zip', 'IL', 'ABCDE', /tenants_service_zip_format/],
   ])('refuses a malformed value: %s', async (_label, state, zip, err) => {
-    if (!dbAvailable) return;
     const id = await newTenant();
     await expect(setAddress(id, '1 N State St', 'Chicago', state, zip)).rejects.toThrow(err);
   });
 
-  it('refuses a malformed country', async (ctx) => {
-    if (!dbAvailable) return ctx.skip();
+  it('refuses a malformed country', async () => {
     const id = await newTenant();
     await expect(
       root.query("UPDATE tenants SET service_country='usa' WHERE tenant_id=$1", [id])
     ).rejects.toThrow(/tenants_service_country_format/);
   });
 
-  it('lets the address be cleared back to nothing', async (ctx) => {
-    if (!dbAvailable) return ctx.skip();
+  it('lets the address be cleared back to nothing', async () => {
     const id = await newTenant();
     await setAddress(id, '1 N State St', 'Chicago', 'IL', '60602');
     await setAddress(id, null, null, null, null);
