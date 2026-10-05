@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JHHAdHYTxDkriBeYZeSI7HHDQHYMZ0lecKfA8eB3eI6A1h4m7Mj76vFm2pSDOLt
+\restrict dWSlsJxLuQ5xRmO1EgE8LMT8UPM229CchvpGfdjaHvNzdjB0tOn8jdervy09Kbm
 
 -- Dumped from database version 15.4 (Debian 15.4-2.pgdg120+1)
 -- Dumped by pg_dump version 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
@@ -4888,7 +4888,16 @@ CREATE TABLE public.tenants (
     consent_gate_required boolean DEFAULT false NOT NULL,
     is_template boolean DEFAULT false NOT NULL,
     template_vertical text,
+    service_street text,
+    service_city text,
+    service_state text,
+    service_zip text,
+    service_country text DEFAULT 'US'::text NOT NULL,
     CONSTRAINT tenants_checklist_preset_id_valid CHECK (((checklist_preset_id IS NULL) OR (checklist_preset_id = ANY (ARRAY['auto_shop_front_desk'::text, 'salon_front_desk'::text, 'local_service_front_desk'::text, 'owner_for_hire_front_desk'::text, 'law_firm_front_desk'::text, 'mobile_tire_front_desk'::text, 'car_detailing_front_desk'::text, 'body_shop_front_desk'::text, 'oil_change_front_desk'::text, 'car_wash_front_desk'::text, 'barbershop_front_desk'::text, 'nail_salon_front_desk'::text, 'spa_front_desk'::text, 'lash_studio_front_desk'::text, 'plumber_front_desk'::text, 'electrician_front_desk'::text, 'hvac_front_desk'::text, 'pest_control_front_desk'::text, 'cleaning_front_desk'::text, 'landscaping_front_desk'::text, 'garage_door_front_desk'::text, 'locksmith_front_desk'::text, 'personal_trainer_front_desk'::text, 'yoga_studio_front_desk'::text, 'tax_prep_front_desk'::text, 'tutoring_front_desk'::text, 'photography_front_desk'::text, 'real_estate_front_desk'::text, 'insurance_front_desk'::text, 'answering_service_front_desk'::text, 'bakery_front_desk'::text, 'catering_front_desk'::text])))),
+    CONSTRAINT tenants_service_address_complete CHECK ((((service_street IS NULL) AND (service_city IS NULL) AND (service_state IS NULL) AND (service_zip IS NULL)) OR ((service_street IS NOT NULL) AND (service_city IS NOT NULL) AND (service_state IS NOT NULL) AND (service_zip IS NOT NULL)))),
+    CONSTRAINT tenants_service_country_format CHECK ((service_country ~ '^[A-Z]{2}$'::text)),
+    CONSTRAINT tenants_service_state_format CHECK (((service_state IS NULL) OR (service_state ~ '^[A-Z]{2}$'::text))),
+    CONSTRAINT tenants_service_zip_format CHECK (((service_zip IS NULL) OR (service_zip ~ '^[0-9]{5}(-[0-9]{4})?$'::text))),
     CONSTRAINT tenants_template_vertical_iff_template CHECK ((is_template = (template_vertical IS NOT NULL)))
 );
 
@@ -8167,5 +8176,5 @@ CREATE POLICY voice_sessions_tenant_isolation ON public.voice_sessions USING (((
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JHHAdHYTxDkriBeYZeSI7HHDQHYMZ0lecKfA8eB3eI6A1h4m7Mj76vFm2pSDOLt
+\unrestrict dWSlsJxLuQ5xRmO1EgE8LMT8UPM229CchvpGfdjaHvNzdjB0tOn8jdervy09Kbm
 
