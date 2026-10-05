@@ -9,6 +9,7 @@ import { LoadingState } from '../ui/LoadingState';
 import { TenantCard } from './TenantCard';
 import { TenantCreateForm } from './TenantCreateForm';
 import { TenantEditPanel } from './TenantEditPanel';
+import { TaxLocationsPanel } from './TaxLocationsPanel';
 import { useSuperAdminTenants } from '../../lib/useSuperAdminTenants';
 
 interface SuperAdminProps {
@@ -222,8 +223,11 @@ export default function SuperAdminDashboard({ onSelectTenant, currentTenantId }:
             onTenantUpdate={setSelectedTenant}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 italic">
-            Select a business to manage its global attributes
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6">
+            <div className="text-gray-400 dark:text-gray-600 italic">
+              Select a business to manage its global attributes
+            </div>
+            <TaxLocationsPanel />
           </div>
         )}
       </section>

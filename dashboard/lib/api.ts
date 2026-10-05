@@ -1,5 +1,6 @@
 import { normalizePhone } from './phone';
 import type {
+  TaxSummary,
   Appointment,
   Customer,
   ReminderDeliveryStats,
@@ -748,6 +749,8 @@ export const Api = {
   // --- TENANTS & TEMPLATES ---
   tenants: {
     list: () => apiFetch<TenantFull[]>(`/tenants`),
+    /** Super-admin: where paying customers use the service, by state, Chicago called out. */
+    taxSummary: () => apiFetch<TaxSummary>(`/tenants/tax-summary`),
     getConfig: (tenantId: string | null) => apiFetch<Tenant>(`/tenants/${tenantId}/config`),
     update: (id: string, data: Partial<TenantFull>) =>
       apiMutate(`/tenants/${id}/update-attributes`, 'POST', data as Record<string, unknown>),

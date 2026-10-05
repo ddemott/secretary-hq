@@ -787,3 +787,25 @@ export interface ReminderDeliveryStats {
   scheduled: number;
   cancelled: number;
 }
+
+/** GET /tenants/tax-summary (super-admin). Figures are list-price estimates, not what Stripe billed. */
+export interface TaxSummary {
+  generated_at: string;
+  totals: {
+    tenants: number;
+    with_address: number;
+    paying: number;
+    paying_without_address: number;
+  };
+  states: { state: string; tenants: number; paying: number; est_monthly_usd: number }[];
+  chicago: {
+    tenants: number;
+    paying: number;
+    est_monthly_usd: number;
+    est_annual_usd: number;
+    threshold_usd: number;
+    percent_of_threshold: number;
+  };
+  possible_chicago: { tenant_id: string; name: string; city: string | null; zip: string }[];
+  missing_address: { tenant_id: string; name: string; paying: boolean }[];
+}

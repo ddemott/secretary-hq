@@ -53,6 +53,18 @@ export const PLAN_QUOTAS: Record<string, PlanQuota> = {
 };
 
 /**
+ * List price per month, USD, for each plan (owner decision 2026-09-24, monthly only).
+ * Used for ESTIMATES (the tax-location report); what a customer is actually charged lives in
+ * Stripe. Keep in step with the plan cards in dashboard/components/billing/BillingView.tsx and the
+ * Stripe price ids.
+ */
+export const PLAN_PRICE_USD: Record<string, number> = {
+  solo: 29.95,
+  growth: 59.95,
+  professional: 149.95,
+};
+
+/**
  * 'overage' = a paid plan past its allowance: calls keep answering and bill per call.
  * 'blocked' = free tier at its limit: new calls are refused.
  */
