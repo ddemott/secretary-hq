@@ -31,7 +31,7 @@ export const BILLABLE_MIN_SECONDS = 15;
 const CALLER_LINE_RE = '(?:^|\\n)Caller(?: \\[\\d+:\\d{2}\\])?: ';
 
 /** Default free-tier included calls when plan is null/unknown under soft-cap. */
-export const FREE_TIER_INCLUDED_CALLS = 50;
+export const FREE_TIER_INCLUDED_CALLS = 30;
 
 export interface PlanQuota {
   /** null = unlimited (only via a PLAN_CAP_* env override). */
