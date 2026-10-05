@@ -21,6 +21,8 @@ export interface StripeGateway {
   readonly mode: StripeMode;
   customers: {
     create(params: Stripe.CustomerCreateParams): Promise<{ id: string }>;
+    /** Keeps the customer's address current — Stripe Tax prices every invoice from it. */
+    update(id: string, params: Stripe.CustomerUpdateParams): Promise<{ id: string }>;
   };
   subscriptions: {
     list(params: Stripe.SubscriptionListParams): Promise<{ data: unknown[] }>;

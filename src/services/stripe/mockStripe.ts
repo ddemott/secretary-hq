@@ -109,6 +109,8 @@ export class MockStripe implements StripeGateway {
   private readonly sessions = new Map<string, MockCheckoutSession>();
   private readonly subscriptionsById = new Map<string, MockSubscription>();
   private readonly customerIds = new Set<string>();
+  /** The address each customer holds, as Stripe Tax would see it. */
+  private readonly customerAddresses = new Map<string, Stripe.AddressParam | null>();
   private readonly invoiceItemsById = new Map<string, MockInvoiceItem>();
   private readonly invoiceItemsByKey = new Map<string, string>();
 
@@ -119,12 +121,24 @@ export class MockStripe implements StripeGateway {
 
   readonly customers = {
     create: (params: Stripe.CustomerCreateParams) => {
-      void params;
       const id = this.nextId('cus');
       this.customerIds.add(id);
+      this.customerAddresses.set(id, params.address || null);
+      return Promise.resolve({ id });
+    },
+    update: (id: string, params: Stripe.CustomerUpdateParams) => {
+      if (!this.customerIds.has(id)) return Promise.reject(new Error(`No such customer: '${id}'`));
+      if (params.address !== undefined) {
+        this.customerAddresses.set(id, params.address === '' ? null : params.address);
+      }
       return Promise.resolve({ id });
     },
   };
+
+  /** Test seam: the address the mock holds for a customer (null when none). */
+  getCustomerAddress(id: string): Stripe.AddressParam | null {
+    return this.customerAddresses.get(id) ?? null;
+  }
 
   readonly subscriptions = {
     list: (params: Stripe.SubscriptionListParams) => {
@@ -139,6 +153,19 @@ export class MockStripe implements StripeGateway {
   readonly checkout = {
     sessions: {
       create: (params: Stripe.Checkout.SessionCreateParams) => {
+        // Stripe refuses automatic tax for a customer it cannot place. Mirrored here so a
+        // checkout that would fail against the real account fails in tests and mock mode too.
+        if (params.automatic_tax?.enabled && typeof params.customer === 'string') {
+          const address = this.customerAddresses.get(params.customer);
+          const placed = !!address?.postal_code && !!address?.country;
+          if (!placed && params.customer_update?.address !== 'auto') {
+            return Promise.reject(
+              new Error(
+                "Automatic tax calculation in Checkout requires a valid address on the Customer. Add a valid address to the Customer or set either customer_update[address] to 'auto' or customer_update[shipping] to 'auto'."
+              )
+            );
+          }
+        }
         const id = this.nextId('cs');
         const session: MockCheckoutSession = {
           id,

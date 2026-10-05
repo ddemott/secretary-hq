@@ -16,6 +16,10 @@ import {
   requireOwnerRole,
   type AppRequest,
 } from '../middleware/fastify-middleware';
+import {
+  stripeCustomerAddress,
+  type TenantServiceAddressRow,
+} from '../services/stripe/customerAddress';
 import { computeUsageStatements } from '../services/billingUsage';
 import { webhookSignatureFailuresTotal, errorsTotal } from '../services/metrics';
 import {
@@ -206,8 +210,17 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       // is_deleted: never open a checkout — and never create a Stripe customer — for
       // a business that has been deleted. Taking money from a tenant that cannot log
       // in or answer a call is the worst shape a zombie-tenant leak could take.
-      const tenantRes = await pool.query(
-        'SELECT tenant_id, name, stripe_customer_id, stripe_subscription_id FROM tenants WHERE tenant_id = $1 AND is_deleted = false',
+      const tenantRes = await pool.query<
+        TenantServiceAddressRow & {
+          tenant_id: string;
+          name: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+        }
+      >(
+        `SELECT tenant_id, name, stripe_customer_id, stripe_subscription_id,
+                service_street, service_city, service_state, service_zip, service_country
+           FROM tenants WHERE tenant_id = $1 AND is_deleted = false`,
         [tenant_id]
       );
       if (tenantRes.rows.length === 0) {
@@ -217,16 +230,36 @@ export function registerBillingRoutes(app: AppFastifyInstance, pool: Pool) {
       const tenant = tenantRes.rows[0];
       let customerId = tenant.stripe_customer_id;
 
+      // Where the business USES the service: Stripe Tax prices the sale from it. With automatic
+      // tax on, Stripe cannot place a customer that has no address and checkout fails — so refuse
+      // up front with a message the owner can act on. With tax off the address is still sent when
+      // we have one, so the customer is ready the day tax is switched on.
+      const address = stripeCustomerAddress(tenant);
+      const autoTax = process.env.STRIPE_AUTO_TAX === 'true';
+      if (autoTax && !address) {
+        logEvent(req, 'checkout_refused_no_service_address', { tenantId: tenant_id });
+        return reply.status(422).send({
+          success: false,
+          error_code: 'service_address_required',
+          error:
+            'Add your business address before starting your subscription — we use it to work out sales tax.',
+        });
+      }
+
       if (!customerId) {
         const customer = await stripe.customers.create({
           metadata: { tenant_id },
           name: tenant.name,
+          ...(address && { address }),
         });
         customerId = customer.id;
         await pool.query('UPDATE tenants SET stripe_customer_id = $1 WHERE tenant_id = $2', [
           customerId,
           tenant_id,
         ]);
+      } else if (address) {
+        // The address may have changed since the customer was created.
+        await stripe.customers.update(customerId, { address });
       }
 
       const dashboardUrl = process.env.DASHBOARD_URL || 'https://localhost:4400';
