@@ -1042,3 +1042,132 @@ describe('subscriptionGate middleware/fastify-middleware', () => {
     expect(errorsTotalFor('subscription_gate_error')).toBe(before + 1);
   });
 });
+
+// ── /billing/service-address ──────────────────────────────────────────────
+
+describe('/billing/service-address', () => {
+  const put = (app: FastifyInstance, payload: unknown) =>
+    app.inject({
+      method: 'PUT',
+      url: '/billing/service-address',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify(payload),
+    });
+  const body = { street: '1 N State St', city: 'Chicago', state: 'il', zip: '60602' };
+
+  it('HAPPY: GET returns the saved address (WHO: owner opening Billing)', async () => {
+    const { app } = buildApp({
+      poolResponses: [
+        {
+          rows: [
+            {
+              service_street: '1 N State St',
+              service_city: 'Chicago',
+              service_state: 'IL',
+              service_zip: '60602',
+            },
+          ],
+        },
+      ],
+    });
+    const res = await get(app, '/billing/service-address');
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      address: { street: '1 N State St', city: 'Chicago', state: 'IL', zip: '60602' },
+    });
+  });
+
+  it('HAPPY: GET returns nulls for a tenant that never gave one (WHO: tenant from before signup asked)', async () => {
+    const { app } = buildApp({
+      poolResponses: [
+        {
+          rows: [
+            { service_street: null, service_city: null, service_state: null, service_zip: null },
+          ],
+        },
+      ],
+    });
+    const res = await get(app, '/billing/service-address');
+    expect(res.json<{ address: { street: null } }>().address.street).toBeNull();
+  });
+
+  it('HAPPY: PUT saves the cleaned address and updates the Stripe customer', async () => {
+    const { app, queries } = buildApp({
+      poolResponses: [
+        { rows: [{ stripe_customer_id: STRIPE_CUSTOMER_ID, service_country: 'US' }] },
+      ],
+    });
+    const res = await put(app, body);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      success: true,
+      address: { street: '1 N State St', city: 'Chicago', state: 'IL', zip: '60602' },
+      stripe_synced: true,
+    });
+    expect(queries[0].params).toEqual([TENANT_ID, '1 N State St', 'Chicago', 'IL', '60602']);
+    expect(mockCustomersUpdate).toHaveBeenCalledWith(STRIPE_CUSTOMER_ID, {
+      address: {
+        line1: '1 N State St',
+        city: 'Chicago',
+        state: 'IL',
+        postal_code: '60602',
+        country: 'US',
+      },
+    });
+  });
+
+  it('HAPPY: PUT works with no Stripe customer yet (WHO: owner adding it BEFORE first checkout)', async () => {
+    const { app } = buildApp({
+      poolResponses: [{ rows: [{ stripe_customer_id: null, service_country: 'US' }] }],
+    });
+    const res = await put(app, body);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ stripe_synced: boolean }>().stripe_synced).toBe(false);
+    expect(mockCustomersUpdate).not.toHaveBeenCalled();
+  });
+
+  it('SAD: a Stripe failure does not lose the saved address (WHY: checkout re-sends it)', async () => {
+    mockCustomersUpdate.mockRejectedValue(new Error('stripe down'));
+    const { app } = buildApp({
+      poolResponses: [
+        { rows: [{ stripe_customer_id: STRIPE_CUSTOMER_ID, service_country: 'US' }] },
+      ],
+    });
+    const before = errorsTotalFor('stripe_address_sync_failed');
+    const res = await put(app, body);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ stripe_synced: boolean }>().stripe_synced).toBe(false);
+    expect(errorsTotalFor('stripe_address_sync_failed')).toBe(before + 1);
+  });
+
+  it.each([
+    ['a bad zip', { ...body, zip: '6060' }, 'zip'],
+    ['an unknown state', { ...body, state: 'ZZ' }, 'state'],
+    ['a blank street', { ...body, street: ' ' }, 'street'],
+  ])('SAD: %s is refused 400 and nothing is written', async (_label, payload, field) => {
+    const { app, queries } = buildApp({ poolResponses: [] });
+    const res = await put(app, payload);
+
+    expect(res.statusCode).toBe(400);
+    expect(Object.keys(res.json<{ details: object }>().details)).toEqual([field]);
+    expect(queries).toHaveLength(0);
+  });
+
+  it('SAD: front_desk cannot change the address (WHO: receptionist login | WHY: it sets what the business is taxed at)', async () => {
+    const { app, queries } = buildApp({ poolResponses: [], role: 'front_desk' });
+    const res = await put(app, body);
+
+    expect(res.statusCode).toBe(403);
+    expect(queries).toHaveLength(0);
+    expect(mockCustomersUpdate).not.toHaveBeenCalled();
+  });
+
+  it('SAD: PUT for a deleted or missing tenant is 404', async () => {
+    const { app } = buildApp({ poolResponses: [{ rows: [] }] });
+    expect((await put(app, body)).statusCode).toBe(404);
+  });
+});

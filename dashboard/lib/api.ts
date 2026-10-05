@@ -1135,6 +1135,27 @@ export const Api = {
         months: String(months),
       }),
 
+    /** Where the business uses the service (sales tax). Parts are null when never given. */
+    getServiceAddress: (tenantId: string) =>
+      apiFetch<{
+        address: {
+          street: string | null;
+          city: string | null;
+          state: string | null;
+          zip: string | null;
+        };
+      }>(`/billing/service-address`, { tenant_id: tenantId }),
+
+    /** Owner-only. Resolves { success:false, error, details } on a validation failure. */
+    saveServiceAddress: (
+      tenantId: string,
+      address: { street: string; city: string; state: string; zip: string }
+    ) =>
+      apiMutate<{
+        stripe_synced?: boolean;
+        details?: Partial<Record<'street' | 'city' | 'state' | 'zip', string>>;
+      }>(`/billing/service-address`, 'PUT', { tenant_id: tenantId, ...address }),
+
     /** Email a fresh signup-verification link to the signed-in user. */
     resendVerification: () =>
       apiMutate<{ sent_to?: string; already_verified?: boolean }>(`/verify-email/resend`, 'POST'),
