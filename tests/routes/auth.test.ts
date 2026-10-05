@@ -554,6 +554,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'eager@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       const reply = createMockReply();
 
@@ -663,6 +667,10 @@ describe('Auth Routes — Handler-Level', () => {
           email: 'hipaa-test@test.com',
           password: 'secure123',
           consent_attested: true,
+          service_street: '1 N State St',
+          service_city: 'Chicago',
+          service_state: 'IL',
+          service_zip: '60602',
         });
         const reply = createMockReply();
 
@@ -749,6 +757,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'dupe@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       const reply = createMockReply();
 
@@ -783,6 +795,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'Dupe@Test.COM',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       const reply = createMockReply();
 
@@ -822,6 +838,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'dale@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       const reply = createMockReply();
 
@@ -832,6 +852,96 @@ describe('Auth Routes — Handler-Level', () => {
       expect(reply.body.tenant_id).toBe(TENANT_ID_MOCK);
       expect(reply.body.token).toBe(TEST_TOKEN);
     });
+
+    it('stores the cleaned service address on the new tenant (WHO: new business | WHAT: address in the tenant INSERT, state upper-cased, whitespace trimmed | WHERE: /register | WHY: Stripe Tax prices the sale from where the service is used)', async () => {
+      const { mockClient: client, queryResponses } = createMockClient();
+      const pool = createMockPool(client);
+      const { app, routes } = captureRoutes();
+      registerAuthRoutes(app, pool, generateToken);
+      queryResponses.push({ rows: [] }); // BEGIN
+      queryResponses.push({ rows: [] }); // email check
+      queryResponses.push({ rows: [{ tenant_id: TENANT_ID_MOCK }] }); // INSERT tenant
+      queryResponses.push({ rows: [{ user_id: USER_ID_MOCK }] }); // INSERT user
+      queryResponses.push({ rows: [] }); // consent stamp
+      queryResponses.push({ rows: [] }); // COMMIT
+
+      const route = findRoute(routes, '/register');
+      const req = createMockRequest({
+        business_name: 'DynaTire',
+        business_type: 'mobile-tire',
+        owner_name: 'Dale',
+        email: 'dale@test.com',
+        password: 'secure123',
+        consent_attested: true,
+        service_street: '  1 N  State St ',
+        service_city: ' Chicago',
+        service_state: 'il',
+        service_zip: '60602',
+      });
+      const reply = createMockReply();
+      await route.handler(req, reply);
+
+      expect(reply.statusCode).toBe(201);
+      const insert = client.query.mock.calls.find(([text]) =>
+        String(text).startsWith('INSERT INTO tenants')
+      );
+      expect(insert?.[1]).toEqual([
+        'DynaTire',
+        'mobile-tire',
+        false,
+        '1 N State St',
+        'Chicago',
+        'IL',
+        '60602',
+      ]);
+    });
+
+    it.each([
+      ['no address at all', {}, ['service_street', 'service_city', 'service_state', 'service_zip']],
+      ['a bad zip', { service_zip: '6060' }, ['service_zip']],
+      ['an unknown state', { service_state: 'ZZ' }, ['service_state']],
+      ['a blank street', { service_street: '   ' }, ['service_street']],
+    ])(
+      'SAD: %s is refused 400 and no tenant is created (WHO: signup missing or mangling the service address | WHERE: /register | WHY: tax cannot be priced without it)',
+      async (_label, overrides, badFields) => {
+        const { mockClient: client } = createMockClient();
+        const pool = createMockPool(client);
+        const { app, routes } = captureRoutes();
+        registerAuthRoutes(app, pool, generateToken);
+
+        const base = {
+          business_name: 'DynaTire',
+          business_type: 'mobile-tire',
+          owner_name: 'Dale',
+          email: 'dale@test.com',
+          password: 'secure123',
+          consent_attested: true,
+          service_street: '1 N State St',
+          service_city: 'Chicago',
+          service_state: 'IL',
+          service_zip: '60602',
+        };
+        const body: Record<string, unknown> =
+          Object.keys(overrides).length === 0
+            ? {
+                business_name: base.business_name,
+                business_type: base.business_type,
+                owner_name: base.owner_name,
+                email: base.email,
+                password: base.password,
+                consent_attested: true,
+              }
+            : { ...base, ...overrides };
+        const route = findRoute(routes, '/register');
+        const reply = createMockReply();
+        await route.handler(createMockRequest(body), reply);
+
+        expect(reply.statusCode).toBe(400);
+        const paths = (reply.body.details as Array<{ path: string[] }>).map((d) => d.path[0]);
+        expect(paths.sort()).toEqual([...badFields].sort());
+        expect(client.query).not.toHaveBeenCalled();
+      }
+    );
 
     // WHO: same happy-path signup as above.
     // WHAT: createTenantWithOwner must actually be handed a legalConsent
@@ -861,6 +971,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'dale2@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       req.headers = { 'x-forwarded-for': '203.0.113.5, 10.0.0.1', 'user-agent': 'TestAgent/1.0' };
       const reply = createMockReply();
@@ -907,6 +1021,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'arrayheader@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       req.headers = {
         'x-forwarded-for': ['198.51.100.9', '10.0.0.1'],
@@ -955,6 +1073,10 @@ describe('Auth Routes — Handler-Level', () => {
         email: 'garbageheader@test.com',
         password: 'secure123',
         consent_attested: true,
+        service_street: '1 N State St',
+        service_city: 'Chicago',
+        service_state: 'IL',
+        service_zip: '60602',
       });
       req.headers = { 'x-forwarded-for': 'unknown', 'user-agent': 'RealBrowser/1.0' };
       // req.ip on the mock request also isn't a real IP here — nothing

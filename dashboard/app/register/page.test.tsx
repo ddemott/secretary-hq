@@ -62,6 +62,10 @@ function fillForm() {
   // the blank default placeholder forces a deliberate selection). Must be
   // explicitly chosen in tests that assert the submitted body.
   fireEvent.change(screen.getByLabelText('Business type'), { target: { value: 'salon' } });
+  fireEvent.change(screen.getByLabelText('Street address'), { target: { value: '1 N State St' } });
+  fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Chicago' } });
+  fireEvent.change(screen.getByLabelText('State'), { target: { value: 'IL' } });
+  fireEvent.change(screen.getByLabelText('Zip code'), { target: { value: '60602' } });
   fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Dale Demott' } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'dale@dynatire.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2' } });
@@ -101,6 +105,31 @@ describe('RegisterPage — self-serve signup', () => {
     expect(screen.getByRole('option', { name: 'Auto Shop' })).toBeInTheDocument();
   });
 
+  test('a bad zip is caught in the form: shows the error and sends nothing', async () => {
+    // WHO: an owner who mistypes the zip | WHAT: inline error on the zip field, no POST /register | WHEN: submit | WHERE: RegisterPage handleSubmit → normalizeServiceAddress | WHY: the same shared validator the backend runs, so the owner fixes it before a round-trip and the tax address is never garbage
+    render(<RegisterPage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
+    fillForm();
+    fireEvent.change(screen.getByLabelText('Zip code'), { target: { value: '6060' } });
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    expect(await screen.findByText('Use a 5-digit zip code, like 60602.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zip code')).toHaveAttribute('aria-invalid', 'true');
+    expect(registerFetch).not.toHaveBeenCalledWith('http://test.local/register', expect.anything());
+  });
+
+  test('a blank street is caught in the form and nothing is sent', async () => {
+    // WHO: an owner who skips the street | WHAT: street error, no POST | WHERE: RegisterPage | WHY: a partial address cannot price a sale
+    render(<RegisterPage />);
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Salon' })).toBeInTheDocument());
+    fillForm();
+    fireEvent.change(screen.getByLabelText('Street address'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: /start free trial/i }));
+
+    expect(await screen.findByText('Enter the street address.')).toBeInTheDocument();
+    expect(registerFetch).not.toHaveBeenCalledWith('http://test.local/register', expect.anything());
+  });
+
   test('successful signup POSTs to /register, stores auth, and redirects to the dashboard', async () => {
     // WHO: a new business owner | WHAT: valid form → POST /register → token stored → land signed-in | WHEN: submit succeeds (201) | WHERE: RegisterPage handleSubmit happy path | WHY: this is the whole feature — the backend endpoint existed for months with no UI; the contract is "fill the form and you're in", so the test pins the request shape, the localStorage keys the dashboard authenticates off, and the redirect
     registerFetch.mockResolvedValue({
@@ -132,6 +161,10 @@ describe('RegisterPage — self-serve signup', () => {
       owner_name: 'Dale Demott',
       email: 'dale@dynatire.com',
       password: 'hunter2',
+      service_street: '1 N State St',
+      service_city: 'Chicago',
+      service_state: 'IL',
+      service_zip: '60602',
       // The backend requires this to be the literal boolean `true`
       // (RegisterSchema) — a client-side-only checkbox was bypassable via
       // a direct API call, so the wire body must actually carry it.

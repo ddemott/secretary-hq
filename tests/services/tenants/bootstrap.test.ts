@@ -90,7 +90,7 @@ describe('createTenantWithOwner — happy paths', () => {
     expect(queries.map((q) => q.text)).toEqual([
       'BEGIN',
       'SELECT user_id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id',
+      'INSERT INTO tenants (name, business_type, consent_gate_required, service_street, service_city, service_state, service_zip) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING tenant_id',
       expect.stringContaining('INSERT INTO users'),
       // A new business gets its OWN copy of its vertical's questions, inside the
       // same transaction that creates it — so a tenant never exists with a
@@ -108,7 +108,7 @@ describe('createTenantWithOwner — happy paths', () => {
       'COMMIT',
     ]);
     expect(queries[1].params).toEqual(['dale@test.com']);
-    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire', true]);
+    expect(queries[2].params).toEqual(['DynaTire', 'mobile-tire', true, null, null, null, null]);
     // mobile-tire now resolves to its own dedicated `mobile_tire` vertical — the
     // slot-filling intake tree that shipped with the vertical-intake presets — so
     // a new mobile-tire tenant provisions the mobile_tire questions, not the
@@ -163,9 +163,9 @@ describe('createTenantWithOwner — happy paths', () => {
     expect(queries[2].text).toBe('SELECT tenant_id FROM tenants WHERE LOWER(name) = LOWER($1)');
     expect(queries[2].params).toEqual(['Sharp Salon']);
     expect(queries[3].text).toBe(
-      'INSERT INTO tenants (name, business_type, consent_gate_required) VALUES ($1, $2, $3) RETURNING tenant_id'
+      'INSERT INTO tenants (name, business_type, consent_gate_required, service_street, service_city, service_state, service_zip) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING tenant_id'
     );
-    expect(queries[3].params).toEqual(['Sharp Salon', 'salon', true]);
+    expect(queries[3].params).toEqual(['Sharp Salon', 'salon', true, null, null, null, null]);
     // user INSERT params: tenantId, email, hash, full, first, last
     const userInsertParams = queries[4].params;
     expect(userInsertParams[0]).toBe(TENANT_ID);
@@ -241,7 +241,7 @@ describe('createTenantWithOwner — happy paths', () => {
       userId: USER_ID,
       consentGateRequired: false,
     });
-    expect(queries[2].params).toEqual(['ConsentCo', 'salon', false]);
+    expect(queries[2].params).toEqual(['ConsentCo', 'salon', false, null, null, null, null]);
     const consentUpdate = queries.find((q) => /legal_consent_attested_at/i.test(q.text));
     expect(consentUpdate).toBeDefined();
     expect(consentUpdate?.text).toMatch(/UPDATE tenants/i);
@@ -287,7 +287,7 @@ describe('createTenantWithOwner — happy paths', () => {
     // legalConsent omitted -> consent_gate_required is true on the INSERT,
     // and the returned result says so too (the admin route uses this to
     // decide whether to send the consent-invite email).
-    expect(queries[3].params).toEqual(['AdminCreated', 'salon', true]);
+    expect(queries[3].params).toEqual(['AdminCreated', 'salon', true, null, null, null, null]);
     expect(result).toEqual({
       ok: true,
       tenantId: TENANT_ID,
@@ -762,5 +762,41 @@ describe('createTenantWithOwner — template copies are truly best-effort', () =
     expect(queries.at(-1)).toBe('COMMIT');
     // The template copy still ran after the question-tree failure.
     expect(queries.some((q) => q.includes('copy_business_template_to_tenant'))).toBe(true);
+  });
+  it('HAPPY: a service address is stored on the tenant row in the same INSERT (WHO: self-serve signup | WHAT: street/city/state/zip persisted | WHERE: createTenantWithOwner | WHY: Stripe Tax prices the sale from where the service is used)', async () => {
+    const { pool, queries } = buildMockPool([
+      { rows: [] }, // BEGIN
+      { rows: [] }, // email check
+      { rows: [{ tenant_id: TENANT_ID }] }, // INSERT tenant
+      { rows: [{ user_id: USER_ID }] }, // INSERT user
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+    ]);
+
+    await createTenantWithOwner(pool, {
+      tenantName: 'Loop Salon',
+      businessType: 'salon',
+      ownerEmail: 'a@loop.com',
+      ownerPassword: 'secure123',
+      ownerFullName: 'Ada Loop',
+      serviceAddress: { street: '1 N State St', city: 'Chicago', state: 'IL', zip: '60602' },
+      duplicateCheck: 'email',
+    });
+
+    const insert = queries.find((q) => q.text.startsWith('INSERT INTO tenants'));
+    expect(insert?.params).toEqual([
+      'Loop Salon',
+      'salon',
+      true,
+      '1 N State St',
+      'Chicago',
+      'IL',
+      '60602',
+    ]);
   });
 });

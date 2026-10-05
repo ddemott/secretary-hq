@@ -23,6 +23,7 @@ import {
 import { errorsTotal } from '../services/metrics';
 import { createTenantWithOwner } from '../services/tenants/bootstrap';
 import { isHipaaVertical } from '../../shared/hipaaVerticalDenylist';
+import { normalizeServiceAddress } from '../../shared/serviceAddress';
 
 const RESET_TTL_MINUTES = 30;
 export const EMAIL_VERIFY_TTL_HOURS = 48;
@@ -45,6 +46,13 @@ const RegisterSchema = z
     // A client-side-only checkbox left this bypassable via a direct API call,
     // which defeats the ToS/DPA liability-shift the checkbox exists for.
     consent_attested: z.literal(true, 'You must agree to the Terms of Service to register'),
+    // Where the business USES the service: Stripe Tax prices the sale from it, so it is
+    // required at signup. The four parts are checked together by the shared validator
+    // (superRefine below) so the form and the API agree on what a valid address is.
+    service_street: z.unknown(),
+    service_city: z.unknown(),
+    service_state: z.unknown(),
+    service_zip: z.unknown(),
   })
   // Server-side mirror of the "HIPAA verticals are permanently excluded" rule
   // (root CLAUDE.md). The picker UI normally constrains business_type via a
@@ -54,6 +62,18 @@ const RegisterSchema = z
   .refine((data) => !isHipaaVertical(data.business_type), {
     message: 'This business type is not supported on this platform.',
     path: ['business_type'],
+  })
+  .superRefine((data, ctx) => {
+    const result = normalizeServiceAddress({
+      street: data.service_street,
+      city: data.service_city,
+      state: data.service_state,
+      zip: data.service_zip,
+    });
+    if (result.ok) return;
+    for (const [field, message] of Object.entries(result.errors)) {
+      ctx.addIssue({ code: 'custom', message, path: [`service_${field}`] });
+    }
   });
 
 const ForgotSchema = z.object({ email: z.string().email() });
@@ -263,6 +283,14 @@ export function registerAuthRoutes(
           .send({ success: false, error: 'Validation failed', details: parsed.error.issues });
       }
       const { business_name, business_type, owner_name, password } = parsed.data;
+      // superRefine already proved the address is valid; this just takes the cleaned form.
+      const addressResult = normalizeServiceAddress({
+        street: parsed.data.service_street,
+        city: parsed.data.service_city,
+        state: parsed.data.service_state,
+        zip: parsed.data.service_zip,
+      });
+      const serviceAddress = addressResult.ok ? addressResult.address : undefined;
       // One account per email, platform-wide and case-insensitive: store it
       // normalized so Dale@x.com and dale@x.com can never be two accounts.
       const email = parsed.data.email.trim().toLowerCase();
@@ -280,6 +308,7 @@ export function registerAuthRoutes(
         ownerEmail: email,
         ownerPassword: password,
         ownerFullName: owner_name,
+        serviceAddress,
         duplicateCheck: 'email',
         legalConsent: { ip, userAgent },
       });
