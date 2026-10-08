@@ -409,15 +409,15 @@ See `docs/operations/DEPLOYMENT.md` for the step-by-step guide.
 
 **Workflow & standards**
 
-| Doc                                              | Purpose                                                                                                                                        |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/workflow/DEVELOPMENT_WORKFLOW.md`          | Repeatable dev process for this project                                                                                                        |
-| `docs/workflow/PORTABLE_DEVELOPMENT_WORKFLOW.md` | Project-agnostic version of the workflow (copyable)                                                                                            |
-| `docs/workflow/ADOPTING_THE_WORKFLOW.md`         | How another project points at + adopts the workflow                                                                                            |
-| `docs/workflow/CODING_STANDARDS.md`              | Naming conventions + code-style rules                                                                                                          |
-| `docs/workflow/BRANCH_CHECKLIST.md`              | Checklist for starting + finishing feature-branch work                                                                                         |
-| `docs/workflow/LESSONS_LEARNED.md`               | Running log of hard-won debugging lessons                                                                                                      |
-| `docs/workflow/AGENTS.md`                        | Agent-oriented codebase brief (root `/AGENTS.md` is a different file — the response-style rule other agent CLIs pick up, not a codebase brief) |
+| Doc                                              | Purpose                                                                                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/workflow/DEVELOPMENT_WORKFLOW.md`          | Repeatable dev process for this project                                                                                                                              |
+| `docs/workflow/PORTABLE_DEVELOPMENT_WORKFLOW.md` | Project-agnostic version of the workflow (copyable)                                                                                                                  |
+| `docs/workflow/ADOPTING_THE_WORKFLOW.md`         | How another project points at + adopts the workflow                                                                                                                  |
+| `docs/workflow/CODING_STANDARDS.md`              | Naming conventions + code-style rules                                                                                                                                |
+| `docs/workflow/BRANCH_CHECKLIST.md`              | Checklist for starting + finishing feature-branch work                                                                                                               |
+| `docs/workflow/LESSONS_LEARNED.md`               | Running log of hard-won debugging lessons                                                                                                                            |
+| `docs/workflow/AGENTS.md`                        | Agent-oriented codebase brief (root `/AGENTS.md` is a different file — the response-style and standing test/PR rules other agent CLIs pick up, not a codebase brief) |
 
 **Subfolders**
 

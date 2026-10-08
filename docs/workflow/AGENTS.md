@@ -1,4 +1,12 @@
-# AGENTS.md
+# AGENTS.md — mechanical-rename agent only
+
+NOT the Hermes / product instruction root. That file is `/AGENTS.md` at the repo
+root (response style + Dale test/PR/branch gates). Do not load this file for
+product work, features, bugfixes, or PRs.
+
+This brief is for a dedicated rename/consistency agent. The "Do not run npm test"
+line below applies only to that scoped job (typecheck + grep). Product agents
+follow root `AGENTS.md`.
 
 ## Project
 
